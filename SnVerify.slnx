@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="SnVerify.Tests/SnVerify.Tests.csproj" Id="f4760d7b-0c2b-4bc3-959d-cad81ef16e74" />
+  <Project Path="SnVerify/SnVerify.csproj" Id="50b56673-7182-4918-ba42-d36c371d9b16" />
+</Solution>

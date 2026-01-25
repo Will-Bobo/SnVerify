@@ -1,0 +1,140 @@
+# ============================
+# Visual Studio / .NET Framework
+# ============================
+
+# Build results
+[Bb]in/
+[Oo]bj/
+[Dd]ebug/
+[Rr]elease/
+x64/
+x86/
+[Bb]uild/
+[Bb]uilds/
+[Oo]ut/
+
+# Visual Studio cache/options directory
+.vs/
+.vscode/
+
+# Visual Studio user-specific files
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
+*.userprefs
+
+# Visual Studio build log
+*.log
+*.tlog
+
+# NuGet Packages (使用 packages.config 时，packages 文件夹应被忽略)
+packages/
+*.nupkg
+*.snupkg
+**/packages/*
+
+# NuGet restore
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# MSTest test Results
+[Tt]est[Rr]esult*/
+[Bb]uild[Ll]og.*
+
+# .NET Core
+project.lock.json
+project.fragment.lock.json
+artifacts/
+
+# ============================
+# Windows
+# ============================
+
+# Windows image file caches
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# Folder config file
+[Dd]esktop.ini
+
+# Recycle Bin used on file shares
+$RECYCLE.BIN/
+
+# Windows Installer files
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+
+# Windows shortcuts
+*.lnk
+
+# ============================
+# 项目特定
+# ============================
+
+# 工具文件夹中的可执行文件（如果不需要版本控制）
+# SnVerify/tools/*.exe
+# SnVerify/tools/*.dll
+
+# 日志文件
+*.log
+logs/
+*.log.*
+
+# 临时文件
+*.tmp
+*.temp
+*.cache
+*.swp
+*~
+
+# 数据库文件（如果使用本地数据库）
+*.db
+*.sqlite
+*.sqlite3
+
+# 配置文件中的敏感信息（如果存在）
+# appsettings.local.json
+# appsettings.*.local.json
+
+# ============================
+# IDE / 编辑器
+# ============================
+
+# JetBrains Rider
+.idea/
+*.sln.iml
+
+# Visual Studio Code
+.vscode/
+*.code-workspace
+
+# Cursor IDE
+.cursor/
+
+# ============================
+# 其他
+# ============================
+
+# 备份文件
+*.bak
+*.backup
+*~
+
+# 压缩文件
+*.zip
+*.rar
+*.7z
+*.tar
+*.gz
+
+# PDF 文件（如果不需要版本控制，取消注释）
+# *.pdf
+
+# 文档中的临时文件
+~$*

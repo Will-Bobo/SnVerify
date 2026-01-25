@@ -1,0 +1,40 @@
+# Phase2 自动化执行指令列表
+
+# 核心流程模块（顺序执行，TDD 优先）
+EXECUTE_MODULE docs/ai_prompts/Phase2/ScanInputService_Cursor_Prompt.md
+WAIT_FOR_UNIT_TEST_PASS
+REVIEW_MANUALLY
+
+EXECUTE_MODULE docs/ai_prompts/Phase2/AdbAccessService_Cursor_Prompt.md
+WAIT_FOR_UNIT_TEST_PASS
+REVIEW_MANUALLY
+
+EXECUTE_MODULE docs/ai_prompts/Phase2/StorageService_Cursor_Prompt.md
+WAIT_FOR_UNIT_TEST_PASS
+REVIEW_MANUALLY
+
+EXECUTE_MODULE docs/ai_prompts/Phase2/BatchManager_Cursor_Prompt.md
+WAIT_FOR_UNIT_TEST_PASS
+REVIEW_MANUALLY
+
+EXECUTE_MODULE docs/ai_prompts/Phase2/ProcessCoordinator_Cursor_Prompt.md
+WAIT_FOR_UNIT_TEST_PASS
+REVIEW_MANUALLY
+
+EXECUTE_MODULE docs/ai_prompts/Phase2/VerificationFlowService_Cursor_Prompt.md
+WAIT_FOR_UNIT_TEST_PASS
+REVIEW_MANUALLY
+
+# 独立模块（并行执行）
+PARALLEL_EXECUTE_MODULES [
+  docs/ai_prompts/Phase2/LoggingService_Cursor_Prompt.md,
+  docs/ai_prompts/Phase2/MESInterface_Cursor_Prompt.md,
+  docs/ai_prompts/Phase2/UI_Cursor_Prompt.md,
+  docs/ai_prompts/Phase2/AutoCheckButton_Cursor_Prompt.md
+]
+WAIT_FOR_ALL_UNIT_TEST_PASS
+QUICK_REVIEW_MANUALLY
+
+# 集成测试（闭环验证）
+RUN_INTEGRATION_TEST
+REVIEW_INTEGRATION_RESULTS

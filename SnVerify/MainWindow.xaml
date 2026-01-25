@@ -1,0 +1,118 @@
+﻿<Window x:Class="SnVerify.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:local="clr-namespace:SnVerify"
+        mc:Ignorable="d"
+        Title="Smartke SN校验程序" Height="800" Width="1300"
+        WindowStartupLocation="CenterScreen">
+    <Window.Resources>
+        <!-- 样式定义 -->
+        <Style x:Key="HeaderTextStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="16"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Margin" Value="5"/>
+        </Style>
+        <Style x:Key="StatusTextStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="24"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="VerticalAlignment" Value="Center"/>
+        </Style>
+    </Window.Resources>
+    
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/> <!-- 批次区 -->
+            <RowDefinition Height="*"/> <!-- 检验区 -->
+            <RowDefinition Height="Auto"/> <!-- 状态栏 -->
+        </Grid.RowDefinitions>
+
+        <!-- 批次区 -->
+        <Border Grid.Row="0" BorderBrush="Gray" BorderThickness="1" Padding="10" Margin="5">
+            <StackPanel Orientation="Horizontal">
+                <TextBlock Text="批次号：" Style="{StaticResource HeaderTextStyle}" VerticalAlignment="Center"/>
+                <TextBox x:Name="BatchIdTextBox" Width="200" Margin="5" VerticalAlignment="Center"
+                         Text="{Binding CurrentBatchId, Mode=OneWay}" IsReadOnly="True"/>
+                <Button x:Name="StartBatchButton" Content="开始批次" Width="100" Margin="5"
+                        Command="{Binding StartBatchCommand}"/>
+                <Button x:Name="EndBatchButton" Content="结束批次" Width="100" Margin="5"
+                        Command="{Binding EndBatchCommand}"/>
+                <TextBlock x:Name="BatchStatusText" Margin="10,0" VerticalAlignment="Center"
+                           Text="{Binding IsBatchActive, StringFormat='状态: {0}'}"/>
+            </StackPanel>
+        </Border>
+
+        <!-- 检验区 -->
+        <Grid Grid.Row="1" Margin="5">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- 主检验区域 -->
+            <Border Grid.Column="0" BorderBrush="DarkBlue" BorderThickness="2" Padding="20">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="*"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- 检验状态显示 -->
+                    <TextBlock Grid.Row="0" Text="检验状态" Style="{StaticResource HeaderTextStyle}"/>
+                    
+                    <StackPanel Grid.Row="1" VerticalAlignment="Center">
+                        <!-- 当前 SN 显示 -->
+                        <TextBlock x:Name="CurrentSnText" 
+                                   Text="{Binding CurrentSn, StringFormat='当前 SN: {0}'}"
+                                   FontSize="18" Margin="10" HorizontalAlignment="Center"/>
+                        
+                        <!-- 处理状态 -->
+                        <TextBlock x:Name="ProcessingStatusText"
+                                   Text="{Binding IsProcessing, StringFormat='处理状态: {0}'}"
+                                   FontSize="20" Margin="10" HorizontalAlignment="Center"/>
+                        
+                        <!-- 结果状态 -->
+                        <TextBlock x:Name="ResultText"
+                                   Text="{Binding LastResult, StringFormat='结果: {0}'}"
+                                   Style="{StaticResource StatusTextStyle}"
+                                   Margin="10"/>
+                        
+                        <!-- 失败原因 -->
+                        <TextBlock x:Name="FailReasonText"
+                                   Text="{Binding FailReason, StringFormat='失败原因: {0}'}"
+                                   FontSize="14" Margin="10" HorizontalAlignment="Center"
+                                   Foreground="Red"/>
+                    </StackPanel>
+
+                    <!-- 扫码输入框 -->
+                    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="10">
+                        <TextBlock Text="扫码输入：" VerticalAlignment="Center" Margin="5"/>
+                        <TextBox x:Name="ScanInputTextBox" Width="300" Height="30" Margin="5"
+                                 Text="{Binding ScanInputText, UpdateSourceTrigger=PropertyChanged}"
+                                 KeyDown="ScanInputTextBox_KeyDown"/>
+                    </StackPanel>
+                </Grid>
+            </Border>
+
+            <!-- 右侧按钮区域 -->
+            <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Top">
+                <Button x:Name="AutoCheckButton" Content="自动检验" Width="120" Height="40" Margin="5"
+                        Command="{Binding AutoCheckCommand}"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- 状态栏 -->
+        <StatusBar Grid.Row="2" Height="30">
+            <StatusBarItem>
+                <TextBlock Text="{Binding CurrentBatchId, StringFormat='批次: {0}'}"/>
+            </StatusBarItem>
+            <Separator/>
+            <StatusBarItem>
+                <TextBlock Text="{Binding IsProcessing, StringFormat='处理中: {0}'}"/>
+            </StatusBarItem>
+        </StatusBar>
+    </Grid>
+</Window>
