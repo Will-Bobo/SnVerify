@@ -77,6 +77,9 @@ $RECYCLE.BIN/
 # 项目特定
 # ============================
 
+# 参考的开源项目目录（不需要版本控制）
+docs/reference_open_source/
+
 # 工具文件夹中的可执行文件（如果不需要版本控制）
 # SnVerify/tools/*.exe
 # SnVerify/tools/*.dll
