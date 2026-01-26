@@ -62,6 +62,23 @@
       <Private>True</Private>
       <SpecificVersion>False</SpecificVersion>
     </Reference>
+    <!-- EPPlus.Interfaces / EPPlus.System.Drawing 是 EPPlus 的依赖，用于 AutoFitColumns 等功能 -->
+    <!-- 需要在本机通过 NuGet 安装 EPPlus.Interfaces / EPPlus.System.Drawing 6.1.1 才会在下述路径生成 DLL -->
+    <Reference Include="EPPlus.Interfaces, Version=6.1.1.0, Culture=neutral, PublicKeyToken=a694d7f3b0907a61, processorArchitecture=MSIL">
+      <HintPath>..\packages\EPPlus.Interfaces.6.1.1\lib\net462\EPPlus.Interfaces.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <Reference Include="EPPlus.System.Drawing, Version=6.1.1.0, Culture=neutral, PublicKeyToken=2308d35469c9bac0, processorArchitecture=MSIL">
+      <HintPath>..\packages\EPPlus.System.Drawing.6.1.1\lib\net462\EPPlus.System.Drawing.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
+    <!-- Microsoft.IO.RecyclableMemoryStream - 优先使用 libs 目录中的 DLL，否则使用 packages 目录 -->
+    <!-- 如果 libs 目录中有 DLL，构建后事件会自动复制到输出目录 -->
+    <Reference Include="Microsoft.IO.RecyclableMemoryStream, Version=1.4.1.0, Culture=neutral, PublicKeyToken=31bf3856ad364e35, processorArchitecture=MSIL">
+      <HintPath Condition="Exists('libs\Microsoft.IO.RecyclableMemoryStream.dll')">libs\Microsoft.IO.RecyclableMemoryStream.dll</HintPath>
+      <HintPath Condition="!Exists('libs\Microsoft.IO.RecyclableMemoryStream.dll')">..\packages\Microsoft.IO.RecyclableMemoryStream.1.4.1\lib\net46\Microsoft.IO.RecyclableMemoryStream.dll</HintPath>
+      <Private>True</Private>
+    </Reference>
   </ItemGroup>
   <ItemGroup>
     <ApplicationDefinition Include="App.xaml">
@@ -156,5 +173,17 @@
       <ErrorText>这台计算机上缺少此项目引用的 NuGet 程序包。使用“NuGet 程序包还原”可下载这些程序包。有关更多信息，请参见 http://go.microsoft.com/fwlink/?LinkID=322105。缺少的文件是 {0}。</ErrorText>
     </PropertyGroup>
     <Error Condition="!Exists('..\packages\Stub.System.Data.SQLite.Core.NetFramework.1.0.119.0\build\net46\Stub.System.Data.SQLite.Core.NetFramework.targets')" Text="$([System.String]::Format('$(ErrorText)', '..\packages\Stub.System.Data.SQLite.Core.NetFramework.1.0.119.0\build\net46\Stub.System.Data.SQLite.Core.NetFramework.targets'))" />
+  </Target>
+  <!-- 确保 Microsoft.IO.RecyclableMemoryStream.dll 被复制到输出目录 -->
+  <!-- 从多个可能的位置查找 DLL：1) packages 目录 2) NuGet 全局缓存 3) 项目根目录下的 libs 文件夹 -->
+  <Target Name="CopyRecyclableMemoryStream" AfterTargets="Build">
+    <PropertyGroup>
+      <RecyclableMemoryStreamDll Condition="Exists('..\packages\Microsoft.IO.RecyclableMemoryStream.1.4.1\lib\net46\Microsoft.IO.RecyclableMemoryStream.dll')">..\packages\Microsoft.IO.RecyclableMemoryStream.1.4.1\lib\net46\Microsoft.IO.RecyclableMemoryStream.dll</RecyclableMemoryStreamDll>
+      <RecyclableMemoryStreamDll Condition="'$(RecyclableMemoryStreamDll)' == '' AND Exists('$(USERPROFILE)\.nuget\packages\microsoft.io.recyclablememorystream\1.4.1\lib\net46\Microsoft.IO.RecyclableMemoryStream.dll')">$(USERPROFILE)\.nuget\packages\microsoft.io.recyclablememorystream\1.4.1\lib\net46\Microsoft.IO.RecyclableMemoryStream.dll</RecyclableMemoryStreamDll>
+      <RecyclableMemoryStreamDll Condition="'$(RecyclableMemoryStreamDll)' == '' AND Exists('$(USERPROFILE)\.nuget\packages\Microsoft.IO.RecyclableMemoryStream\1.4.1\lib\net46\Microsoft.IO.RecyclableMemoryStream.dll')">$(USERPROFILE)\.nuget\packages\Microsoft.IO.RecyclableMemoryStream\1.4.1\lib\net46\Microsoft.IO.RecyclableMemoryStream.dll</RecyclableMemoryStreamDll>
+      <RecyclableMemoryStreamDll Condition="'$(RecyclableMemoryStreamDll)' == '' AND Exists('libs\Microsoft.IO.RecyclableMemoryStream.dll')">libs\Microsoft.IO.RecyclableMemoryStream.dll</RecyclableMemoryStreamDll>
+    </PropertyGroup>
+    <Copy Condition="'$(RecyclableMemoryStreamDll)' != '' AND Exists('$(RecyclableMemoryStreamDll)')" SourceFiles="$(RecyclableMemoryStreamDll)" DestinationFolder="$(OutputPath)" SkipUnchangedFiles="true" />
+    <Warning Condition="'$(RecyclableMemoryStreamDll)' == '' OR !Exists('$(RecyclableMemoryStreamDll)')" Text="Microsoft.IO.RecyclableMemoryStream.dll 未找到。请确保已安装 NuGet 包 Microsoft.IO.RecyclableMemoryStream 1.4.1，或手动将 DLL 放到 libs 目录下。" />
   </Target>
 </Project>

@@ -1,4 +1,4 @@
-/// <author>
+﻿/// <author>
 /// AI Assistant
 /// </author>
 
@@ -18,6 +18,7 @@ namespace SnVerify
         private MainViewModel _viewModel;
         private bool _previousIsBatchActive;
         private bool _previousIsProcessing;
+        private bool _previousIsSelfChecking;
 
         public MainWindow()
         {
@@ -49,6 +50,7 @@ namespace SnVerify
                         // 初始化状态跟踪
                         _previousIsBatchActive = _viewModel.IsBatchActive;
                         _previousIsProcessing = _viewModel.IsProcessing;
+                        _previousIsSelfChecking = _viewModel.IsSelfChecking;
                         
                         // 订阅属性变化事件，用于自动聚焦
                         _viewModel.PropertyChanged += ViewModel_PropertyChanged;
@@ -76,15 +78,26 @@ namespace SnVerify
             if (_viewModel == null)
                 return;
 
-            // 监听批次激活状态变化：从非激活变为激活时，聚焦扫码输入框
+            // 监听批次激活状态变化：从非激活变为激活时，聚焦扫码输入框并清空内容
             if (e.PropertyName == nameof(MainViewModel.IsBatchActive))
             {
                 var currentIsBatchActive = _viewModel.IsBatchActive;
                 if (!_previousIsBatchActive && currentIsBatchActive)
                 {
-                    // 批次从非激活变为激活，聚焦扫码输入框
+                    // 批次从非激活变为激活，清空扫码输入框并聚焦
                     Dispatcher.BeginInvoke(new System.Action(() =>
                     {
+                        // 清空扫码输入框内容
+                        if (ScanInputTextBox != null)
+                        {
+                            ScanInputTextBox.Text = "";
+                        }
+                        // 同时清空 ViewModel 中的绑定属性（确保数据同步）
+                        if (_viewModel != null)
+                        {
+                            _viewModel.ScanInputText = "";
+                        }
+                        // 聚焦扫码输入框
                         ScanInputTextBox?.Focus();
                     }), System.Windows.Threading.DispatcherPriority.Input);
                 }
@@ -95,15 +108,39 @@ namespace SnVerify
             if (e.PropertyName == nameof(MainViewModel.IsProcessing))
             {
                 var currentIsProcessing = _viewModel.IsProcessing;
+                
+                // 当从处理中变为完成时，聚焦扫码输入框
+                // 检查是否从 true（处理中）变为 false（完成）
                 if (_previousIsProcessing && !currentIsProcessing)
                 {
                     // 从处理中变为完成，聚焦扫码输入框
+                    // 使用稍低的优先级，确保 UI 更新完成后再聚焦
+                    Dispatcher.BeginInvoke(new System.Action(() =>
+                    {
+                        // 确保 TextBox 存在且可见
+                        if (ScanInputTextBox != null && ScanInputTextBox.IsVisible)
+                        {
+                            ScanInputTextBox.Focus();
+                        }
+                    }), System.Windows.Threading.DispatcherPriority.Loaded);
+                }
+                
+                _previousIsProcessing = currentIsProcessing;
+            }
+
+            // 监听自检状态变化：从自检中变为完成时，聚焦扫码输入框
+            if (e.PropertyName == nameof(MainViewModel.IsSelfChecking))
+            {
+                var currentIsSelfChecking = _viewModel.IsSelfChecking;
+                if (_previousIsSelfChecking && !currentIsSelfChecking)
+                {
+                    // 从自检中变为完成，聚焦扫码输入框
                     Dispatcher.BeginInvoke(new System.Action(() =>
                     {
                         ScanInputTextBox?.Focus();
                     }), System.Windows.Threading.DispatcherPriority.Input);
                 }
-                _previousIsProcessing = currentIsProcessing;
+                _previousIsSelfChecking = currentIsSelfChecking;
             }
         }
 
@@ -116,6 +153,32 @@ namespace SnVerify
             DataContext = _viewModel;
         }
 
+        /// <summary>
+        /// 扫码输入框获得焦点时，设置输入法为英文（仅针对此 TextBox）
+        /// </summary>
+        private void ScanInputTextBox_GotFocus(object sender, RoutedEventArgs e)
+        {
+            // 使用 WPF 的 InputMethod，只影响当前 TextBox，不影响整个窗口
+            var textBox = sender as System.Windows.Controls.TextBox;
+            if (textBox != null)
+            {
+                try
+                {
+                    // 设置输入法为英文（en-US），只针对这个 TextBox
+                    InputMethod.SetPreferredImeState(textBox, InputMethodState.Off);
+                    // 或者使用 InputMethod.SetInputScope 来限制输入范围
+                    var inputScope = new InputScope();
+                    var inputScopeName = new InputScopeName { NameValue = InputScopeNameValue.Default };
+                    inputScope.Names.Add(inputScopeName);
+                    textBox.InputScope = inputScope;
+                }
+                catch (Exception ex)
+                {
+                    // 忽略异常，不影响主流程
+                    System.Diagnostics.Debug.WriteLine($"[MainWindow] 设置输入法失败: {ex.Message}");
+                }
+            }
+        }
         /// <summary>
         /// 处理扫码输入框按键事件
         /// </summary>
@@ -154,15 +217,6 @@ namespace SnVerify
                     }, System.Threading.Tasks.TaskScheduler.Default);
                 }
             }
-        }
-
-        /// <summary>
-        /// 窗口加载完成后，聚焦扫码输入框
-        /// </summary>
-        private void Window_Loaded(object sender, RoutedEventArgs e)
-        {
-            // 窗口激活后，聚焦扫码输入框，方便扫码枪输入
-            ScanInputTextBox?.Focus();
         }
     }
 }

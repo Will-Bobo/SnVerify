@@ -60,7 +60,7 @@ namespace SnVerify.Tests.Services
         {
             // Arrange
             _storageServiceMock
-                .Setup(x => x.IsSnDuplicateAsync(TestBatchId, TestSnScan))
+                .Setup(x => x.IsSnDuplicateInPassAsync(TestBatchId, TestSnScan))
                 .ReturnsAsync(false);
 
             _adbAccessServiceMock
@@ -96,12 +96,20 @@ namespace SnVerify.Tests.Services
             // Arrange
             var snAdb = "XYZ789";
             _storageServiceMock
-                .Setup(x => x.IsSnDuplicateAsync(TestBatchId, TestSnScan))
+                .Setup(x => x.IsSnDuplicateInPassAsync(TestBatchId, TestSnScan))
                 .ReturnsAsync(false);
 
             _adbAccessServiceMock
                 .Setup(x => x.ReadDeviceSnAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(AdbSnReadResult.Success(snAdb));
+
+            _storageServiceMock
+                .Setup(x => x.GetFailResultBySnAsync(TestBatchId, TestSnScan))
+                .ReturnsAsync((SnVerifyResult)null); // 不存在 FAIL 记录，创建新记录
+
+            _storageServiceMock
+                .Setup(x => x.SaveVerifyResultAsync(It.IsAny<SnVerifyResult>()))
+                .Returns(Task.CompletedTask);
 
             // Act
             await _processCoordinator.StartVerificationAsync(TestSnScan);
@@ -122,8 +130,16 @@ namespace SnVerify.Tests.Services
         {
             // Arrange
             _storageServiceMock
-                .Setup(x => x.IsSnDuplicateAsync(TestBatchId, TestSnScan))
+                .Setup(x => x.IsSnDuplicateInPassAsync(TestBatchId, TestSnScan))
                 .ReturnsAsync(true);
+
+            _storageServiceMock
+                .Setup(x => x.GetFailResultBySnAsync(TestBatchId, TestSnScan))
+                .ReturnsAsync((SnVerifyResult)null); // 不存在 FAIL 记录，创建新记录
+
+            _storageServiceMock
+                .Setup(x => x.SaveVerifyResultAsync(It.IsAny<SnVerifyResult>()))
+                .Returns(Task.CompletedTask);
 
             // Act
             await _processCoordinator.StartVerificationAsync(TestSnScan);
@@ -149,12 +165,20 @@ namespace SnVerify.Tests.Services
         {
             // Arrange
             _storageServiceMock
-                .Setup(x => x.IsSnDuplicateAsync(TestBatchId, TestSnScan))
+                .Setup(x => x.IsSnDuplicateInPassAsync(TestBatchId, TestSnScan))
                 .ReturnsAsync(false);
 
             _adbAccessServiceMock
                 .Setup(x => x.ReadDeviceSnAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(AdbSnReadResult.Failure("Timeout", true));
+
+            _storageServiceMock
+                .Setup(x => x.GetFailResultBySnAsync(TestBatchId, TestSnScan))
+                .ReturnsAsync((SnVerifyResult)null); // 不存在 FAIL 记录，创建新记录
+
+            _storageServiceMock
+                .Setup(x => x.SaveVerifyResultAsync(It.IsAny<SnVerifyResult>()))
+                .Returns(Task.CompletedTask);
 
             // Act
             await _processCoordinator.StartVerificationAsync(TestSnScan);
@@ -174,12 +198,20 @@ namespace SnVerify.Tests.Services
         {
             // Arrange
             _storageServiceMock
-                .Setup(x => x.IsSnDuplicateAsync(TestBatchId, TestSnScan))
+                .Setup(x => x.IsSnDuplicateInPassAsync(TestBatchId, TestSnScan))
                 .ReturnsAsync(false);
 
             _adbAccessServiceMock
                 .Setup(x => x.ReadDeviceSnAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(AdbSnReadResult.Failure("ADB command failed"));
+
+            _storageServiceMock
+                .Setup(x => x.GetFailResultBySnAsync(TestBatchId, TestSnScan))
+                .ReturnsAsync((SnVerifyResult)null); // 不存在 FAIL 记录，创建新记录
+
+            _storageServiceMock
+                .Setup(x => x.SaveVerifyResultAsync(It.IsAny<SnVerifyResult>()))
+                .Returns(Task.CompletedTask);
 
             // Act
             await _processCoordinator.StartVerificationAsync(TestSnScan);
@@ -201,7 +233,7 @@ namespace SnVerify.Tests.Services
             // Arrange
             var tcs = new TaskCompletionSource<AdbSnReadResult>();
             _storageServiceMock
-                .Setup(x => x.IsSnDuplicateAsync(TestBatchId, It.IsAny<string>()))
+                .Setup(x => x.IsSnDuplicateInPassAsync(TestBatchId, It.IsAny<string>()))
                 .ReturnsAsync(false);
 
             _adbAccessServiceMock
@@ -235,7 +267,7 @@ namespace SnVerify.Tests.Services
         {
             // Arrange
             _storageServiceMock
-                .Setup(x => x.IsSnDuplicateAsync(TestBatchId, TestSnScan))
+                .Setup(x => x.IsSnDuplicateInPassAsync(TestBatchId, TestSnScan))
                 .ReturnsAsync(false);
 
             _adbAccessServiceMock
@@ -263,7 +295,7 @@ namespace SnVerify.Tests.Services
             // Arrange
             var tcs = new TaskCompletionSource<AdbSnReadResult>();
             _storageServiceMock
-                .Setup(x => x.IsSnDuplicateAsync(TestBatchId, TestSnScan))
+                .Setup(x => x.IsSnDuplicateInPassAsync(TestBatchId, TestSnScan))
                 .ReturnsAsync(false);
 
             _adbAccessServiceMock
@@ -293,7 +325,7 @@ namespace SnVerify.Tests.Services
             var snScan = "abc123";
             var snAdb = "ABC123";
             _storageServiceMock
-                .Setup(x => x.IsSnDuplicateAsync(TestBatchId, snScan))
+                .Setup(x => x.IsSnDuplicateInPassAsync(TestBatchId, snScan))
                 .ReturnsAsync(false);
 
             _adbAccessServiceMock
@@ -312,12 +344,20 @@ namespace SnVerify.Tests.Services
         {
             // Arrange
             _storageServiceMock
-                .Setup(x => x.IsSnDuplicateAsync(TestBatchId, TestSnScan))
+                .Setup(x => x.IsSnDuplicateInPassAsync(TestBatchId, TestSnScan))
                 .ReturnsAsync(false);
 
             _adbAccessServiceMock
                 .Setup(x => x.ReadDeviceSnAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(AdbSnReadResult.Success(""));
+
+            _storageServiceMock
+                .Setup(x => x.GetFailResultBySnAsync(TestBatchId, TestSnScan))
+                .ReturnsAsync((SnVerifyResult)null); // 不存在 FAIL 记录，创建新记录
+
+            _storageServiceMock
+                .Setup(x => x.SaveVerifyResultAsync(It.IsAny<SnVerifyResult>()))
+                .Returns(Task.CompletedTask);
 
             // Act
             await _processCoordinator.StartVerificationAsync(TestSnScan);

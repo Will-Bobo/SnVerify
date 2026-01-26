@@ -6,8 +6,7 @@
         xmlns:local="clr-namespace:SnVerify"
         mc:Ignorable="d"
         Title="Smartke SN校验程序" Height="800" Width="1300"
-        WindowStartupLocation="CenterScreen"
-        Loaded="Window_Loaded">
+        WindowStartupLocation="CenterScreen">
     <Window.Resources>
         <!-- 样式定义 -->
         <Style x:Key="HeaderTextStyle" TargetType="TextBlock">
@@ -147,6 +146,7 @@
                         <TextBox x:Name="ScanInputTextBox" Width="300" Height="35" Margin="5"
                                  Text="{Binding ScanInputText, UpdateSourceTrigger=PropertyChanged}"
                                  KeyDown="ScanInputTextBox_KeyDown"
+                                 GotFocus="ScanInputTextBox_GotFocus"
                                  FontSize="16">
                             <TextBox.Style>
                                 <Style TargetType="TextBox">
