@@ -8,6 +8,9 @@
         Title="Smartke SN校验程序" Height="800" Width="1300"
         WindowStartupLocation="CenterScreen">
     <Window.Resources>
+        <!-- 转换器 -->
+        <local:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
+        
         <!-- 样式定义 -->
         <Style x:Key="HeaderTextStyle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="16"/>
@@ -166,7 +169,8 @@
             <!-- 右侧按钮区域 -->
             <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Top">
                 <Button x:Name="StartVerifyButton" Content="开始检验" Width="120" Height="40" Margin="5"
-                        Command="{Binding StartVerifyCommand}"/>
+                        Command="{Binding StartVerifyCommand}"
+                        IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBooleanConverter}}"/>
                 <Button x:Name="SelfCheckButton" Content="自检" Width="120" Height="40" Margin="5"
                         Command="{Binding SelfCheckCommand}"/>
             </StackPanel>

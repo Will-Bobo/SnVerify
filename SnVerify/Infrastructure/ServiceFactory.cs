@@ -70,7 +70,7 @@ namespace SnVerify.Infrastructure
             var mesInterface = new MESInterface(mesBaseUrl, loggingService);
 
             // 校验流程服务工厂：按批次 ID 创建 ProcessCoordinator+VerificationFlowService
-            var flowServiceFactory = new VerificationFlowServiceFactory(storageService, adbAccessService);
+            var flowServiceFactory = new VerificationFlowServiceFactory(storageService, adbAccessService, loggingService);
 
             // 创建 MainViewModel（需 storage/adb 用于导出与自检，logDirectory 用于导出时复制日志）
             var viewModel = new MainViewModel(

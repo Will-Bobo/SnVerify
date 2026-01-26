@@ -163,7 +163,8 @@ namespace SnVerify.Tests.Services
             var processCoordinator = new ProcessCoordinator(
                 testBatchId,
                 _storageService,
-                mockAdbService.Object);
+                mockAdbService.Object,
+                _loggingService);
 
             // 创建 ScanInputService 并关联 ProcessCoordinator
             var scanInputService = new ScanInputService(processCoordinator, testBatchId);

@@ -109,6 +109,7 @@
       <DependentUpon>MainWindow.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="Converters\InverseBooleanConverter.cs" />
     <Compile Include="Infrastructure\ServiceFactory.cs" />
     <Compile Include="Infrastructure\VerificationFlowServiceFactory.cs" />
     <Compile Include="Services\Adb\AdbAccessService.cs" />

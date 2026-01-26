@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using SnVerify.Domain.Models;
 using SnVerify.Domain.State;
 using SnVerify.Services.Adb;
+using SnVerify.Services.Logging;
 using SnVerify.Services.Storage;
 
 namespace SnVerify.Services.Coordination
@@ -20,6 +21,7 @@ namespace SnVerify.Services.Coordination
         private readonly string _batchId;
         private readonly IStorageService _storageService;
         private readonly IAdbAccessService _adbAccessService;
+        private readonly ILoggingService _loggingService;
         private readonly object _lockObject = new object();
         private VerificationSnapshot _snapshot;
 
@@ -55,14 +57,17 @@ namespace SnVerify.Services.Coordination
         /// <param name="batchId">当前批次 ID</param>
         /// <param name="storageService">存储服务</param>
         /// <param name="adbAccessService">ADB 访问服务</param>
+        /// <param name="loggingService">日志服务（可选）</param>
         public ProcessCoordinator(
             string batchId,
             IStorageService storageService,
-            IAdbAccessService adbAccessService)
+            IAdbAccessService adbAccessService,
+            ILoggingService loggingService = null)
         {
             _batchId = batchId ?? throw new ArgumentNullException(nameof(batchId));
             _storageService = storageService ?? throw new ArgumentNullException(nameof(storageService));
             _adbAccessService = adbAccessService ?? throw new ArgumentNullException(nameof(adbAccessService));
+            _loggingService = loggingService;
             _snapshot = VerificationSnapshot.Idle(_batchId);
         }
 
@@ -91,6 +96,10 @@ namespace SnVerify.Services.Coordination
                 return;
             }
 
+            // 记录检验开始
+            var verifyStartTime = DateTime.Now;
+            _loggingService?.LogInfo($"检验开始，扫码枪SN: {sn}");
+
             try
             {
                 // Step 1: 检查批次内 SN 在 PASS 记录中是否重复（仅检查 PASS 记录）
@@ -99,6 +108,8 @@ namespace SnVerify.Services.Coordination
                 {
                     // PASS 记录中重复，拒绝并返回 FAIL（更新或创建 FAIL 记录）
                     await SaveOrUpdateFailResultAsync(sn, "FAIL", "DUPLICATE_SN");
+                    _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {sn}, ADB SN: N/A] , 错误结果: DUPLICATE_SN");
+                    _loggingService?.LogInfo("检验结束");
                     UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", "DUPLICATE_SN", _batchId));
                     return;
                 }
@@ -110,6 +121,8 @@ namespace SnVerify.Services.Coordination
                     var result = adbResult.IsTimeout ? "TIMEOUT" : "FAIL";
                     var failReason = adbResult.IsTimeout ? "ADB_TIMEOUT" : adbResult.ErrorReason;
                     await SaveOrUpdateFailResultAsync(sn, result, failReason);
+                    _loggingService?.LogInfo($"检验结果 [{result}] , [扫码枪SN: {sn}, ADB SN: N/A] , 错误结果: {failReason}");
+                    _loggingService?.LogInfo("检验结束");
                     UpdateSnapshot(VerificationSnapshot.Completed(sn, result, failReason, _batchId));
                     return;
                 }
@@ -118,6 +131,8 @@ namespace SnVerify.Services.Coordination
                 if (string.IsNullOrWhiteSpace(snAdb))
                 {
                     await SaveOrUpdateFailResultAsync(sn, "FAIL", "ADB_SN_EMPTY");
+                    _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {sn}, ADB SN: N/A] , 错误结果: ADB_SN_EMPTY");
+                    _loggingService?.LogInfo("检验结束");
                     UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", "ADB_SN_EMPTY", _batchId));
                     return;
                 }
@@ -130,6 +145,8 @@ namespace SnVerify.Services.Coordination
                 {
                     // PASS
                     await SaveResultAsync(sn, "PASS", null);
+                    _loggingService?.LogInfo($"检验结果 [PASS] , [扫码枪SN: {sn}, ADB SN: {snAdb}] , 成功结果");
+                    _loggingService?.LogInfo("检验结束");
                     UpdateSnapshot(VerificationSnapshot.Completed(sn, "PASS", null, _batchId));
                 }
                 else
@@ -137,6 +154,8 @@ namespace SnVerify.Services.Coordination
                     // FAIL - SN 不一致
                     var failReason = $"MISMATCH: Scan={snScanNormalized}, ADB={snAdbNormalized}";
                     await SaveOrUpdateFailResultAsync(sn, "FAIL", failReason);
+                    _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {sn}, ADB SN: {snAdb}] , 错误结果: {failReason}");
+                    _loggingService?.LogInfo("检验结束");
                     UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", failReason, _batchId));
                 }
             }
@@ -144,6 +163,8 @@ namespace SnVerify.Services.Coordination
             {
                 // 异常处理
                 await SaveOrUpdateFailResultAsync(sn, "FAIL", $"EXCEPTION: {ex.Message}");
+                _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {sn}, ADB SN: N/A] , 错误结果: EXCEPTION: {ex.Message}");
+                _loggingService?.LogInfo("检验结束");
                 UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", $"EXCEPTION: {ex.Message}", _batchId));
             }
         }
