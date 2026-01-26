@@ -93,11 +93,12 @@ namespace SnVerify.Services.Coordination
 
             try
             {
-                // Step 1: 检查批次内 SN 是否重复
-                var isDuplicate = await _storageService.IsSnDuplicateAsync(_batchId, sn);
-                if (isDuplicate)
+                // Step 1: 检查批次内 SN 在 PASS 记录中是否重复（仅检查 PASS 记录）
+                var isDuplicateInPass = await _storageService.IsSnDuplicateInPassAsync(_batchId, sn);
+                if (isDuplicateInPass)
                 {
-                    await SaveResultAsync(sn, "FAIL", "DUPLICATE_SN");
+                    // PASS 记录中重复，拒绝并返回 FAIL（更新或创建 FAIL 记录）
+                    await SaveOrUpdateFailResultAsync(sn, "FAIL", "DUPLICATE_SN");
                     UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", "DUPLICATE_SN", _batchId));
                     return;
                 }
@@ -108,7 +109,7 @@ namespace SnVerify.Services.Coordination
                 {
                     var result = adbResult.IsTimeout ? "TIMEOUT" : "FAIL";
                     var failReason = adbResult.IsTimeout ? "ADB_TIMEOUT" : adbResult.ErrorReason;
-                    await SaveResultAsync(sn, result, failReason);
+                    await SaveOrUpdateFailResultAsync(sn, result, failReason);
                     UpdateSnapshot(VerificationSnapshot.Completed(sn, result, failReason, _batchId));
                     return;
                 }
@@ -116,7 +117,7 @@ namespace SnVerify.Services.Coordination
                 var snAdb = adbResult.Sn;
                 if (string.IsNullOrWhiteSpace(snAdb))
                 {
-                    await SaveResultAsync(sn, "FAIL", "ADB_SN_EMPTY");
+                    await SaveOrUpdateFailResultAsync(sn, "FAIL", "ADB_SN_EMPTY");
                     UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", "ADB_SN_EMPTY", _batchId));
                     return;
                 }
@@ -135,14 +136,14 @@ namespace SnVerify.Services.Coordination
                 {
                     // FAIL - SN 不一致
                     var failReason = $"MISMATCH: Scan={snScanNormalized}, ADB={snAdbNormalized}";
-                    await SaveResultAsync(sn, "FAIL", failReason);
+                    await SaveOrUpdateFailResultAsync(sn, "FAIL", failReason);
                     UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", failReason, _batchId));
                 }
             }
             catch (Exception ex)
             {
                 // 异常处理
-                await SaveResultAsync(sn, "FAIL", $"EXCEPTION: {ex.Message}");
+                await SaveOrUpdateFailResultAsync(sn, "FAIL", $"EXCEPTION: {ex.Message}");
                 UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", $"EXCEPTION: {ex.Message}", _batchId));
             }
         }
@@ -155,6 +156,45 @@ namespace SnVerify.Services.Coordination
             lock (_lockObject)
             {
                 UpdateSnapshot(VerificationSnapshot.Idle(_batchId));
+            }
+        }
+
+        /// <summary>
+        /// 保存或更新 FAIL 结果：如果存在 FAIL 记录则更新，否则创建新记录
+        /// </summary>
+        private async Task SaveOrUpdateFailResultAsync(string sn, string result, string failReason)
+        {
+            try
+            {
+                // 检查是否存在 FAIL 记录
+                var existingFailResult = await _storageService.GetFailResultBySnAsync(_batchId, sn);
+                
+                if (existingFailResult != null)
+                {
+                    // 存在 FAIL 记录，更新它
+                    existingFailResult.Result = result;
+                    existingFailResult.FailReason = failReason;
+                    existingFailResult.VerifyTime = DateTime.Now;
+                    await _storageService.UpdateVerifyResultAsync(existingFailResult);
+                }
+                else
+                {
+                    // 不存在 FAIL 记录，创建新记录
+                    var verifyResult = new SnVerifyResult
+                    {
+                        BatchId = _batchId,
+                        SN = sn,
+                        Result = result,
+                        FailReason = failReason,
+                        VerifyTime = DateTime.Now
+                    };
+                    await _storageService.SaveVerifyResultAsync(verifyResult);
+                }
+            }
+            catch
+            {
+                // 保存/更新失败不影响流程，记录到日志或忽略
+                // 根据需求，可以在这里添加日志记录
             }
         }
 

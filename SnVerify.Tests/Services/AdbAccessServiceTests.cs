@@ -72,13 +72,23 @@ namespace SnVerify.Tests.Services
         public async Task ReadDeviceSnAsync_ShouldReturnFailure_WhenYlzeroCommandFails()
         {
             // Arrange
+            // ylzero 命令失败，ExitCode = 127（命令不存在，debug 版机器会出现，可继续 SN 读取）
             _processRunnerMock
                 .Setup(x => x.RunAsync(
                     TestAdbPath,
                     "shell ylzero",
                     It.IsAny<int>(),
                     It.IsAny<CancellationToken>()))
-                .ReturnsAsync(ProcessExecutionResult.Failure("Permission denied"));
+                .ReturnsAsync(ProcessExecutionResult.Failure("Command not found", null, 127));
+            
+            // SN 读取命令也失败（这样才能测试完整的失败流程）
+            _processRunnerMock
+                .Setup(x => x.RunAsync(
+                    TestAdbPath,
+                    "shell getprop sys.skyroam.osi.sn",
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(ProcessExecutionResult.Failure("Property not found"));
 
             // Act
             var result = await _adbAccessService.ReadDeviceSnAsync();
@@ -86,13 +96,15 @@ namespace SnVerify.Tests.Services
             // Assert
             Assert.That(result.IsSuccess, Is.False);
             Assert.That(result.Sn, Is.Null);
-            Assert.That(result.ErrorReason, Is.Not.Null.And.Contains("ylzero"));
+            // ExitCode == 127 时，ylzero 失败不会导致返回错误，会继续执行 SN 读取命令
+            // 实际返回的是 SN 读取命令失败的错误
+            Assert.That(result.ErrorReason, Is.Not.Null);
             Assert.That(result.IsTimeout, Is.False);
 
-            // 验证未执行 SN 读取命令
+            // 验证执行了 SN 读取命令（即使 ylzero 失败但 ExitCode == 127）
             _processRunnerMock.Verify(
                 x => x.RunAsync(TestAdbPath, "shell getprop sys.skyroam.osi.sn", It.IsAny<int>(), It.IsAny<CancellationToken>()),
-                Times.Never);
+                Times.Exactly(3)); // MaxRetries = 3
         }
 
         [Test]

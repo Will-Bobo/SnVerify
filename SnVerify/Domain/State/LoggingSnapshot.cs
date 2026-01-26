@@ -3,6 +3,8 @@
 /// </author>
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace SnVerify.Domain.State
 {
@@ -42,27 +44,32 @@ namespace SnVerify.Domain.State
         public DateTime Timestamp { get; }
 
         /// <summary>
+        /// 最近的日志消息列表（用于 UI 显示，最多保留最近 N 条）
+        /// </summary>
+        public IReadOnlyList<string> RecentMessages { get; }
+
+        /// <summary>
         /// 创建初始状态
         /// </summary>
-        public static LoggingSnapshot Idle(string batchId = null)
+        public static LoggingSnapshot Idle(string batchId = null, IReadOnlyList<string> recentMessages = null)
         {
-            return new LoggingSnapshot(null, batchId, null, null, null, DateTime.Now);
+            return new LoggingSnapshot(null, batchId, null, null, null, DateTime.Now, recentMessages ?? new List<string>().AsReadOnly());
         }
 
         /// <summary>
         /// 创建日志记录状态
         /// </summary>
-        public static LoggingSnapshot Logged(string logFile, string batchId, string message, string logLevel)
+        public static LoggingSnapshot Logged(string logFile, string batchId, string message, string logLevel, IReadOnlyList<string> recentMessages = null)
         {
-            return new LoggingSnapshot(logFile, batchId, message, null, logLevel, DateTime.Now);
+            return new LoggingSnapshot(logFile, batchId, message, null, logLevel, DateTime.Now, recentMessages ?? new List<string>().AsReadOnly());
         }
 
         /// <summary>
         /// 创建错误状态
         /// </summary>
-        public static LoggingSnapshot Error(string errorMessage, string batchId = null)
+        public static LoggingSnapshot Error(string errorMessage, string batchId = null, IReadOnlyList<string> recentMessages = null)
         {
-            return new LoggingSnapshot(null, batchId, null, errorMessage, null, DateTime.Now);
+            return new LoggingSnapshot(null, batchId, null, errorMessage, null, DateTime.Now, recentMessages ?? new List<string>().AsReadOnly());
         }
 
         /// <summary>
@@ -74,7 +81,8 @@ namespace SnVerify.Domain.State
             string lastMessage,
             string errorMessage,
             string logLevel,
-            DateTime timestamp)
+            DateTime timestamp,
+            IReadOnlyList<string> recentMessages)
         {
             CurrentLogFile = currentLogFile;
             BatchId = batchId;
@@ -82,6 +90,7 @@ namespace SnVerify.Domain.State
             ErrorMessage = errorMessage;
             LogLevel = logLevel;
             Timestamp = timestamp;
+            RecentMessages = recentMessages ?? new List<string>().AsReadOnly();
         }
     }
 }

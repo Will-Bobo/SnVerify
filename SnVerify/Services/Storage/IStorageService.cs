@@ -48,6 +48,28 @@ namespace SnVerify.Services.Storage
         Task<bool> IsSnDuplicateAsync(string batchId, string sn);
 
         /// <summary>
+        /// 检查指定批次内 SN 在 PASS 记录中是否重复（新增：仅检查 PASS 记录）
+        /// </summary>
+        /// <param name="batchId">批次 ID</param>
+        /// <param name="sn">序列号</param>
+        /// <returns>是否在 PASS 记录中重复</returns>
+        Task<bool> IsSnDuplicateInPassAsync(string batchId, string sn);
+
+        /// <summary>
+        /// 获取指定批次和 SN 的 FAIL 记录（如果存在）
+        /// </summary>
+        /// <param name="batchId">批次 ID</param>
+        /// <param name="sn">序列号</param>
+        /// <returns>FAIL 记录，如果不存在则返回 null</returns>
+        Task<SnVerifyResult> GetFailResultBySnAsync(string batchId, string sn);
+
+        /// <summary>
+        /// 更新现有的校验结果记录
+        /// </summary>
+        /// <param name="result">校验结果（必须包含 Id）</param>
+        Task UpdateVerifyResultAsync(SnVerifyResult result);
+
+        /// <summary>
         /// 保存 SN 校验结果（Phase2：更新 Snapshot）
         /// </summary>
         /// <param name="result">校验结果</param>

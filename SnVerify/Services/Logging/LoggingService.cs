@@ -3,6 +3,8 @@
 /// </author>
 
 using System;
+using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.IO.Compression;
 using System.Linq;
@@ -20,12 +22,14 @@ namespace SnVerify.Services.Logging
         private readonly string _logDirectory;
         private readonly int _maxLogFileSizeBytes;
         private readonly int _maxLogFilesToKeep;
+        private readonly int _maxRecentMessages;
         private readonly object _lockObject = new object();
         private readonly object _snapshotLock = new object();
         private LoggingSnapshot _snapshot;
         private StreamWriter _currentWriter;
         private string _currentBatchId;
         private string _currentLogFilePath;
+        private readonly List<string> _recentMessages;
 
         /// <summary>
         /// 当前日志服务状态快照
@@ -54,15 +58,19 @@ namespace SnVerify.Services.Logging
         /// <param name="logDirectory">日志目录路径</param>
         /// <param name="maxLogFileSizeBytes">单个日志文件最大大小（字节），默认 10MB</param>
         /// <param name="maxLogFilesToKeep">保留的最大日志文件数，默认 30</param>
+        /// <param name="maxRecentMessages">保留的最近日志消息数（用于 UI 显示），默认 100</param>
         public LoggingService(
             string logDirectory,
             int maxLogFileSizeBytes = 10 * 1024 * 1024,
-            int maxLogFilesToKeep = 30)
+            int maxLogFilesToKeep = 30,
+            int maxRecentMessages = 100)
         {
             _logDirectory = logDirectory ?? throw new ArgumentNullException(nameof(logDirectory));
             _maxLogFileSizeBytes = maxLogFileSizeBytes;
             _maxLogFilesToKeep = maxLogFilesToKeep;
-            _snapshot = LoggingSnapshot.Idle();
+            _maxRecentMessages = maxRecentMessages;
+            _recentMessages = new List<string>();
+            _snapshot = LoggingSnapshot.Idle(recentMessages: _recentMessages.AsReadOnly());
 
             // 确保日志目录存在
             if (!Directory.Exists(_logDirectory))
@@ -106,12 +114,13 @@ namespace SnVerify.Services.Logging
                         AutoFlush = true
                     };
 
-                    Snapshot = LoggingSnapshot.Logged(_currentLogFilePath, batchId, $"批次 {batchId} 开始", "INFO");
-                    LogInfo($"批次 {batchId} 开始");
+                    var startMessage = $"批次 {batchId} 开始";
+                    Snapshot = LoggingSnapshot.Logged(_currentLogFilePath, batchId, startMessage, "INFO", GetRecentMessages());
+                    LogInfo(startMessage);
                 }
                 catch (Exception ex)
                 {
-                    Snapshot = LoggingSnapshot.Error($"开始批次日志失败: {ex.Message}", batchId);
+                    Snapshot = LoggingSnapshot.Error($"开始批次日志失败: {ex.Message}", batchId, GetRecentMessages());
                     throw;
                 }
             }
@@ -150,11 +159,11 @@ namespace SnVerify.Services.Logging
                     _currentBatchId = null;
 
                     // 更新快照为 Idle 状态
-                    Snapshot = LoggingSnapshot.Idle();
+                    Snapshot = LoggingSnapshot.Idle(recentMessages: GetRecentMessages());
                 }
                 catch (Exception ex)
                 {
-                    Snapshot = LoggingSnapshot.Error($"结束批次日志失败: {ex.Message}", _currentBatchId);
+                    Snapshot = LoggingSnapshot.Error($"结束批次日志失败: {ex.Message}", _currentBatchId, GetRecentMessages());
                 }
             }
             else if (_currentLogFilePath != null)
@@ -162,7 +171,7 @@ namespace SnVerify.Services.Logging
                 // 如果没有 writer 但还有日志文件路径，也需要清理
                 _currentLogFilePath = null;
                 _currentBatchId = null;
-                Snapshot = LoggingSnapshot.Idle();
+                Snapshot = LoggingSnapshot.Idle(recentMessages: GetRecentMessages());
             }
         }
 
@@ -221,7 +230,7 @@ namespace SnVerify.Services.Logging
                 }
                 catch (Exception ex)
                 {
-                    Snapshot = LoggingSnapshot.Error($"清理旧日志失败: {ex.Message}", _currentBatchId);
+                    Snapshot = LoggingSnapshot.Error($"清理旧日志失败: {ex.Message}", _currentBatchId, GetRecentMessages());
                 }
             }
         }
@@ -270,8 +279,20 @@ namespace SnVerify.Services.Logging
 
                     var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
                     var logEntry = $"[{timestamp}] [{level}] {message}";
+                    
+                    // 写入文件
                     _currentWriter.WriteLine(logEntry);
                     _currentWriter.Flush(); // 确保立即写入磁盘，以便其他进程可以读取
+
+                    // 输出到 VS Debug 窗口
+                    Debug.WriteLine($"[Logging] {logEntry}");
+
+                    // 更新内存缓冲区（最近 N 条日志）
+                    _recentMessages.Add(logEntry);
+                    if (_recentMessages.Count > _maxRecentMessages)
+                    {
+                        _recentMessages.RemoveAt(0); // 移除最旧的日志
+                    }
 
                     // 检查文件大小，如果超过限制则轮换
                     if (new FileInfo(_currentLogFilePath).Length > _maxLogFileSizeBytes)
@@ -280,12 +301,23 @@ namespace SnVerify.Services.Logging
                         StartBatch(_currentBatchId ?? $"rotated_{DateTime.Now:yyyyMMdd_HHmmss}");
                     }
 
-                    Snapshot = LoggingSnapshot.Logged(_currentLogFilePath, _currentBatchId, message, level);
+                    Snapshot = LoggingSnapshot.Logged(_currentLogFilePath, _currentBatchId, message, level, GetRecentMessages());
                 }
                 catch (Exception ex)
                 {
-                    Snapshot = LoggingSnapshot.Error($"写入日志失败: {ex.Message}", _currentBatchId);
+                    Snapshot = LoggingSnapshot.Error($"写入日志失败: {ex.Message}", _currentBatchId, GetRecentMessages());
                 }
+            }
+        }
+
+        /// <summary>
+        /// 获取最近的日志消息列表（线程安全）
+        /// </summary>
+        private IReadOnlyList<string> GetRecentMessages()
+        {
+            lock (_lockObject)
+            {
+                return _recentMessages.ToList().AsReadOnly();
             }
         }
 

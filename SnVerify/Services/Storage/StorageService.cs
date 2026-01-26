@@ -89,6 +89,23 @@ namespace SnVerify.Services.Storage
         }
 
         /// <summary>
+        /// 确保数据库连接已初始化（如果未初始化则自动初始化）
+        /// </summary>
+        private void EnsureConnectionInitialized()
+        {
+            if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+            {
+                // 同步初始化连接（用于紧急情况）
+                var connectionString = $"Data Source={_dbPath};Version=3;";
+                _connection = new SQLiteConnection(connectionString);
+                _connection.Open();
+                
+                // 同步创建表结构
+                CreateTablesAsync().GetAwaiter().GetResult();
+            }
+        }
+
+        /// <summary>
         /// 创建数据库表结构
         /// </summary>
         private async Task CreateTablesAsync()
@@ -126,10 +143,17 @@ namespace SnVerify.Services.Storage
         /// </summary>
         private async Task ExecuteNonQueryAsync(string sql)
         {
+            // 注意：此方法在 CreateTablesAsync 中被调用，而 CreateTablesAsync 在 EnsureConnectionInitialized 中被调用
+            // 因此这里不需要再次调用 EnsureConnectionInitialized，避免循环调用
             await Task.Run(() =>
             {
                 lock (_lockObject)
                 {
+                    if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                    {
+                        throw new InvalidOperationException("数据库连接未初始化或已关闭");
+                    }
+
                     using (var command = new SQLiteCommand(sql, _connection))
                     {
                         command.ExecuteNonQuery();
@@ -148,6 +172,9 @@ namespace SnVerify.Services.Storage
             if (string.IsNullOrWhiteSpace(batch.BatchId))
                 throw new ArgumentException("批次 ID 不能为空", nameof(batch));
 
+            // 确保数据库连接已初始化
+            EnsureConnectionInitialized();
+
             try
             {
                 var sql = @"
@@ -158,6 +185,11 @@ namespace SnVerify.Services.Storage
                 {
                     lock (_lockObject)
                     {
+                        if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        {
+                            throw new InvalidOperationException("数据库连接未初始化或已关闭");
+                        }
+
                         using (var command = new SQLiteCommand(sql, _connection))
                         {
                             command.Parameters.AddWithValue("@BatchId", batch.BatchId);
@@ -191,6 +223,9 @@ namespace SnVerify.Services.Storage
             if (string.IsNullOrWhiteSpace(batchId))
                 return false;
 
+            // 确保数据库连接已初始化
+            EnsureConnectionInitialized();
+
             try
             {
                 var sql = "SELECT COUNT(1) FROM Batch WHERE BatchId = @BatchId";
@@ -198,6 +233,11 @@ namespace SnVerify.Services.Storage
                 {
                     lock (_lockObject)
                     {
+                        if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        {
+                            throw new InvalidOperationException("数据库连接未初始化或已关闭");
+                        }
+
                         using (var command = new SQLiteCommand(sql, _connection))
                         {
                             command.Parameters.AddWithValue("@BatchId", batchId);
@@ -226,6 +266,9 @@ namespace SnVerify.Services.Storage
             if (string.IsNullOrWhiteSpace(sn))
                 throw new ArgumentException("SN 不能为空", nameof(sn));
 
+            // 确保数据库连接已初始化
+            EnsureConnectionInitialized();
+
             try
             {
                 var sql = @"
@@ -236,6 +279,11 @@ namespace SnVerify.Services.Storage
                 {
                     lock (_lockObject)
                     {
+                        if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        {
+                            throw new InvalidOperationException("数据库连接未初始化或已关闭");
+                        }
+
                         using (var command = new SQLiteCommand(sql, _connection))
                         {
                             command.Parameters.AddWithValue("@BatchId", batchId);
@@ -256,6 +304,175 @@ namespace SnVerify.Services.Storage
         }
 
         /// <summary>
+        /// 检查指定批次内 SN 在 PASS 记录中是否重复（新增：仅检查 PASS 记录）
+        /// </summary>
+        public async Task<bool> IsSnDuplicateInPassAsync(string batchId, string sn)
+        {
+            if (string.IsNullOrWhiteSpace(batchId))
+                throw new ArgumentException("批次 ID 不能为空", nameof(batchId));
+            if (string.IsNullOrWhiteSpace(sn))
+                throw new ArgumentException("SN 不能为空", nameof(sn));
+
+            EnsureConnectionInitialized();
+
+            try
+            {
+                var sql = @"
+                    SELECT COUNT(1) FROM SnVerifyResult 
+                    WHERE BatchId = @BatchId AND SN = @SN AND Result = 'PASS'";
+
+                var result = await Task.Run(() =>
+                {
+                    lock (_lockObject)
+                    {
+                        if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        {
+                            throw new InvalidOperationException("数据库连接未初始化或已关闭");
+                        }
+
+                        using (var command = new SQLiteCommand(sql, _connection))
+                        {
+                            command.Parameters.AddWithValue("@BatchId", batchId);
+                            command.Parameters.AddWithValue("@SN", sn);
+                            var count = command.ExecuteScalar();
+                            return Convert.ToInt32(count) > 0;
+                        }
+                    }
+                });
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError($"检查 PASS 记录中 SN 重复性失败: {ex.Message}", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 获取指定批次和 SN 的 FAIL 记录（如果存在）
+        /// </summary>
+        public async Task<SnVerifyResult> GetFailResultBySnAsync(string batchId, string sn)
+        {
+            if (string.IsNullOrWhiteSpace(batchId))
+                throw new ArgumentException("批次 ID 不能为空", nameof(batchId));
+            if (string.IsNullOrWhiteSpace(sn))
+                throw new ArgumentException("SN 不能为空", nameof(sn));
+
+            EnsureConnectionInitialized();
+
+            try
+            {
+                var sql = @"
+                    SELECT Id, BatchId, SN, Result, FailReason, VerifyTime
+                    FROM SnVerifyResult
+                    WHERE BatchId = @BatchId AND SN = @SN AND Result != 'PASS'
+                    ORDER BY VerifyTime DESC
+                    LIMIT 1";
+
+                var result = await Task.Run(() =>
+                {
+                    lock (_lockObject)
+                    {
+                        if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        {
+                            throw new InvalidOperationException("数据库连接未初始化或已关闭");
+                        }
+
+                        using (var command = new SQLiteCommand(sql, _connection))
+                        {
+                            command.Parameters.AddWithValue("@BatchId", batchId);
+                            command.Parameters.AddWithValue("@SN", sn);
+                            using (var reader = command.ExecuteReader())
+                            {
+                                if (reader.Read())
+                                {
+                                    return new SnVerifyResult
+                                    {
+                                        Id = reader.GetInt32(0),
+                                        BatchId = reader.GetString(1),
+                                        SN = reader.GetString(2),
+                                        Result = reader.GetString(3),
+                                        FailReason = reader.IsDBNull(4) ? null : reader.GetString(4),
+                                        VerifyTime = reader.GetDateTime(5)
+                                    };
+                                }
+                            }
+                        }
+                        return null;
+                    }
+                });
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError($"获取 FAIL 记录失败: {ex.Message}", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 更新现有的校验结果记录
+        /// </summary>
+        public async Task UpdateVerifyResultAsync(SnVerifyResult result)
+        {
+            if (result == null)
+                throw new ArgumentNullException(nameof(result));
+            if (result.Id <= 0)
+                throw new ArgumentException("记录 ID 必须大于 0", nameof(result));
+            if (string.IsNullOrWhiteSpace(result.BatchId))
+                throw new ArgumentException("批次 ID 不能为空", nameof(result));
+            if (string.IsNullOrWhiteSpace(result.SN))
+                throw new ArgumentException("SN 不能为空", nameof(result));
+            if (string.IsNullOrWhiteSpace(result.Result))
+                throw new ArgumentException("校验结果不能为空", nameof(result));
+
+            EnsureConnectionInitialized();
+
+            try
+            {
+                Snapshot = StorageSnapshot.Processing(result.BatchId);
+
+                var sql = @"
+                    UPDATE SnVerifyResult 
+                    SET Result = @Result, FailReason = @FailReason, VerifyTime = @VerifyTime
+                    WHERE Id = @Id";
+
+                await Task.Run(() =>
+                {
+                    lock (_lockObject)
+                    {
+                        if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        {
+                            throw new InvalidOperationException("数据库连接未初始化或已关闭");
+                        }
+
+                        using (var command = new SQLiteCommand(sql, _connection))
+                        {
+                            command.Parameters.AddWithValue("@Id", result.Id);
+                            command.Parameters.AddWithValue("@Result", result.Result);
+                            command.Parameters.AddWithValue("@FailReason", (object)result.FailReason ?? DBNull.Value);
+                            command.Parameters.AddWithValue("@VerifyTime", result.VerifyTime);
+                            command.ExecuteNonQuery();
+                        }
+                    }
+                });
+
+                var recordCount = await GetRecordCountAsync(result.BatchId);
+                Snapshot = StorageSnapshot.Saved(result.SN, result.BatchId, recordCount);
+
+                _logger?.LogInfo($"校验结果更新成功: Id={result.Id}, BatchId={result.BatchId}, SN={result.SN}, Result={result.Result}");
+            }
+            catch (Exception ex)
+            {
+                Snapshot = StorageSnapshot.Error($"更新失败: {ex.Message}", result.BatchId);
+                _logger?.LogError($"更新校验结果失败: {ex.Message}", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
         /// 保存 SN 校验结果（Phase2：更新 Snapshot）
         /// </summary>
         public async Task SaveVerifyResultAsync(SnVerifyResult result)
@@ -268,6 +485,9 @@ namespace SnVerify.Services.Storage
                 throw new ArgumentException("SN 不能为空", nameof(result));
             if (string.IsNullOrWhiteSpace(result.Result))
                 throw new ArgumentException("校验结果不能为空", nameof(result));
+
+            // 确保数据库连接已初始化
+            EnsureConnectionInitialized();
 
             try
             {
@@ -290,6 +510,11 @@ namespace SnVerify.Services.Storage
                 {
                     lock (_lockObject)
                     {
+                        if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        {
+                            throw new InvalidOperationException("数据库连接未初始化或已关闭");
+                        }
+
                         using (var command = new SQLiteCommand(sql, _connection))
                         {
                             command.Parameters.AddWithValue("@BatchId", result.BatchId);
@@ -325,11 +550,19 @@ namespace SnVerify.Services.Storage
         /// </summary>
         private async Task<int> GetRecordCountAsync(string batchId)
         {
+            // 确保数据库连接已初始化
+            EnsureConnectionInitialized();
+
             var sql = "SELECT COUNT(1) FROM SnVerifyResult WHERE BatchId = @BatchId";
             return await Task.Run(() =>
             {
                 lock (_lockObject)
                 {
+                    if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                    {
+                        throw new InvalidOperationException("数据库连接未初始化或已关闭");
+                    }
+
                     using (var command = new SQLiteCommand(sql, _connection))
                     {
                         command.Parameters.AddWithValue("@BatchId", batchId);
@@ -348,6 +581,9 @@ namespace SnVerify.Services.Storage
             if (string.IsNullOrWhiteSpace(batchId))
                 throw new ArgumentException("批次 ID 不能为空", nameof(batchId));
 
+            // 确保数据库连接已初始化
+            EnsureConnectionInitialized();
+
             try
             {
                 var sql = @"
@@ -360,6 +596,11 @@ namespace SnVerify.Services.Storage
                 {
                     lock (_lockObject)
                     {
+                        if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        {
+                            throw new InvalidOperationException("数据库连接未初始化或已关闭");
+                        }
+
                         var list = new List<SnVerifyResult>();
                         using (var command = new SQLiteCommand(sql, _connection))
                         {
