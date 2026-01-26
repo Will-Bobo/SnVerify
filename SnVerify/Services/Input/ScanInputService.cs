@@ -135,7 +135,7 @@ namespace SnVerify.Services.Input
                 return;
             }
 
-            // 处理 SN（转大写、去空格）
+            // 处理 SN（去空格，保留大小写）
             var processedSn = ProcessSn(sn);
             if (string.IsNullOrWhiteSpace(processedSn))
             {
@@ -200,7 +200,7 @@ namespace SnVerify.Services.Input
         }
 
         /// <summary>
-        /// 处理 SN：转大写并去除首尾空格
+        /// 处理 SN：去除首尾空格（保留大小写）
         /// </summary>
         private string ProcessSn(string rawSn)
         {
@@ -209,7 +209,7 @@ namespace SnVerify.Services.Input
                 return string.Empty;
             }
 
-            return rawSn.Trim().ToUpperInvariant();
+            return rawSn.Trim();
         }
 
         /// <summary>

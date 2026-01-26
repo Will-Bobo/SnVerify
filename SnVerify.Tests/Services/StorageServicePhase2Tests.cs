@@ -281,6 +281,59 @@ namespace SnVerify.Tests.Services
         }
 
         [Test]
+        public async Task ExportBatchResultAsync_ShouldFormatVerifyTimeAsYyyyMmDdHhMmSs()
+        {
+            // Arrange - 使用固定的时间以便验证格式
+            var verifyTime = new DateTime(2026, 1, 26, 13, 45, 30);
+            var expectedFormat = "2026年1月26日 13:45:30";
+
+            var passResult = new SnVerifyResult
+            {
+                BatchId = TestBatchId,
+                SN = TestSn1,
+                Result = "PASS",
+                VerifyTime = verifyTime
+            };
+            var failResult = new SnVerifyResult
+            {
+                BatchId = TestBatchId,
+                SN = TestSn2,
+                Result = "FAIL",
+                FailReason = "SN mismatch",
+                VerifyTime = verifyTime
+            };
+            await _storageService.SaveVerifyResultAsync(passResult);
+            await _storageService.SaveVerifyResultAsync(failResult);
+
+            // Act
+            await _storageService.ExportBatchResultAsync(TestBatchId, _testOutputDir);
+
+            // Assert
+            var filePath = Path.Combine(_testOutputDir, $"{TestBatchId}.xlsx");
+            Assert.That(File.Exists(filePath), Is.True);
+
+            using (var package = new OfficeOpenXml.ExcelPackage(new FileInfo(filePath)))
+            {
+                var passSheet = package.Workbook.Worksheets["PASS"];
+                var failSheet = package.Workbook.Worksheets["FAIL"];
+
+                // 验证 PASS Sheet 中的 VerifyTime 格式（第 5 列，VerifyTime 列）
+                var passVerifyTimeCell = passSheet.Cells[2, 5];
+                Assert.That(passVerifyTimeCell.Value, Is.Not.Null, "PASS Sheet 的 VerifyTime 应该有值");
+                Assert.That(passVerifyTimeCell.Value, Is.InstanceOf<string>(), "VerifyTime 应该是字符串类型，而不是日期序列号");
+                Assert.That(passVerifyTimeCell.Value.ToString(), Is.EqualTo(expectedFormat), 
+                    $"PASS Sheet 的 VerifyTime 应该是 yyyy年M月d日 HH:mm:ss 格式，期望: {expectedFormat}");
+
+                // 验证 FAIL Sheet 中的 VerifyTime 格式
+                var failVerifyTimeCell = failSheet.Cells[2, 5];
+                Assert.That(failVerifyTimeCell.Value, Is.Not.Null, "FAIL Sheet 的 VerifyTime 应该有值");
+                Assert.That(failVerifyTimeCell.Value, Is.InstanceOf<string>(), "VerifyTime 应该是字符串类型，而不是日期序列号");
+                Assert.That(failVerifyTimeCell.Value.ToString(), Is.EqualTo(expectedFormat), 
+                    $"FAIL Sheet 的 VerifyTime 应该是 yyyy年M月d日 HH:mm:ss 格式，期望: {expectedFormat}");
+            }
+        }
+
+        [Test]
         public async Task ExportBatchResultAsync_ShouldUpdateSnapshot_WhenError()
         {
             // Arrange

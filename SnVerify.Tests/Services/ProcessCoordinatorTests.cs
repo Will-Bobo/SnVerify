@@ -319,7 +319,7 @@ namespace SnVerify.Tests.Services
         }
 
         [Test]
-        public async Task StartVerificationAsync_ShouldHandleCaseInsensitiveComparison()
+        public async Task StartVerificationAsync_ShouldHandleCaseSensitiveComparison()
         {
             // Arrange
             var snScan = "abc123";
@@ -332,11 +332,20 @@ namespace SnVerify.Tests.Services
                 .Setup(x => x.ReadDeviceSnAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(AdbSnReadResult.Success(snAdb));
 
+            _storageServiceMock
+                .Setup(x => x.GetFailResultBySnAsync(TestBatchId, snScan))
+                .ReturnsAsync((SnVerifyResult)null);
+
+            _storageServiceMock
+                .Setup(x => x.SaveVerifyResultAsync(It.IsAny<SnVerifyResult>()))
+                .Returns(Task.CompletedTask);
+
             // Act
             await _processCoordinator.StartVerificationAsync(snScan);
 
-            // Assert - 应该匹配（不区分大小写）
-            Assert.That(_lastSnapshot.LastResult, Is.EqualTo("PASS"));
+            // Assert - 应该不匹配（区分大小写）
+            Assert.That(_lastSnapshot.LastResult, Is.EqualTo("FAIL"));
+            Assert.That(_lastSnapshot.FailReason, Is.Not.Null.And.Contains("MISMATCH"));
         }
 
         [Test]

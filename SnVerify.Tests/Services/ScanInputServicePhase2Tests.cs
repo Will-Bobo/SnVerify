@@ -216,11 +216,11 @@ namespace SnVerify.Tests.Services
         }
 
         [Test]
-        public async Task OnScanInput_ShouldTrimAndNormalizeSn()
+        public async Task OnScanInput_ShouldTrimAndPreserveCase()
         {
             // Arrange
             var inputSn = "  abc123  ";
-            var expectedSn = "ABC123";
+            var expectedSn = "abc123"; // 只去除空格，保留大小写
 
             _processCoordinatorMock
                 .Setup(x => x.Snapshot)

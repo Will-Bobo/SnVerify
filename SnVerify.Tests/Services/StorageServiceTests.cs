@@ -322,6 +322,63 @@ namespace SnVerify.Tests.Services
         }
 
         [Test]
+        public async Task ExportBatchResultAsync_ShouldFormatVerifyTimeAsString()
+        {
+            // Arrange
+            await _storageService.InitializeAsync();
+            var batch = new BatchInfo { BatchId = "BATCH001", StartTime = DateTime.Now };
+            await _storageService.CreateBatchAsync(batch);
+
+            // 使用固定的时间以便验证格式
+            var verifyTime = new DateTime(2026, 1, 26, 13, 45, 30);
+            var expectedFormat = "2026年1月26日 13:45:30";
+
+            await _storageService.SaveVerifyResultAsync(new SnVerifyResult
+            {
+                BatchId = "BATCH001",
+                SN = "SN001",
+                Result = "PASS",
+                VerifyTime = verifyTime
+            });
+
+            await _storageService.SaveVerifyResultAsync(new SnVerifyResult
+            {
+                BatchId = "BATCH001",
+                SN = "SN002",
+                Result = "FAIL",
+                FailReason = "MISMATCH",
+                VerifyTime = verifyTime
+            });
+
+            // Act
+            await _storageService.ExportBatchResultAsync("BATCH001", _testOutputDir);
+
+            // Assert
+            var expectedFilePath = Path.Combine(_testOutputDir, "BATCH001.xlsx");
+            Assert.That(File.Exists(expectedFilePath), Is.True, "Excel 文件应该被创建");
+
+            using (var package = new OfficeOpenXml.ExcelPackage(new FileInfo(expectedFilePath)))
+            {
+                var passSheet = package.Workbook.Worksheets["PASS"];
+                var failSheet = package.Workbook.Worksheets["FAIL"];
+
+                // 验证 PASS Sheet 中的 VerifyTime 格式（第 5 列）
+                var passVerifyTimeValue = passSheet.Cells[2, 5].Value;
+                Assert.That(passVerifyTimeValue, Is.Not.Null, "PASS Sheet 的 VerifyTime 应该有值");
+                Assert.That(passVerifyTimeValue, Is.InstanceOf<string>(), "VerifyTime 应该是字符串类型");
+                Assert.That(passVerifyTimeValue.ToString(), Is.EqualTo(expectedFormat), 
+                    $"PASS Sheet 的 VerifyTime 应该是 {expectedFormat} 格式");
+
+                // 验证 FAIL Sheet 中的 VerifyTime 格式（第 5 列）
+                var failVerifyTimeValue = failSheet.Cells[2, 5].Value;
+                Assert.That(failVerifyTimeValue, Is.Not.Null, "FAIL Sheet 的 VerifyTime 应该有值");
+                Assert.That(failVerifyTimeValue, Is.InstanceOf<string>(), "VerifyTime 应该是字符串类型");
+                Assert.That(failVerifyTimeValue.ToString(), Is.EqualTo(expectedFormat), 
+                    $"FAIL Sheet 的 VerifyTime 应该是 {expectedFormat} 格式");
+            }
+        }
+
+        [Test]
         public async Task ExportBatchResultAsync_ShouldHandleEmptyBatch()
         {
             // Arrange

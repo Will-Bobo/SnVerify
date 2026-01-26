@@ -53,7 +53,7 @@ namespace SnVerify.Tests.Services
         }
 
         [Test]
-        public void OnCharReceived_ShouldConvertToUpperCase()
+        public void OnCharReceived_ShouldPreserveCase()
         {
             // Arrange
             var inputChars = "abc123\r\n".ToCharArray();
@@ -66,7 +66,7 @@ namespace SnVerify.Tests.Services
 
             // Assert
             Assert.That(_capturedEvents.Count, Is.EqualTo(1));
-            Assert.That(_capturedEvents[0].Sn, Is.EqualTo("ABC123"));
+            Assert.That(_capturedEvents[0].Sn, Is.EqualTo("abc123"));
         }
 
         [Test]
@@ -155,7 +155,7 @@ namespace SnVerify.Tests.Services
 
             // Assert
             Assert.That(_capturedEvents.Count, Is.EqualTo(1));
-            Assert.That(_capturedEvents[0].Sn, Is.EqualTo("ABC123XYZ"));
+            Assert.That(_capturedEvents[0].Sn, Is.EqualTo("aBc123XyZ"));
         }
 
         [Test]

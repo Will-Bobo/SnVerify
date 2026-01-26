@@ -101,7 +101,22 @@ namespace SnVerify.Services.Adb
             }
             catch (OperationCanceledException)
             {
-                throw;
+                // CancellationToken 被取消，返回超时结果
+                if (process != null)
+                {
+                    try
+                    {
+                        if (!process.HasExited)
+                        {
+                            process.Kill();
+                        }
+                    }
+                    catch
+                    {
+                        // 忽略 Kill 失败
+                    }
+                }
+                return ProcessExecutionResult.Timeout();
             }
             catch (Exception ex)
             {

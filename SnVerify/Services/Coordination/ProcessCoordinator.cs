@@ -122,9 +122,9 @@ namespace SnVerify.Services.Coordination
                     return;
                 }
 
-                // Step 3: 校验 SN 一致性（不区分大小写）
-                var snScanNormalized = sn.Trim().ToUpperInvariant();
-                var snAdbNormalized = snAdb.Trim().ToUpperInvariant();
+                // Step 3: 校验 SN 一致性（区分大小写）
+                var snScanNormalized = sn.Trim();
+                var snAdbNormalized = snAdb.Trim();
 
                 if (snScanNormalized == snAdbNormalized)
                 {

@@ -723,7 +723,8 @@ namespace SnVerify.Services.Storage
                 sheet.Cells[row, 2].Value = result.SN;
                 sheet.Cells[row, 3].Value = result.Result;
                 sheet.Cells[row, 4].Value = result.FailReason ?? string.Empty;
-                sheet.Cells[row, 5].Value = result.VerifyTime;
+                // 将 VerifyTime 格式化为可读中文日期时间格式，例如 “2026年1月11日 13:21:22”
+                sheet.Cells[row, 5].Value = result.VerifyTime.ToString("yyyy年M月d日 HH:mm:ss");
             }
 
             // 自动调整列宽

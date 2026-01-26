@@ -17,6 +17,7 @@ using SnVerify.Services.Coordination;
 using SnVerify.Services.Logging;
 using SnVerify.Services.MES;
 using SnVerify.Services.Storage;
+using SnVerify.Properties;
 
 namespace SnVerify.ViewModels
 {
@@ -43,6 +44,7 @@ namespace SnVerify.ViewModels
         private string _lastEndedBatchId;
         private bool _isSelfChecking;
         private Timer _snapshotUpdateTimer;
+        private string _lastExportFolder; // 上次选择的导出文件夹路径
 
         /// <summary>
         /// 批次状态快照
@@ -290,6 +292,14 @@ namespace SnVerify.ViewModels
 
             _batchNameInput = "batch_" + DateTime.Now.ToString("yyyyMMdd_HHmmss");
 
+            // 从设置中读取上次选择的导出文件夹路径
+            _lastExportFolder = Settings.Default.LastExportFolder;
+            // 验证路径是否存在，如果不存在则清空
+            if (!string.IsNullOrEmpty(_lastExportFolder) && !Directory.Exists(_lastExportFolder))
+            {
+                _lastExportFolder = null;
+            }
+
             StartBatchCommand = new RelayCommand(async () => await StartBatchAsync(), () => !IsBatchActive);
             EndBatchCommand = new RelayCommand(async () => await EndBatchAsync(), () => IsBatchActive);
             ExportCommand = new RelayCommand(async () => await ExportAsync(), () => !IsBatchActive && !string.IsNullOrEmpty(_lastEndedBatchId));
@@ -396,16 +406,66 @@ namespace SnVerify.ViewModels
         }
 
         /// <summary>
-        /// 导出：导出 _lastEndedBatchId 的校验结果与对应日志到 Export 子目录，并在日志区提示。
+        /// 导出：导出 _lastEndedBatchId 的校验结果与对应日志到用户选择的文件夹，并在日志区提示。
         /// </summary>
         private async System.Threading.Tasks.Task ExportAsync()
         {
             if (string.IsNullOrEmpty(_lastEndedBatchId)) return;
+            
+            // 让用户选择导出文件夹
+            string selectedFolder = null;
+            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            {
+                using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
+                {
+                    dialog.Description = "请选择导出文件夹";
+                    dialog.ShowNewFolderButton = true;
+                    
+                    // 优先使用上次选择的路径，否则使用默认路径
+                    if (!string.IsNullOrEmpty(_lastExportFolder) && Directory.Exists(_lastExportFolder))
+                    {
+                        dialog.SelectedPath = _lastExportFolder;
+                    }
+                    else
+                    {
+                        // 设置默认路径为日志目录下的 Export 子目录
+                        var defaultPath = Path.Combine(_logDirectory, "Export", _lastEndedBatchId);
+                        if (Directory.Exists(defaultPath))
+                        {
+                            dialog.SelectedPath = defaultPath;
+                        }
+                        else if (Directory.Exists(_logDirectory))
+                        {
+                            dialog.SelectedPath = _logDirectory;
+                        }
+                    }
+                    
+                    if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
+                    {
+                        selectedFolder = dialog.SelectedPath;
+                        // 保存用户选择的路径，供下次使用
+                        _lastExportFolder = selectedFolder;
+                        // 持久化到设置
+                        Settings.Default.LastExportFolder = selectedFolder;
+                        Settings.Default.Save();
+                    }
+                }
+            });
+            
+            // 用户取消了文件夹选择，不执行导出
+            if (string.IsNullOrEmpty(selectedFolder))
+            {
+                _loggingService.LogInfo("导出已取消");
+                LoggingSnapshot = _loggingService.Snapshot;
+                return;
+            }
+            
             try
             {
-                var outputDir = Path.Combine(_logDirectory, "Export", _lastEndedBatchId);
-                Directory.CreateDirectory(outputDir);
-                var pattern = "log_" + _lastEndedBatchId + "_*";
+                // 创建导出目录（如果不存在）
+                Directory.CreateDirectory(selectedFolder);
+                
+                // 复制日志文件到导出目录
                 if (Directory.Exists(_logDirectory))
                 {
                     foreach (var f in Directory.GetFiles(_logDirectory, "log_*"))
@@ -413,12 +473,21 @@ namespace SnVerify.ViewModels
                         var name = Path.GetFileName(f);
                         if (name.StartsWith("log_" + _lastEndedBatchId + "_", StringComparison.OrdinalIgnoreCase))
                         {
-                            try { File.Copy(f, Path.Combine(outputDir, name), true); } catch { }
+                            try 
+                            { 
+                                File.Copy(f, Path.Combine(selectedFolder, name), true); 
+                            } 
+                            catch 
+                            { 
+                                // 忽略复制失败
+                            }
                         }
                     }
                 }
-                await _storageService.ExportBatchResultAsync(_lastEndedBatchId, outputDir);
-                _loggingService.LogInfo("导出成功: " + outputDir);
+                
+                // 导出批次结果 Excel 文件
+                await _storageService.ExportBatchResultAsync(_lastEndedBatchId, selectedFolder);
+                _loggingService.LogInfo("导出成功: " + selectedFolder);
                 LoggingSnapshot = _loggingService.Snapshot;
             }
             catch (Exception ex)
