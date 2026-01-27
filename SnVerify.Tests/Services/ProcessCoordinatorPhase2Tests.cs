@@ -154,6 +154,7 @@ namespace SnVerify.Tests.Services
             Assert.That(_lastSnapshot.IsProcessing, Is.False);
             Assert.That(_lastSnapshot.BatchId, Is.EqualTo(TestBatchId));
             Assert.That(_lastSnapshot.LastResult, Is.EqualTo("PASS"));
+            Assert.That(_lastSnapshot.DeviceSN, Is.EqualTo(TestSnAdb), "快照应包含设备SN");
         }
 
         [Test]
@@ -191,7 +192,8 @@ namespace SnVerify.Tests.Services
             Assert.That(_lastSnapshot, Is.Not.Null);
             Assert.That(_lastSnapshot.BatchId, Is.EqualTo(TestBatchId));
             Assert.That(_lastSnapshot.LastResult, Is.EqualTo("FAIL"));
-            Assert.That(_lastSnapshot.FailReason, Is.EqualTo("AlreadyPassed"));
+            Assert.That(_lastSnapshot.FailReason, Is.EqualTo("设备SN已存在"));
+            Assert.That(_lastSnapshot.DeviceSN, Is.EqualTo(TestSnScan), "快照应包含设备SN");
         }
 
         [Test]
@@ -286,6 +288,7 @@ namespace SnVerify.Tests.Services
             // Assert
             Assert.That(_lastSnapshot.BatchId, Is.EqualTo(TestBatchId));
             Assert.That(_lastSnapshot.LastResult, Is.EqualTo("TIMEOUT"));
+            Assert.That(_lastSnapshot.DeviceSN, Is.Null, "ADB超时时设备SN应为null");
         }
     }
 }

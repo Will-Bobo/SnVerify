@@ -121,7 +121,7 @@ namespace SnVerify.Tests.Services
         {
             // Arrange
             var processingSnapshot = VerificationSnapshot.Processing(TestSn, TestBatchId);
-            var completedSnapshot = VerificationSnapshot.Completed(TestSn, "PASS", null, TestBatchId);
+            var completedSnapshot = VerificationSnapshot.Completed(TestSn, "PASS", null, TestBatchId, TestSn);
 
             _processCoordinatorMock
                 .SetupSequence(x => x.Snapshot)
@@ -152,7 +152,7 @@ namespace SnVerify.Tests.Services
         public async Task StartVerificationAsync_ShouldReflectErrorStateInSnapshot()
         {
             // Arrange
-            var errorSnapshot = VerificationSnapshot.Completed(TestSn, "FAIL", "DUPLICATE_SN", TestBatchId);
+            var errorSnapshot = VerificationSnapshot.Completed(TestSn, "FAIL", "DUPLICATE_SN", TestBatchId, null);
             _processCoordinatorMock
                 .Setup(x => x.Snapshot)
                 .Returns(errorSnapshot);
@@ -211,7 +211,7 @@ namespace SnVerify.Tests.Services
         public async Task StartVerificationAsync_ShouldHandleTimeoutState()
         {
             // Arrange
-            var timeoutSnapshot = VerificationSnapshot.Completed(TestSn, "TIMEOUT", "ADB_TIMEOUT", TestBatchId);
+            var timeoutSnapshot = VerificationSnapshot.Completed(TestSn, "TIMEOUT", "ADB_TIMEOUT", TestBatchId, null);
             _processCoordinatorMock
                 .Setup(x => x.Snapshot)
                 .Returns(timeoutSnapshot);

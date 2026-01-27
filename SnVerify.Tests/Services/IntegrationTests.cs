@@ -216,10 +216,15 @@ namespace SnVerify.Tests.Services
                 var passSheet = package.Workbook.Worksheets["PASS"];
                 Assert.That(passSheet, Is.Not.Null);
 
-                var verifyTimeCell = passSheet.Cells[2, 5]; // 第 2 行，第 5 列（VerifyTime）
-                Assert.That(verifyTimeCell.Value, Is.Not.Null);
-                Assert.That(verifyTimeCell.Value, Is.InstanceOf<string>());
-                Assert.That(verifyTimeCell.Value.ToString(), Is.EqualTo(expectedFormat));
+                // 验证列顺序：第5列是 FailReason（PASS 记录中为空），第6列是 VerifyTime
+                var failReasonCell = passSheet.Cells[2, 5];
+                Assert.That(failReasonCell.Value, Is.EqualTo(string.Empty), "PASS Sheet 的 FailReason 应该为空");
+
+                var verifyTimeCell = passSheet.Cells[2, 6]; // 第 2 行，第 6 列（VerifyTime）
+                Assert.That(verifyTimeCell.Value, Is.Not.Null, "VerifyTime 应该有值");
+                Assert.That(verifyTimeCell.Value, Is.InstanceOf<string>(), "VerifyTime 应该是字符串类型");
+                Assert.That(verifyTimeCell.Value.ToString(), Is.EqualTo(expectedFormat), 
+                    $"VerifyTime 应该是 {expectedFormat} 格式");
             }
         }
 

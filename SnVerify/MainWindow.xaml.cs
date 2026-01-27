@@ -1,4 +1,4 @@
-﻿/// <author>
+/// <author>
 /// AI Assistant
 /// </author>
 
@@ -180,6 +180,28 @@ namespace SnVerify
             }
         }
         /// <summary>
+        /// 人工检验按钮点击：若扫码框为空，将焦点回收到扫码输入框。
+        /// </summary>
+        private void StartVerifyButton_Click(object sender, RoutedEventArgs e)
+        {
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                if (_viewModel != null && string.IsNullOrWhiteSpace(_viewModel.ScanInputText))
+                    ScanInputTextBox?.Focus();
+            }), System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+
+        /// <summary>
+        /// 自检按钮点击：展开调试日志区域，并将焦点保持在扫码输入框。
+        /// </summary>
+        private void SelfCheckButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (DebugLogExpander != null)
+                DebugLogExpander.IsExpanded = true;
+            ScanInputTextBox?.Focus();
+        }
+
+        /// <summary>
         /// 处理扫码输入框按键事件
         /// </summary>
         /// <remarks>
@@ -199,6 +221,17 @@ namespace SnVerify
                 var textBox = sender as System.Windows.Controls.TextBox;
                 if (textBox != null && !string.IsNullOrWhiteSpace(textBox.Text))
                 {
+                    // 检查批次是否已开始
+                    if (!_viewModel.IsBatchActive)
+                    {
+                        // 批次未开始，在错误详情面板显示提示
+                        _viewModel.SetBatchError("请确认当前批次已经开始");
+                        return;
+                    }
+
+                    // 清除之前的批次错误提示（如果有）
+                    _viewModel.ClearBatchError();
+
                     // 提取 SN（Enter 之前的全部内容）
                     string sn = textBox.Text;
                     

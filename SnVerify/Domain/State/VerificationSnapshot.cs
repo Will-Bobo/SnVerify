@@ -17,6 +17,11 @@ namespace SnVerify.Domain.State
         public string CurrentSn { get; }
 
         /// <summary>
+        /// 设备SN（从ADB读取）
+        /// </summary>
+        public string DeviceSN { get; }
+
+        /// <summary>
         /// 是否正在处理中
         /// </summary>
         public bool IsProcessing { get; }
@@ -46,7 +51,7 @@ namespace SnVerify.Domain.State
         /// </summary>
         public static VerificationSnapshot Idle(string batchId = null)
         {
-            return new VerificationSnapshot(null, false, null, null, batchId, DateTime.Now);
+            return new VerificationSnapshot(null, null, false, null, null, batchId, DateTime.Now);
         }
 
         /// <summary>
@@ -54,23 +59,24 @@ namespace SnVerify.Domain.State
         /// </summary>
         public static VerificationSnapshot Processing(string currentSn, string batchId = null)
         {
-            return new VerificationSnapshot(currentSn, true, null, null, batchId, DateTime.Now);
+            return new VerificationSnapshot(currentSn, null, true, null, null, batchId, DateTime.Now);
         }
 
         /// <summary>
         /// 创建完成状态
         /// </summary>
-        public static VerificationSnapshot Completed(string currentSn, string result, string failReason = null, string batchId = null)
+        public static VerificationSnapshot Completed(string currentSn, string result, string failReason = null, string batchId = null, string deviceSN = null)
         {
-            return new VerificationSnapshot(currentSn, false, result, failReason, batchId, DateTime.Now);
+            return new VerificationSnapshot(currentSn, deviceSN, false, result, failReason, batchId, DateTime.Now);
         }
 
         /// <summary>
         /// 私有构造函数，确保不可变性
         /// </summary>
-        private VerificationSnapshot(string currentSn, bool isProcessing, string lastResult, string failReason, string batchId, DateTime timestamp)
+        private VerificationSnapshot(string currentSn, string deviceSN, bool isProcessing, string lastResult, string failReason, string batchId, DateTime timestamp)
         {
             CurrentSn = currentSn;
+            DeviceSN = deviceSN;
             IsProcessing = isProcessing;
             LastResult = lastResult;
             FailReason = failReason;

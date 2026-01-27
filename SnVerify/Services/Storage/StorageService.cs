@@ -682,7 +682,7 @@ namespace SnVerify.Services.Storage
 
                 Snapshot = StorageSnapshot.Processing(result.BatchId);
 
-                var sql = @"
+                var insertSql = @"
                     INSERT INTO SnVerifyResult (BatchId, SN, DeviceSN, Result, FailReason, VerifyTime)
                     VALUES (@BatchId, @SN, @DeviceSN, @Result, @FailReason, @VerifyTime)";
 
@@ -695,7 +695,7 @@ namespace SnVerify.Services.Storage
                             throw new InvalidOperationException("数据库连接未初始化或已关闭");
                         }
 
-                        using (var command = new SQLiteCommand(sql, _connection))
+                        using (var command = new SQLiteCommand(insertSql, _connection))
                         {
                             command.Parameters.AddWithValue("@BatchId", result.BatchId);
                             command.Parameters.AddWithValue("@SN", result.SN);
@@ -704,6 +704,13 @@ namespace SnVerify.Services.Storage
                             command.Parameters.AddWithValue("@FailReason", (object)result.FailReason ?? DBNull.Value);
                             command.Parameters.AddWithValue("@VerifyTime", result.VerifyTime);
                             command.ExecuteNonQuery();
+                            
+                            // 获取最后插入的 Id
+                            using (var getIdCommand = new SQLiteCommand("SELECT last_insert_rowid()", _connection))
+                            {
+                                var insertedId = getIdCommand.ExecuteScalar();
+                                result.Id = Convert.ToInt32(insertedId);
+                            }
                         }
                     }
                 });
@@ -907,7 +914,8 @@ namespace SnVerify.Services.Storage
                 sheet.Cells[row, 3].Value = result.DeviceSN ?? string.Empty;
                 sheet.Cells[row, 4].Value = result.Result;
                 // 将 VerifyTime 格式化为可读中文日期时间格式，例如 “2026年1月11日 13:21:22”
-                sheet.Cells[row, 5].Value = result.VerifyTime.ToString("yyyy年M月d日 HH:mm:ss");
+                sheet.Cells[row, 5].Value = result.FailReason ?? string.Empty;
+                sheet.Cells[row, 6].Value = result.VerifyTime.ToString("yyyy年M月d日 HH:mm:ss");
             }
 
             // 自动调整列宽

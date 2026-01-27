@@ -89,6 +89,7 @@ namespace SnVerify.Tests.Services
             Assert.That(_lastSnapshot.IsProcessing, Is.False);
             Assert.That(_lastSnapshot.LastResult, Is.EqualTo("PASS"));
             Assert.That(_lastSnapshot.CurrentSn, Is.EqualTo(TestSnScan));
+            Assert.That(_lastSnapshot.DeviceSN, Is.EqualTo(TestSnAdb), "快照应包含设备SN");
             Assert.That(_snapshotChangedCount, Is.GreaterThan(0));
 
             _storageServiceMock.Verify(
@@ -128,11 +129,12 @@ namespace SnVerify.Tests.Services
             // Assert
             Assert.That(_lastSnapshot.IsProcessing, Is.False);
             Assert.That(_lastSnapshot.LastResult, Is.EqualTo("FAIL"));
-            Assert.That(_lastSnapshot.FailReason, Is.EqualTo("Sticker_Device_Mismatch"));
+            Assert.That(_lastSnapshot.FailReason, Is.EqualTo("设备SN 与 条形码SN [不匹配]"));
+            Assert.That(_lastSnapshot.DeviceSN, Is.EqualTo(snAdb), "快照应包含设备SN");
 
             _storageServiceMock.Verify(
                 x => x.SaveVerifyResultAsync(It.Is<SnVerifyResult>(r =>
-                    r.Result == "FAIL" && r.FailReason == "Sticker_Device_Mismatch")),
+                    r.Result == "FAIL" && r.FailReason == "设备SN 与 条形码SN [不匹配]")),
                 Times.Once);
         }
 
@@ -170,11 +172,12 @@ namespace SnVerify.Tests.Services
             // Assert
             Assert.That(_lastSnapshot.IsProcessing, Is.False);
             Assert.That(_lastSnapshot.LastResult, Is.EqualTo("FAIL"));
-            Assert.That(_lastSnapshot.FailReason, Is.EqualTo("AlreadyPassed"));
+            Assert.That(_lastSnapshot.FailReason, Is.EqualTo("设备SN已存在"));
+            Assert.That(_lastSnapshot.DeviceSN, Is.EqualTo(TestSnScan), "快照应包含设备SN");
 
             _storageServiceMock.Verify(
                 x => x.SaveVerifyResultAsync(It.Is<SnVerifyResult>(r =>
-                    r.Result == "FAIL" && r.FailReason == "AlreadyPassed")),
+                    r.Result == "FAIL" && r.FailReason == "设备SN已存在")),
                 Times.Once);
         }
 
@@ -204,6 +207,7 @@ namespace SnVerify.Tests.Services
             // Assert
             Assert.That(_lastSnapshot.IsProcessing, Is.False);
             Assert.That(_lastSnapshot.LastResult, Is.EqualTo("TIMEOUT"));
+            Assert.That(_lastSnapshot.DeviceSN, Is.Null, "ADB超时时设备SN应为null");
 
             _storageServiceMock.Verify(
                 x => x.SaveVerifyResultAsync(It.Is<SnVerifyResult>(r =>
@@ -238,6 +242,7 @@ namespace SnVerify.Tests.Services
             Assert.That(_lastSnapshot.IsProcessing, Is.False);
             Assert.That(_lastSnapshot.LastResult, Is.EqualTo("FAIL"));
             Assert.That(_lastSnapshot.FailReason, Is.Not.Null);
+            Assert.That(_lastSnapshot.DeviceSN, Is.Null, "ADB失败时设备SN应为null");
 
             _storageServiceMock.Verify(
                 x => x.SaveVerifyResultAsync(It.Is<SnVerifyResult>(r =>
@@ -367,7 +372,8 @@ namespace SnVerify.Tests.Services
 
             // Assert - 应该不匹配（区分大小写）
             Assert.That(_lastSnapshot.LastResult, Is.EqualTo("FAIL"));
-            Assert.That(_lastSnapshot.FailReason, Is.EqualTo("Sticker_Device_Mismatch"));
+            Assert.That(_lastSnapshot.FailReason, Is.EqualTo("设备SN 与 条形码SN [不匹配]"));
+            Assert.That(_lastSnapshot.DeviceSN, Is.EqualTo(snAdb), "快照应包含设备SN");
         }
 
         [Test]
@@ -396,6 +402,7 @@ namespace SnVerify.Tests.Services
             // Assert
             Assert.That(_lastSnapshot.LastResult, Is.EqualTo("FAIL"));
             Assert.That(_lastSnapshot.FailReason, Is.Not.Null);
+            Assert.That(_lastSnapshot.DeviceSN, Is.Null, "ADB读取为空时设备SN应为null");
         }
     }
 }

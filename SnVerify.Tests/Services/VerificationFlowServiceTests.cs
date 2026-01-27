@@ -82,7 +82,7 @@ namespace SnVerify.Tests.Services
         {
             // Arrange
             var processingSnapshot = VerificationSnapshot.Processing(TestSn);
-            var completedSnapshot = VerificationSnapshot.Completed(TestSn, "PASS");
+            var completedSnapshot = VerificationSnapshot.Completed(TestSn, "PASS", null, null, TestSn);
 
             // 设置初始快照为 Idle
             _processCoordinatorMock
@@ -126,7 +126,7 @@ namespace SnVerify.Tests.Services
         public async Task StartVerificationAsync_ShouldHandleFailure()
         {
             // Arrange
-            var completedSnapshot = VerificationSnapshot.Completed(TestSn, "FAIL", "MISMATCH");
+            var completedSnapshot = VerificationSnapshot.Completed(TestSn, "FAIL", "MISMATCH", null, "DEVICE_SN");
             _processCoordinatorMock
                 .Setup(x => x.Snapshot)
                 .Returns(completedSnapshot);
@@ -155,7 +155,7 @@ namespace SnVerify.Tests.Services
         public async Task StartVerificationAsync_ShouldHandleTimeout()
         {
             // Arrange
-            var timeoutSnapshot = VerificationSnapshot.Completed(TestSn, "TIMEOUT", "ADB_TIMEOUT");
+            var timeoutSnapshot = VerificationSnapshot.Completed(TestSn, "TIMEOUT", "ADB_TIMEOUT", null, null);
             _processCoordinatorMock
                 .Setup(x => x.Snapshot)
                 .Returns(timeoutSnapshot);
@@ -221,7 +221,7 @@ namespace SnVerify.Tests.Services
         public async Task StartVerificationAsync_ShouldHandleDuplicateSn()
         {
             // Arrange
-            var duplicateSnapshot = VerificationSnapshot.Completed(TestSn, "FAIL", "DUPLICATE_SN");
+            var duplicateSnapshot = VerificationSnapshot.Completed(TestSn, "FAIL", "DUPLICATE_SN", null, null);
             _processCoordinatorMock
                 .Setup(x => x.Snapshot)
                 .Returns(duplicateSnapshot);
@@ -251,7 +251,7 @@ namespace SnVerify.Tests.Services
         {
             // Arrange
             var snapshot1 = VerificationSnapshot.Processing(TestSn);
-            var snapshot2 = VerificationSnapshot.Completed(TestSn, "PASS");
+            var snapshot2 = VerificationSnapshot.Completed(TestSn, "PASS", null, null, TestSn);
 
             _processCoordinatorMock
                 .SetupSequence(x => x.Snapshot)

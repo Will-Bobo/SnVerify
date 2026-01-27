@@ -317,19 +317,95 @@ namespace SnVerify.Tests.Services
                 var passSheet = package.Workbook.Worksheets["PASS"];
                 var failSheet = package.Workbook.Worksheets["FAIL"];
 
-                // 验证 PASS Sheet 中的 VerifyTime 格式（第 5 列，VerifyTime 列）
-                var passVerifyTimeCell = passSheet.Cells[2, 5];
+                // 验证 PASS Sheet 中的列顺序和内容
+                // 第5列应该是 FailReason（PASS 记录中为空）
+                var passFailReasonCell = passSheet.Cells[2, 5];
+                Assert.That(passFailReasonCell.Value, Is.EqualTo(string.Empty), "PASS Sheet 的 FailReason 应该为空");
+
+                // 第6列应该是 VerifyTime
+                var passVerifyTimeCell = passSheet.Cells[2, 6];
                 Assert.That(passVerifyTimeCell.Value, Is.Not.Null, "PASS Sheet 的 VerifyTime 应该有值");
                 Assert.That(passVerifyTimeCell.Value, Is.InstanceOf<string>(), "VerifyTime 应该是字符串类型，而不是日期序列号");
                 Assert.That(passVerifyTimeCell.Value.ToString(), Is.EqualTo(expectedFormat), 
                     $"PASS Sheet 的 VerifyTime 应该是 yyyy年M月d日 HH:mm:ss 格式，期望: {expectedFormat}");
 
-                // 验证 FAIL Sheet 中的 VerifyTime 格式
-                var failVerifyTimeCell = failSheet.Cells[2, 5];
+                // 验证 FAIL Sheet 中的列顺序和内容
+                // 第5列应该是 FailReason
+                var failFailReasonCell = failSheet.Cells[2, 5];
+                Assert.That(failFailReasonCell.Value, Is.Not.Null, "FAIL Sheet 的 FailReason 应该有值");
+                Assert.That(failFailReasonCell.Value.ToString(), Is.EqualTo("SN mismatch"), "FAIL Sheet 的 FailReason 应该是 'SN mismatch'");
+
+                // 第6列应该是 VerifyTime
+                var failVerifyTimeCell = failSheet.Cells[2, 6];
                 Assert.That(failVerifyTimeCell.Value, Is.Not.Null, "FAIL Sheet 的 VerifyTime 应该有值");
                 Assert.That(failVerifyTimeCell.Value, Is.InstanceOf<string>(), "VerifyTime 应该是字符串类型，而不是日期序列号");
                 Assert.That(failVerifyTimeCell.Value.ToString(), Is.EqualTo(expectedFormat), 
                     $"FAIL Sheet 的 VerifyTime 应该是 yyyy年M月d日 HH:mm:ss 格式，期望: {expectedFormat}");
+            }
+        }
+
+        [Test]
+        public async Task ExportBatchResultAsync_ShouldWriteColumnsInCorrectOrder()
+        {
+            // Arrange - 验证列顺序：Id, SN, DeviceSN, Result, FailReason, VerifyTime
+            var verifyTime = new DateTime(2026, 1, 27, 11, 4, 32);
+            var expectedVerifyTimeFormat = "2026年1月27日 11:04:32";
+
+            var passResult = new SnVerifyResult
+            {
+                BatchId = TestBatchId,
+                SN = TestSn1,
+                DeviceSN = TestSn1,
+                Result = "PASS",
+                FailReason = null,
+                VerifyTime = verifyTime
+            };
+            var failResult = new SnVerifyResult
+            {
+                BatchId = TestBatchId,
+                SN = TestSn2,
+                DeviceSN = "DEVICE123",
+                Result = "FAIL",
+                FailReason = "设备SN 与 条形码SN [不匹配]",
+                VerifyTime = verifyTime
+            };
+            await _storageService.SaveVerifyResultAsync(passResult);
+            await _storageService.SaveVerifyResultAsync(failResult);
+
+            // Act
+            await _storageService.ExportBatchResultAsync(TestBatchId, _testOutputDir);
+
+            // Assert
+            var filePath = Path.Combine(_testOutputDir, $"{TestBatchId}.xlsx");
+            Assert.That(File.Exists(filePath), Is.True);
+
+            using (var package = new OfficeOpenXml.ExcelPackage(new FileInfo(filePath)))
+            {
+                // 验证表头
+                var passSheet = package.Workbook.Worksheets["PASS"];
+                Assert.That(passSheet.Cells[1, 1].Value, Is.EqualTo("Id"));
+                Assert.That(passSheet.Cells[1, 2].Value, Is.EqualTo("SN"));
+                Assert.That(passSheet.Cells[1, 3].Value, Is.EqualTo("DeviceSN"));
+                Assert.That(passSheet.Cells[1, 4].Value, Is.EqualTo("Result"));
+                Assert.That(passSheet.Cells[1, 5].Value, Is.EqualTo("FailReason"));
+                Assert.That(passSheet.Cells[1, 6].Value, Is.EqualTo("VerifyTime"));
+
+                // 验证 PASS Sheet 数据列顺序
+                Assert.That(passSheet.Cells[2, 1].Value, Is.EqualTo(passResult.Id));
+                Assert.That(passSheet.Cells[2, 2].Value, Is.EqualTo(passResult.SN));
+                Assert.That(passSheet.Cells[2, 3].Value, Is.EqualTo(passResult.DeviceSN));
+                Assert.That(passSheet.Cells[2, 4].Value, Is.EqualTo("PASS"));
+                Assert.That(passSheet.Cells[2, 5].Value, Is.EqualTo(string.Empty), "PASS 记录的 FailReason 应该为空");
+                Assert.That(passSheet.Cells[2, 6].Value.ToString(), Is.EqualTo(expectedVerifyTimeFormat), "VerifyTime 应该在第6列");
+
+                // 验证 FAIL Sheet 数据列顺序
+                var failSheet = package.Workbook.Worksheets["FAIL"];
+                Assert.That(failSheet.Cells[2, 1].Value, Is.EqualTo(failResult.Id));
+                Assert.That(failSheet.Cells[2, 2].Value, Is.EqualTo(failResult.SN));
+                Assert.That(failSheet.Cells[2, 3].Value, Is.EqualTo(failResult.DeviceSN));
+                Assert.That(failSheet.Cells[2, 4].Value, Is.EqualTo("FAIL"));
+                Assert.That(failSheet.Cells[2, 5].Value, Is.EqualTo(failResult.FailReason), "FailReason 应该在第5列");
+                Assert.That(failSheet.Cells[2, 6].Value.ToString(), Is.EqualTo(expectedVerifyTimeFormat), "VerifyTime 应该在第6列");
             }
         }
 

@@ -85,13 +85,14 @@ namespace SnVerify.Tests.ViewModels
         {
             // Arrange
             _verificationFlowServiceMock.Setup(m => m.Snapshot)
-                .Returns(VerificationSnapshot.Completed("TEST_SN", "PASS"));
+                .Returns(VerificationSnapshot.Completed("TEST_SN", "PASS", null, null, "TEST_SN"));
 
             // Act
             _viewModel.VerificationSnapshot = _verificationFlowServiceMock.Object.Snapshot;
 
             // Assert
             Assert.That(_viewModel.StatusText, Is.EqualTo("PASS"));
+            Assert.That(_viewModel.DeviceSN, Is.EqualTo("TEST_SN"));
         }
 
         [Test]
@@ -99,7 +100,7 @@ namespace SnVerify.Tests.ViewModels
         {
             // Arrange
             _verificationFlowServiceMock.Setup(m => m.Snapshot)
-                .Returns(VerificationSnapshot.Completed("TEST_SN", "FAIL", "MISMATCH"));
+                .Returns(VerificationSnapshot.Completed("TEST_SN", "FAIL", "MISMATCH", null, "DEVICE_SN"));
 
             // Act
             _viewModel.VerificationSnapshot = _verificationFlowServiceMock.Object.Snapshot;
@@ -108,6 +109,37 @@ namespace SnVerify.Tests.ViewModels
             Assert.That(_viewModel.StatusText, Is.EqualTo("FAIL"));
             Assert.That(_viewModel.ShowFailReason, Is.True);
             Assert.That(_viewModel.FailReason, Is.EqualTo("MISMATCH"));
+            Assert.That(_viewModel.DeviceSN, Is.EqualTo("DEVICE_SN"));
+        }
+
+        [Test]
+        public void DeviceSN_ShouldReturnEmpty_WhenSnapshotIsNull()
+        {
+            // Arrange
+            _verificationFlowServiceMock.Setup(m => m.Snapshot)
+                .Returns(VerificationSnapshot.Idle());
+
+            // Act
+            _viewModel.VerificationSnapshot = _verificationFlowServiceMock.Object.Snapshot;
+
+            // Assert
+            Assert.That(_viewModel.DeviceSN, Is.EqualTo(""));
+        }
+
+        [Test]
+        public void DeviceSN_ShouldReturnValue_WhenCompletedWithDeviceSN()
+        {
+            // Arrange
+            const string deviceSN = "DEVICE123";
+            _verificationFlowServiceMock.Setup(m => m.Snapshot)
+                .Returns(VerificationSnapshot.Completed("STICKER123", "PASS", null, null, deviceSN));
+
+            // Act
+            _viewModel.VerificationSnapshot = _verificationFlowServiceMock.Object.Snapshot;
+
+            // Assert
+            Assert.That(_viewModel.DeviceSN, Is.EqualTo(deviceSN));
+            Assert.That(_viewModel.CurrentSn, Is.EqualTo("STICKER123"));
         }
 
         [Test]
@@ -122,7 +154,7 @@ namespace SnVerify.Tests.ViewModels
             _verificationFlowServiceMock.SetupSequence(m => m.Snapshot)
                 .Returns(VerificationSnapshot.Idle())
                 .Returns(VerificationSnapshot.Processing(testSn))
-                .Returns(VerificationSnapshot.Completed(testSn, "PASS"));
+                .Returns(VerificationSnapshot.Completed(testSn, "PASS", null, null, testSn));
 
             // Act
             await _viewModel.HandleScanInputAsync(testSn);
@@ -174,7 +206,7 @@ namespace SnVerify.Tests.ViewModels
             _verificationFlowServiceMock.SetupSequence(m => m.Snapshot)
                 .Returns(VerificationSnapshot.Idle())
                 .Returns(VerificationSnapshot.Processing(testSn))
-                .Returns(VerificationSnapshot.Completed(testSn, "PASS"));
+                .Returns(VerificationSnapshot.Completed(testSn, "PASS", null, null, testSn));
 
             // Act
             await _viewModel.HandleScanInputAsync(testSn);

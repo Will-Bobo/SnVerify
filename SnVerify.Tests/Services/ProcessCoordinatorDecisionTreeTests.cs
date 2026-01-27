@@ -81,6 +81,7 @@ namespace SnVerify.Tests.Services
             // Assert
             Assert.That(_lastSnapshot.LastResult, Is.EqualTo("PASS"));
             Assert.That(_lastSnapshot.FailReason, Is.Null);
+            Assert.That(_lastSnapshot.DeviceSN, Is.EqualTo(deviceSN), "快照应包含设备SN");
 
             _storageServiceMock.Verify(
                 x => x.SaveVerifyResultAsync(It.Is<SnVerifyResult>(r =>
@@ -126,14 +127,15 @@ namespace SnVerify.Tests.Services
 
             // Assert
             Assert.That(_lastSnapshot.LastResult, Is.EqualTo("FAIL"));
-            Assert.That(_lastSnapshot.FailReason, Is.EqualTo("AlreadyPassed"));
+            Assert.That(_lastSnapshot.FailReason, Is.EqualTo("设备SN已存在"));
+            Assert.That(_lastSnapshot.DeviceSN, Is.EqualTo(deviceSN), "快照应包含设备SN");
 
             _storageServiceMock.Verify(
                 x => x.SaveVerifyResultAsync(It.Is<SnVerifyResult>(r =>
                     r.Result == "FAIL" &&
                     r.SN == stickerSN &&
                     r.DeviceSN == deviceSN &&
-                    r.FailReason == "AlreadyPassed")),
+                    r.FailReason == "设备SN已存在")),
                 Times.Once);
         }
 
@@ -169,14 +171,15 @@ namespace SnVerify.Tests.Services
 
             // Assert
             Assert.That(_lastSnapshot.LastResult, Is.EqualTo("FAIL"));
-            Assert.That(_lastSnapshot.FailReason, Is.EqualTo("StickerSN_Reused"));
+            Assert.That(_lastSnapshot.FailReason, Is.EqualTo("设备SN 与 条形码SN [不匹配]，并且 条形码SN 已存在"));
+            Assert.That(_lastSnapshot.DeviceSN, Is.EqualTo(deviceSN), "快照应包含设备SN");
 
             _storageServiceMock.Verify(
                 x => x.SaveVerifyResultAsync(It.Is<SnVerifyResult>(r =>
                     r.Result == "FAIL" &&
                     r.SN == stickerSN &&
                     r.DeviceSN == deviceSN &&
-                    r.FailReason == "StickerSN_Reused")),
+                    r.FailReason == "设备SN 与 条形码SN [不匹配]，并且 条形码SN 已存在")),
                 Times.Once);
         }
 
@@ -215,14 +218,15 @@ namespace SnVerify.Tests.Services
 
             // Assert
             Assert.That(_lastSnapshot.LastResult, Is.EqualTo("FAIL"));
-            Assert.That(_lastSnapshot.FailReason, Is.EqualTo("DeviceSN_AlreadyPassed"));
+            Assert.That(_lastSnapshot.FailReason, Is.EqualTo("设备SN 与 条形码SN [不匹配]，并且 设备SN 已存在"));
+            Assert.That(_lastSnapshot.DeviceSN, Is.EqualTo(deviceSN), "快照应包含设备SN");
 
             _storageServiceMock.Verify(
                 x => x.SaveVerifyResultAsync(It.Is<SnVerifyResult>(r =>
                     r.Result == "FAIL" &&
                     r.SN == stickerSN &&
                     r.DeviceSN == deviceSN &&
-                    r.FailReason == "DeviceSN_AlreadyPassed")),
+                    r.FailReason == "设备SN 与 条形码SN [不匹配]，并且 设备SN 已存在")),
                 Times.Once);
         }
 
@@ -261,14 +265,15 @@ namespace SnVerify.Tests.Services
 
             // Assert
             Assert.That(_lastSnapshot.LastResult, Is.EqualTo("FAIL"));
-            Assert.That(_lastSnapshot.FailReason, Is.EqualTo("Sticker_Device_Mismatch"));
+            Assert.That(_lastSnapshot.FailReason, Is.EqualTo("设备SN 与 条形码SN [不匹配]"));
+            Assert.That(_lastSnapshot.DeviceSN, Is.EqualTo(deviceSN), "快照应包含设备SN");
 
             _storageServiceMock.Verify(
                 x => x.SaveVerifyResultAsync(It.Is<SnVerifyResult>(r =>
                     r.Result == "FAIL" &&
                     r.SN == stickerSN &&
                     r.DeviceSN == deviceSN &&
-                    r.FailReason == "Sticker_Device_Mismatch")),
+                    r.FailReason == "设备SN 与 条形码SN [不匹配]")),
                 Times.Once);
         }
 
@@ -334,6 +339,7 @@ namespace SnVerify.Tests.Services
             // Assert
             Assert.That(_lastSnapshot.LastResult, Is.EqualTo("FAIL"));
             Assert.That(_lastSnapshot.FailReason, Is.EqualTo("ADB读取设备SN为空"));
+            Assert.That(_lastSnapshot.DeviceSN, Is.Null, "ADB读取为空时设备SN应为null");
         }
 
         #endregion
@@ -369,9 +375,10 @@ namespace SnVerify.Tests.Services
             // Act
             await _processCoordinator.StartVerificationAsync(stickerSN);
 
-            // Assert - 应该命中规则 2（AlreadyPassed），而不是规则 3（StickerSN_Reused）
+            // Assert - 应该命中规则 2（设备SN已存在），而不是规则 3
             Assert.That(_lastSnapshot.LastResult, Is.EqualTo("FAIL"));
-            Assert.That(_lastSnapshot.FailReason, Is.EqualTo("AlreadyPassed"));
+            Assert.That(_lastSnapshot.FailReason, Is.EqualTo("设备SN已存在"));
+            Assert.That(_lastSnapshot.DeviceSN, Is.EqualTo(deviceSN), "快照应包含设备SN");
 
             // 验证未调用 IsDeviceSnInPassHistoryAsync（因为规则 2 已命中，不会继续判断）
             _storageServiceMock.Verify(

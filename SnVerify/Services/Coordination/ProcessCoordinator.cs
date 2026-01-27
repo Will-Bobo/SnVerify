@@ -111,7 +111,7 @@ namespace SnVerify.Services.Coordination
                     await SaveOrUpdateFailResultAsync(sn, result, failReason, null);
                     _loggingService?.LogInfo($"检验结果 [{result}] , [扫码枪SN: {sn}, 设备SN: N/A] , 错误结果: {failReason}");
                     _loggingService?.LogInfo("检验结束");
-                    UpdateSnapshot(VerificationSnapshot.Completed(sn, result, failReason, _batchId));
+                    UpdateSnapshot(VerificationSnapshot.Completed(sn, result, failReason, _batchId, null));
                     return;
                 }
 
@@ -122,7 +122,7 @@ namespace SnVerify.Services.Coordination
                     await SaveOrUpdateFailResultAsync(sn, "FAIL", failReason, null);
                     _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {sn}, 设备SN: N/A] , 错误结果: {failReason}");
                     _loggingService?.LogInfo("检验结束");
-                    UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", failReason, _batchId));
+                    UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", failReason, _batchId, null));
                     return;
                 }
 
@@ -142,7 +142,7 @@ namespace SnVerify.Services.Coordination
                         await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", failReason, deviceSNNormalized);
                         _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 错误结果: {failReason}");
                         _loggingService?.LogInfo("检验结束");
-                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _batchId));
+                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _batchId, deviceSNNormalized));
                         return;
                     }
 
@@ -156,7 +156,7 @@ namespace SnVerify.Services.Coordination
                         await SaveResultAsync(stickerSN, "PASS", null, deviceSNNormalized);
                         _loggingService?.LogInfo($"检验结果 [PASS] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 成功结果");
                         _loggingService?.LogInfo("检验结束");
-                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "PASS", null, _batchId));
+                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "PASS", null, _batchId, deviceSNNormalized));
                         return;
                     }
                     else
@@ -166,7 +166,7 @@ namespace SnVerify.Services.Coordination
                         await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", failReason, deviceSNNormalized);
                         _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 错误结果: {failReason}");
                         _loggingService?.LogInfo("检验结束");
-                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _batchId));
+                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _batchId, deviceSNNormalized));
                         return;
                     }
                 }
@@ -183,7 +183,7 @@ namespace SnVerify.Services.Coordination
                         await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", failReason, deviceSNNormalized);
                         _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 错误结果: {failReason}");
                         _loggingService?.LogInfo("检验结束");
-                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _batchId));
+                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _batchId, deviceSNNormalized));
                         return;
                     }
 
@@ -195,7 +195,7 @@ namespace SnVerify.Services.Coordination
                         await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", failReason, deviceSNNormalized);
                         _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 错误结果: {failReason}");
                         _loggingService?.LogInfo("检验结束");
-                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _batchId));
+                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _batchId, deviceSNNormalized));
                         return;
                     }
 
@@ -204,7 +204,7 @@ namespace SnVerify.Services.Coordination
                     await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", failReason5, deviceSNNormalized);
                     _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 错误结果: {failReason5}");
                     _loggingService?.LogInfo("检验结束");
-                    UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason5, _batchId));
+                    UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason5, _batchId, deviceSNNormalized));
                     return;
                 }
             }
@@ -214,7 +214,7 @@ namespace SnVerify.Services.Coordination
                 await SaveOrUpdateFailResultAsync(sn, "FAIL", $"EXCEPTION: {ex.Message}", null);
                 _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {sn}, 设备SN: N/A] , 错误结果: EXCEPTION: {ex.Message}");
                 _loggingService?.LogInfo("检验结束");
-                UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", $"EXCEPTION: {ex.Message}", _batchId));
+                UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", $"EXCEPTION: {ex.Message}", _batchId, null));
             }
         }
 

@@ -362,15 +362,26 @@ namespace SnVerify.Tests.Services
                 var passSheet = package.Workbook.Worksheets["PASS"];
                 var failSheet = package.Workbook.Worksheets["FAIL"];
 
-                // 验证 PASS Sheet 中的 VerifyTime 格式（第 5 列）
-                var passVerifyTimeValue = passSheet.Cells[2, 5].Value;
+                // 验证 PASS Sheet 中的列顺序和内容
+                // 第5列应该是 FailReason（PASS 记录中为空）
+                var passFailReasonValue = passSheet.Cells[2, 5].Value;
+                Assert.That(passFailReasonValue, Is.EqualTo(string.Empty), "PASS Sheet 的 FailReason 应该为空");
+
+                // 第6列应该是 VerifyTime
+                var passVerifyTimeValue = passSheet.Cells[2, 6].Value;
                 Assert.That(passVerifyTimeValue, Is.Not.Null, "PASS Sheet 的 VerifyTime 应该有值");
                 Assert.That(passVerifyTimeValue, Is.InstanceOf<string>(), "VerifyTime 应该是字符串类型");
                 Assert.That(passVerifyTimeValue.ToString(), Is.EqualTo(expectedFormat), 
                     $"PASS Sheet 的 VerifyTime 应该是 {expectedFormat} 格式");
 
-                // 验证 FAIL Sheet 中的 VerifyTime 格式（第 5 列）
-                var failVerifyTimeValue = failSheet.Cells[2, 5].Value;
+                // 验证 FAIL Sheet 中的列顺序和内容
+                // 第5列应该是 FailReason
+                var failFailReasonValue = failSheet.Cells[2, 5].Value;
+                Assert.That(failFailReasonValue, Is.Not.Null, "FAIL Sheet 的 FailReason 应该有值");
+                Assert.That(failFailReasonValue.ToString(), Is.EqualTo("MISMATCH"), "FAIL Sheet 的 FailReason 应该是 'MISMATCH'");
+
+                // 第6列应该是 VerifyTime
+                var failVerifyTimeValue = failSheet.Cells[2, 6].Value;
                 Assert.That(failVerifyTimeValue, Is.Not.Null, "FAIL Sheet 的 VerifyTime 应该有值");
                 Assert.That(failVerifyTimeValue, Is.InstanceOf<string>(), "VerifyTime 应该是字符串类型");
                 Assert.That(failVerifyTimeValue.ToString(), Is.EqualTo(expectedFormat), 

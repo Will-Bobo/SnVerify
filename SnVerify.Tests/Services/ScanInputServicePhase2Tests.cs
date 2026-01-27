@@ -184,7 +184,7 @@ namespace SnVerify.Tests.Services
         {
             // Arrange
             var processingSnapshot = VerificationSnapshot.Processing(TestSn);
-            var completedSnapshot = VerificationSnapshot.Completed(TestSn, "PASS");
+            var completedSnapshot = VerificationSnapshot.Completed(TestSn, "PASS", null, null, TestSn);
 
             _processCoordinatorMock
                 .SetupSequence(x => x.Snapshot)

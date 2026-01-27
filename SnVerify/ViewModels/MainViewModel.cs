@@ -22,6 +22,17 @@ using SnVerify.Properties;
 namespace SnVerify.ViewModels
 {
     /// <summary>
+    /// 检验 UI 状态枚举（用于 UI 显示）
+    /// </summary>
+    public enum VerificationUiState
+    {
+        Idle,        // 空闲：等待扫码
+        Processing,  // 检验中
+        Pass,        // 通过
+        Fail         // 失败
+    }
+
+    /// <summary>
     /// 主窗口 ViewModel，负责绑定 Snapshot 状态和命令（Phase2 闭环）
     /// </summary>
     public class MainViewModel : INotifyPropertyChanged
@@ -80,11 +91,13 @@ namespace SnVerify.ViewModels
                     _verificationSnapshot = value;
                     OnPropertyChanged();
                     OnPropertyChanged(nameof(CurrentSn));
+                    OnPropertyChanged(nameof(DeviceSN));
                     OnPropertyChanged(nameof(IsProcessing));
                     OnPropertyChanged(nameof(LastResult));
                     OnPropertyChanged(nameof(FailReason));
                     OnPropertyChanged(nameof(StatusText));
                     OnPropertyChanged(nameof(ShowFailReason));
+                    OnPropertyChanged(nameof(UiState));
                     StartVerifyCommand?.RaiseCanExecuteChanged();
                 }
             }
@@ -180,6 +193,11 @@ namespace SnVerify.ViewModels
         public string CurrentSn => VerificationSnapshot?.CurrentSn ?? "";
 
         /// <summary>
+        /// 设备SN（用于显示）
+        /// </summary>
+        public string DeviceSN => VerificationSnapshot?.DeviceSN ?? "";
+
+        /// <summary>
         /// 是否正在处理（用于显示）
         /// </summary>
         public bool IsProcessing => VerificationSnapshot?.IsProcessing ?? false;
@@ -207,9 +225,23 @@ namespace SnVerify.ViewModels
         public string LastResult => VerificationSnapshot?.LastResult ?? "";
 
         /// <summary>
+        /// 批次错误提示（临时显示，优先级高于 VerificationSnapshot.FailReason）
+        /// </summary>
+        private string _batchError;
+
+        /// <summary>
         /// 失败原因（用于显示）
         /// </summary>
-        public string FailReason => VerificationSnapshot?.FailReason ?? "";
+        public string FailReason
+        {
+            get
+            {
+                // 优先显示批次错误（如批次未激活）
+                if (!string.IsNullOrEmpty(_batchError))
+                    return _batchError;
+                return VerificationSnapshot?.FailReason ?? "";
+            }
+        }
 
         /// <summary>
         /// 当前状态文本（用于显示：等待检验 / 正在检验... / PASS / FAIL）
@@ -232,6 +264,43 @@ namespace SnVerify.ViewModels
         /// 是否显示失败原因（用于 UI 绑定）
         /// </summary>
         public bool ShowFailReason => !string.IsNullOrEmpty(FailReason);
+
+        /// <summary>
+        /// 设置批次错误提示（用于显示批次未激活等错误）
+        /// </summary>
+        public void SetBatchError(string errorMessage)
+        {
+            _batchError = errorMessage;
+            OnPropertyChanged(nameof(FailReason));
+            OnPropertyChanged(nameof(ShowFailReason));
+        }
+
+        /// <summary>
+        /// 清除批次错误提示
+        /// </summary>
+        public void ClearBatchError()
+        {
+            _batchError = null;
+            OnPropertyChanged(nameof(FailReason));
+            OnPropertyChanged(nameof(ShowFailReason));
+        }
+
+        /// <summary>
+        /// UI 状态（用于立体结果卡片显示）
+        /// </summary>
+        public VerificationUiState UiState
+        {
+            get
+            {
+                if (VerificationSnapshot == null)
+                    return VerificationUiState.Idle;
+                if (VerificationSnapshot.IsProcessing)
+                    return VerificationUiState.Processing;
+                if (!string.IsNullOrEmpty(VerificationSnapshot.LastResult))
+                    return VerificationSnapshot.LastResult == "PASS" ? VerificationUiState.Pass : VerificationUiState.Fail;
+                return VerificationUiState.Idle;
+            }
+        }
 
         /// <summary>
         /// UI 日志列表（用于调试日志显示）
@@ -377,6 +446,9 @@ namespace SnVerify.ViewModels
                 BatchSnapshot = _batchManager.Snapshot;
                 VerificationSnapshot = _verificationFlowService.Snapshot;
                 LoggingSnapshot = _loggingService.Snapshot;
+                
+                // 清除批次错误提示（批次已开始）
+                ClearBatchError();
             }
             catch (Exception)
             {
@@ -502,7 +574,14 @@ namespace SnVerify.ViewModels
         /// </summary>
         private async System.Threading.Tasks.Task StartVerifyAsync()
         {
-            await HandleScanInputAsync(ScanInputText?.Trim() ?? "");
+            var sn = ScanInputText?.Trim() ?? "";
+            if (string.IsNullOrWhiteSpace(sn))
+            {
+                _loggingService.LogWarning("扫码内容为空，请扫入 SN 后再执行检验");
+                LoggingSnapshot = _loggingService.Snapshot;
+                return;
+            }
+            await HandleScanInputAsync(sn);
         }
 
         /// <summary>
