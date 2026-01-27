@@ -123,6 +123,7 @@ namespace SnVerify.Services.Storage
                     Id INTEGER PRIMARY KEY AUTOINCREMENT,
                     BatchId TEXT NOT NULL,
                     SN TEXT NOT NULL,
+                    DeviceSN TEXT,
                     Result TEXT NOT NULL,
                     FailReason TEXT,
                     VerifyTime DATETIME NOT NULL,
@@ -135,6 +136,14 @@ namespace SnVerify.Services.Storage
 
             await ExecuteNonQueryAsync(createBatchTable);
             await ExecuteNonQueryAsync(createSnVerifyResultTable);
+
+            // 仅当 DeviceSN 列不存在时添加（兼容旧表：表已存在但无此列）
+            if (!await ColumnExistsAsync("SnVerifyResult", "DeviceSN"))
+            {
+                var alterTableAddDeviceSN = "ALTER TABLE SnVerifyResult ADD COLUMN DeviceSN TEXT";
+                await ExecuteNonQueryAsync(alterTableAddDeviceSN);
+            }
+
             await ExecuteNonQueryAsync(createIndex);
         }
 
@@ -158,6 +167,33 @@ namespace SnVerify.Services.Storage
                     {
                         command.ExecuteNonQuery();
                     }
+                }
+            });
+        }
+
+        /// <summary>
+        /// 检查指定表的列是否存在
+        /// </summary>
+        private async Task<bool> ColumnExistsAsync(string tableName, string columnName)
+        {
+            var sql = "PRAGMA table_info(" + tableName + ")";
+            return await Task.Run(() =>
+            {
+                lock (_lockObject)
+                {
+                    if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        return false;
+                    using (var command = new SQLiteCommand(sql, _connection))
+                    using (var reader = command.ExecuteReader())
+                    {
+                        while (reader.Read())
+                        {
+                            var name = reader.GetString(1);
+                            if (string.Equals(name, columnName, StringComparison.OrdinalIgnoreCase))
+                                return true;
+                        }
+                    }
+                    return false;
                 }
             });
         }
@@ -364,7 +400,7 @@ namespace SnVerify.Services.Storage
             try
             {
                 var sql = @"
-                    SELECT Id, BatchId, SN, Result, FailReason, VerifyTime
+                    SELECT Id, BatchId, SN, DeviceSN, Result, FailReason, VerifyTime
                     FROM SnVerifyResult
                     WHERE BatchId = @BatchId AND SN = @SN AND Result != 'PASS'
                     ORDER BY VerifyTime DESC
@@ -392,9 +428,10 @@ namespace SnVerify.Services.Storage
                                         Id = reader.GetInt32(0),
                                         BatchId = reader.GetString(1),
                                         SN = reader.GetString(2),
-                                        Result = reader.GetString(3),
-                                        FailReason = reader.IsDBNull(4) ? null : reader.GetString(4),
-                                        VerifyTime = reader.GetDateTime(5)
+                                        DeviceSN = reader.IsDBNull(3) ? null : reader.GetString(3),
+                                        Result = reader.GetString(4),
+                                        FailReason = reader.IsDBNull(5) ? null : reader.GetString(5),
+                                        VerifyTime = reader.GetDateTime(6)
                                     };
                                 }
                             }
@@ -408,6 +445,148 @@ namespace SnVerify.Services.Storage
             catch (Exception ex)
             {
                 _logger?.LogError($"获取 FAIL 记录失败: {ex.Message}", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 检查 StickerSN 是否存在于历史 PASS 绑定中（跨批次查询）
+        /// </summary>
+        public async Task<bool> IsStickerSnInPassHistoryAsync(string stickerSN)
+        {
+            if (string.IsNullOrWhiteSpace(stickerSN))
+                throw new ArgumentException("StickerSN 不能为空", nameof(stickerSN));
+
+            EnsureConnectionInitialized();
+
+            try
+            {
+                // 查询历史 PASS 记录：SN 字段（StickerSN）或 DeviceSN 字段等于 stickerSN
+                // 对于 PASS 记录，SN 和 DeviceSN 应该相同，但为了兼容性，检查两个字段
+                var sql = @"
+                    SELECT COUNT(1) FROM SnVerifyResult 
+                    WHERE Result = 'PASS' AND (SN = @StickerSN OR DeviceSN = @StickerSN)";
+
+                var result = await Task.Run(() =>
+                {
+                    lock (_lockObject)
+                    {
+                        if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        {
+                            throw new InvalidOperationException("数据库连接未初始化或已关闭");
+                        }
+
+                        using (var command = new SQLiteCommand(sql, _connection))
+                        {
+                            command.Parameters.AddWithValue("@StickerSN", stickerSN);
+                            var count = command.ExecuteScalar();
+                            return Convert.ToInt32(count) > 0;
+                        }
+                    }
+                });
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError($"检查 StickerSN 历史 PASS 记录失败: {ex.Message}", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 检查 DeviceSN 是否存在于历史 PASS 绑定中（跨批次查询）
+        /// </summary>
+        public async Task<bool> IsDeviceSnInPassHistoryAsync(string deviceSN)
+        {
+            if (string.IsNullOrWhiteSpace(deviceSN))
+                throw new ArgumentException("DeviceSN 不能为空", nameof(deviceSN));
+
+            EnsureConnectionInitialized();
+
+            try
+            {
+                // 查询历史 PASS 记录：SN 字段（StickerSN）或 DeviceSN 字段等于 deviceSN
+                // 对于 PASS 记录，SN 和 DeviceSN 应该相同，但为了兼容性，检查两个字段
+                var sql = @"
+                    SELECT COUNT(1) FROM SnVerifyResult 
+                    WHERE Result = 'PASS' AND (SN = @DeviceSN OR DeviceSN = @DeviceSN)";
+
+                var result = await Task.Run(() =>
+                {
+                    lock (_lockObject)
+                    {
+                        if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        {
+                            throw new InvalidOperationException("数据库连接未初始化或已关闭");
+                        }
+
+                        using (var command = new SQLiteCommand(sql, _connection))
+                        {
+                            command.Parameters.AddWithValue("@DeviceSN", deviceSN);
+                            var count = command.ExecuteScalar();
+                            return Convert.ToInt32(count) > 0;
+                        }
+                    }
+                });
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError($"检查 DeviceSN 历史 PASS 记录失败: {ex.Message}", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 检查绑定关系（StickerSN <-> DeviceSN）是否存在于历史 PASS 绑定中（跨批次查询）
+        /// </summary>
+        public async Task<bool> IsBindingInPassHistoryAsync(string stickerSN, string deviceSN)
+        {
+            if (string.IsNullOrWhiteSpace(stickerSN))
+                throw new ArgumentException("StickerSN 不能为空", nameof(stickerSN));
+            if (string.IsNullOrWhiteSpace(deviceSN))
+                throw new ArgumentException("DeviceSN 不能为空", nameof(deviceSN));
+
+            EnsureConnectionInitialized();
+
+            try
+            {
+                // 查询历史 PASS 绑定：SN = stickerSN 且 DeviceSN = deviceSN
+                // 或者 SN = deviceSN 且 DeviceSN = stickerSN（兼容旧数据，PASS 时 SN 和 DeviceSN 相同）
+                var sql = @"
+                    SELECT COUNT(1) FROM SnVerifyResult 
+                    WHERE Result = 'PASS' 
+                    AND (
+                        (SN = @StickerSN AND (DeviceSN = @DeviceSN OR DeviceSN IS NULL))
+                        OR (SN = @DeviceSN AND DeviceSN = @StickerSN)
+                    )";
+
+                var result = await Task.Run(() =>
+                {
+                    lock (_lockObject)
+                    {
+                        if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        {
+                            throw new InvalidOperationException("数据库连接未初始化或已关闭");
+                        }
+
+                        using (var command = new SQLiteCommand(sql, _connection))
+                        {
+                            command.Parameters.AddWithValue("@StickerSN", stickerSN);
+                            command.Parameters.AddWithValue("@DeviceSN", deviceSN);
+                            var count = command.ExecuteScalar();
+                            return Convert.ToInt32(count) > 0;
+                        }
+                    }
+                });
+
+                return result;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError($"检查绑定关系历史 PASS 记录失败: {ex.Message}", ex);
                 throw;
             }
         }
@@ -436,7 +615,7 @@ namespace SnVerify.Services.Storage
 
                 var sql = @"
                     UPDATE SnVerifyResult 
-                    SET Result = @Result, FailReason = @FailReason, VerifyTime = @VerifyTime
+                    SET Result = @Result, FailReason = @FailReason, DeviceSN = @DeviceSN, VerifyTime = @VerifyTime
                     WHERE Id = @Id";
 
                 await Task.Run(() =>
@@ -453,6 +632,7 @@ namespace SnVerify.Services.Storage
                             command.Parameters.AddWithValue("@Id", result.Id);
                             command.Parameters.AddWithValue("@Result", result.Result);
                             command.Parameters.AddWithValue("@FailReason", (object)result.FailReason ?? DBNull.Value);
+                            command.Parameters.AddWithValue("@DeviceSN", (object)result.DeviceSN ?? DBNull.Value);
                             command.Parameters.AddWithValue("@VerifyTime", result.VerifyTime);
                             command.ExecuteNonQuery();
                         }
@@ -503,8 +683,8 @@ namespace SnVerify.Services.Storage
                 Snapshot = StorageSnapshot.Processing(result.BatchId);
 
                 var sql = @"
-                    INSERT INTO SnVerifyResult (BatchId, SN, Result, FailReason, VerifyTime)
-                    VALUES (@BatchId, @SN, @Result, @FailReason, @VerifyTime)";
+                    INSERT INTO SnVerifyResult (BatchId, SN, DeviceSN, Result, FailReason, VerifyTime)
+                    VALUES (@BatchId, @SN, @DeviceSN, @Result, @FailReason, @VerifyTime)";
 
                 await Task.Run(() =>
                 {
@@ -519,6 +699,7 @@ namespace SnVerify.Services.Storage
                         {
                             command.Parameters.AddWithValue("@BatchId", result.BatchId);
                             command.Parameters.AddWithValue("@SN", result.SN);
+                            command.Parameters.AddWithValue("@DeviceSN", (object)result.DeviceSN ?? DBNull.Value);
                             command.Parameters.AddWithValue("@Result", result.Result);
                             command.Parameters.AddWithValue("@FailReason", (object)result.FailReason ?? DBNull.Value);
                             command.Parameters.AddWithValue("@VerifyTime", result.VerifyTime);
@@ -587,7 +768,7 @@ namespace SnVerify.Services.Storage
             try
             {
                 var sql = @"
-                    SELECT Id, BatchId, SN, Result, FailReason, VerifyTime
+                    SELECT Id, BatchId, SN, DeviceSN, Result, FailReason, VerifyTime
                     FROM SnVerifyResult
                     WHERE BatchId = @BatchId
                     ORDER BY VerifyTime ASC";
@@ -614,9 +795,10 @@ namespace SnVerify.Services.Storage
                                         Id = reader.GetInt32(0),
                                         BatchId = reader.GetString(1),
                                         SN = reader.GetString(2),
-                                        Result = reader.GetString(3),
-                                        FailReason = reader.IsDBNull(4) ? null : reader.GetString(4),
-                                        VerifyTime = reader.GetDateTime(5)
+                                        DeviceSN = reader.IsDBNull(3) ? null : reader.GetString(3),
+                                        Result = reader.GetString(4),
+                                        FailReason = reader.IsDBNull(5) ? null : reader.GetString(5),
+                                        VerifyTime = reader.GetDateTime(6)
                                     });
                                 }
                             }
@@ -697,12 +879,13 @@ namespace SnVerify.Services.Storage
         {
             sheet.Cells[1, 1].Value = "Id";
             sheet.Cells[1, 2].Value = "SN";
-            sheet.Cells[1, 3].Value = "Result";
-            sheet.Cells[1, 4].Value = "FailReason";
-            sheet.Cells[1, 5].Value = "VerifyTime";
+            sheet.Cells[1, 3].Value = "DeviceSN";
+            sheet.Cells[1, 4].Value = "Result";
+            sheet.Cells[1, 5].Value = "FailReason";
+            sheet.Cells[1, 6].Value = "VerifyTime";
 
             // 设置表头样式
-            using (var range = sheet.Cells[1, 1, 1, 5])
+            using (var range = sheet.Cells[1, 1, 1, 6])
             {
                 range.Style.Font.Bold = true;
                 range.Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
@@ -721,8 +904,8 @@ namespace SnVerify.Services.Storage
                 var result = results[i];
                 sheet.Cells[row, 1].Value = result.Id;
                 sheet.Cells[row, 2].Value = result.SN;
-                sheet.Cells[row, 3].Value = result.Result;
-                sheet.Cells[row, 4].Value = result.FailReason ?? string.Empty;
+                sheet.Cells[row, 3].Value = result.DeviceSN ?? string.Empty;
+                sheet.Cells[row, 4].Value = result.Result;
                 // 将 VerifyTime 格式化为可读中文日期时间格式，例如 “2026年1月11日 13:21:22”
                 sheet.Cells[row, 5].Value = result.VerifyTime.ToString("yyyy年M月d日 HH:mm:ss");
             }

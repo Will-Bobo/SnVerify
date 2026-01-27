@@ -29,6 +29,13 @@ namespace SnVerify.Domain.Models
         public string SN { get; set; }
 
         /// <summary>
+        /// 设备 SN（从设备内部读取，如 ADB）
+        /// 当 PASS 时，DeviceSN 与 SN（StickerSN）相同
+        /// 当 FAIL 时，DeviceSN 记录实际读取到的设备 SN（如果读取成功）
+        /// </summary>
+        public string DeviceSN { get; set; }
+
+        /// <summary>
         /// 校验结果：PASS / FAIL / TIMEOUT
         /// </summary>
         public string Result { get; set; }

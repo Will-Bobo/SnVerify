@@ -59,13 +59,20 @@ namespace SnVerify.Tests.Services
         public async Task StartVerificationAsync_ShouldCompleteSuccessfully_WhenSnMatches()
         {
             // Arrange
-            _storageServiceMock
-                .Setup(x => x.IsSnDuplicateInPassAsync(TestBatchId, TestSnScan))
-                .ReturnsAsync(false);
-
             _adbAccessServiceMock
                 .Setup(x => x.ReadDeviceSnAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(AdbSnReadResult.Success(TestSnAdb));
+
+            // 新决策树逻辑：检查历史绑定，都不存在才能 PASS
+            _storageServiceMock
+                .Setup(x => x.IsStickerSnInPassHistoryAsync(TestSnScan))
+                .ReturnsAsync(false);
+            _storageServiceMock
+                .Setup(x => x.IsDeviceSnInPassHistoryAsync(TestSnAdb))
+                .ReturnsAsync(false);
+            _storageServiceMock
+                .Setup(x => x.IsBindingInPassHistoryAsync(TestSnScan, TestSnAdb))
+                .ReturnsAsync(false);
 
             _storageServiceMock
                 .Setup(x => x.SaveVerifyResultAsync(It.Is<SnVerifyResult>(r =>
@@ -95,13 +102,17 @@ namespace SnVerify.Tests.Services
         {
             // Arrange
             var snAdb = "XYZ789";
-            _storageServiceMock
-                .Setup(x => x.IsSnDuplicateInPassAsync(TestBatchId, TestSnScan))
-                .ReturnsAsync(false);
-
             _adbAccessServiceMock
                 .Setup(x => x.ReadDeviceSnAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(AdbSnReadResult.Success(snAdb));
+
+            // 新决策树逻辑：绑定不一致，且双方均无历史 PASS 绑定 → FAIL（规则5：Sticker_Device_Mismatch）
+            _storageServiceMock
+                .Setup(x => x.IsStickerSnInPassHistoryAsync(TestSnScan))
+                .ReturnsAsync(false);
+            _storageServiceMock
+                .Setup(x => x.IsDeviceSnInPassHistoryAsync(snAdb))
+                .ReturnsAsync(false);
 
             _storageServiceMock
                 .Setup(x => x.GetFailResultBySnAsync(TestBatchId, TestSnScan))
@@ -117,11 +128,11 @@ namespace SnVerify.Tests.Services
             // Assert
             Assert.That(_lastSnapshot.IsProcessing, Is.False);
             Assert.That(_lastSnapshot.LastResult, Is.EqualTo("FAIL"));
-            Assert.That(_lastSnapshot.FailReason, Is.Not.Null.And.Contains("MISMATCH"));
+            Assert.That(_lastSnapshot.FailReason, Is.EqualTo("Sticker_Device_Mismatch"));
 
             _storageServiceMock.Verify(
                 x => x.SaveVerifyResultAsync(It.Is<SnVerifyResult>(r =>
-                    r.Result == "FAIL" && r.FailReason.Contains("MISMATCH"))),
+                    r.Result == "FAIL" && r.FailReason == "Sticker_Device_Mismatch")),
                 Times.Once);
         }
 
@@ -129,8 +140,20 @@ namespace SnVerify.Tests.Services
         public async Task StartVerificationAsync_ShouldFail_WhenDuplicateSn()
         {
             // Arrange
+            // 新决策树逻辑：绑定一致，但存在历史 PASS 绑定 → FAIL（规则2：AlreadyPassed）
+            _adbAccessServiceMock
+                .Setup(x => x.ReadDeviceSnAsync(It.IsAny<CancellationToken>()))
+                .ReturnsAsync(AdbSnReadResult.Success(TestSnAdb));
+
             _storageServiceMock
-                .Setup(x => x.IsSnDuplicateInPassAsync(TestBatchId, TestSnScan))
+                .Setup(x => x.IsStickerSnInPassHistoryAsync(TestSnScan))
+                .ReturnsAsync(false);
+            _storageServiceMock
+                .Setup(x => x.IsDeviceSnInPassHistoryAsync(TestSnAdb))
+                .ReturnsAsync(false);
+            // 绑定关系已存在 → AlreadyPassed
+            _storageServiceMock
+                .Setup(x => x.IsBindingInPassHistoryAsync(TestSnScan, TestSnAdb))
                 .ReturnsAsync(true);
 
             _storageServiceMock
@@ -147,16 +170,11 @@ namespace SnVerify.Tests.Services
             // Assert
             Assert.That(_lastSnapshot.IsProcessing, Is.False);
             Assert.That(_lastSnapshot.LastResult, Is.EqualTo("FAIL"));
-            Assert.That(_lastSnapshot.FailReason, Is.EqualTo("DUPLICATE_SN"));
-
-            // 验证未调用 ADB
-            _adbAccessServiceMock.Verify(
-                x => x.ReadDeviceSnAsync(It.IsAny<CancellationToken>()),
-                Times.Never);
+            Assert.That(_lastSnapshot.FailReason, Is.EqualTo("AlreadyPassed"));
 
             _storageServiceMock.Verify(
                 x => x.SaveVerifyResultAsync(It.Is<SnVerifyResult>(r =>
-                    r.Result == "FAIL" && r.FailReason == "DUPLICATE_SN")),
+                    r.Result == "FAIL" && r.FailReason == "AlreadyPassed")),
                 Times.Once);
         }
 
@@ -324,13 +342,17 @@ namespace SnVerify.Tests.Services
             // Arrange
             var snScan = "abc123";
             var snAdb = "ABC123";
-            _storageServiceMock
-                .Setup(x => x.IsSnDuplicateInPassAsync(TestBatchId, snScan))
-                .ReturnsAsync(false);
-
             _adbAccessServiceMock
                 .Setup(x => x.ReadDeviceSnAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(AdbSnReadResult.Success(snAdb));
+
+            // 新决策树逻辑：绑定不一致（区分大小写），且双方均无历史 PASS 绑定 → FAIL（规则5：Sticker_Device_Mismatch）
+            _storageServiceMock
+                .Setup(x => x.IsStickerSnInPassHistoryAsync(snScan))
+                .ReturnsAsync(false);
+            _storageServiceMock
+                .Setup(x => x.IsDeviceSnInPassHistoryAsync(snAdb))
+                .ReturnsAsync(false);
 
             _storageServiceMock
                 .Setup(x => x.GetFailResultBySnAsync(TestBatchId, snScan))
@@ -345,7 +367,7 @@ namespace SnVerify.Tests.Services
 
             // Assert - 应该不匹配（区分大小写）
             Assert.That(_lastSnapshot.LastResult, Is.EqualTo("FAIL"));
-            Assert.That(_lastSnapshot.FailReason, Is.Not.Null.And.Contains("MISMATCH"));
+            Assert.That(_lastSnapshot.FailReason, Is.EqualTo("Sticker_Device_Mismatch"));
         }
 
         [Test]

@@ -89,16 +89,16 @@ namespace SnVerify.Services.Adb
                                     TotalTimeoutMs / MaxRetries,
                                     timeoutCts.Token);
 
-                                // 记录 ylzero 命令的执行结果（仅用于调试）
+                                // 记录 ADB 口令命令的执行结果（仅用于调试）
                                 if (ylzeroResult.IsTimeout)
                                 {
-                                    // ylzero 超时，返回错误
+                                    // ADB 口令超时，返回错误
                                     if (attempt < MaxRetries)
                                     {
                                         await Task.Delay(RetryDelayMs, timeoutCts.Token);
                                         continue;
                                     }
-                                    return AdbSnReadResult.Failure("ylzero command timeout", true);
+                                    return AdbSnReadResult.Failure("ADB 口令超时", true);
                                 }
                                 
                                 if (!ylzeroResult.IsSuccess)
@@ -116,7 +116,7 @@ namespace SnVerify.Services.Adb
                                         }
                                         
                                         // 构建错误消息，包含 ErrorMessage 和 StandardError
-                                        var errorMessage = $"ylzero command failed: {ylzeroResult.ErrorMessage}";
+                                        var errorMessage = $"ADB 口令失败: {ylzeroResult.ErrorMessage}";
                                         if (!string.IsNullOrEmpty(ylzeroResult.StandardError))
                                         {
                                             errorMessage += $"\nStandardError: {ylzeroResult.StandardError}";
@@ -126,26 +126,26 @@ namespace SnVerify.Services.Adb
                                     
                                     // ExitCode == 127 或 255，记录但继续执行 SN 读取命令
                                     var exitCodeDesc = ylzeroResult.ExitCode == 127 ? "命令不存在" : "user版本设备特殊状态";
-                                    Debug.WriteLine($"[AdbAccessService] ylzero {exitCodeDesc}（ExitCode={ylzeroResult.ExitCode}，不影响 SN 读取）: {ylzeroResult.ErrorMessage}");
+                                    Debug.WriteLine($"[AdbAccessService] ADB 口令 {exitCodeDesc}（ExitCode={ylzeroResult.ExitCode}，不影响 SN 读取）: {ylzeroResult.ErrorMessage}");
                                     if (!string.IsNullOrEmpty(ylzeroResult.StandardError))
                                     {
-                                        Debug.WriteLine($"[AdbAccessService] ylzero 标准错误输出: {ylzeroResult.StandardError}");
+                                        Debug.WriteLine($"[AdbAccessService] ADB 口令标准错误输出: {ylzeroResult.StandardError}");
                                     }
                                 }
                                 else
                                 {
-                                    Debug.WriteLine($"[AdbAccessService] ylzero 命令执行成功");
+                                    Debug.WriteLine($"[AdbAccessService] ADB 口令执行成功");
                                 }
                             }
                             catch (Exception ylzeroEx)
                             {
-                                // ylzero 命令执行异常，返回错误
+                                // ADB 口令执行异常，返回错误
                                 if (attempt < MaxRetries)
                                 {
                                     await Task.Delay(RetryDelayMs, timeoutCts.Token);
                                     continue;
                                 }
-                                return AdbSnReadResult.Failure($"ylzero command exception: {ylzeroEx.Message}");
+                                return AdbSnReadResult.Failure($"ADB 口令异常: {ylzeroEx.Message}");
                             }
 
                             // Step 2: 执行 SN 读取命令（关键步骤）
@@ -163,7 +163,7 @@ namespace SnVerify.Services.Adb
                                     await Task.Delay(RetryDelayMs, timeoutCts.Token);
                                     continue;
                                 }
-                                return AdbSnReadResult.Failure("SN read command timeout", true);
+                                return AdbSnReadResult.Failure("设备SN 读取超时", true);
                             }
 
                             if (!snResult.IsSuccess)
@@ -175,7 +175,7 @@ namespace SnVerify.Services.Adb
                                 }
 
                                 // 构建错误消息，包含 ErrorMessage 和 StandardError
-                                var errorMessage = $"SN read command failed: {snResult.ErrorMessage}";
+                                var errorMessage = $"设备SN 读取失败: {snResult.ErrorMessage}";
                                 if (!string.IsNullOrEmpty(snResult.StandardError))
                                 {
                                     errorMessage += $"\nStandardError: {snResult.StandardError}";
@@ -193,7 +193,7 @@ namespace SnVerify.Services.Adb
                                     continue;
                                 }
 
-                                return AdbSnReadResult.Failure("SN is empty or whitespace");
+                                return AdbSnReadResult.Failure("设备SN is empty or whitespace");
                             }
 
                             // SN 读取成功，返回结果

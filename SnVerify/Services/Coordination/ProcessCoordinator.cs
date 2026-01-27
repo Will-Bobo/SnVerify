@@ -102,68 +102,117 @@ namespace SnVerify.Services.Coordination
 
             try
             {
-                // Step 1: 检查批次内 SN 在 PASS 记录中是否重复（仅检查 PASS 记录）
-                var isDuplicateInPass = await _storageService.IsSnDuplicateInPassAsync(_batchId, sn);
-                if (isDuplicateInPass)
-                {
-                    // PASS 记录中重复，拒绝并返回 FAIL（更新或创建 FAIL 记录）
-                    await SaveOrUpdateFailResultAsync(sn, "FAIL", "DUPLICATE_SN");
-                    _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {sn}, ADB SN: N/A] , 错误结果: DUPLICATE_SN");
-                    _loggingService?.LogInfo("检验结束");
-                    UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", "DUPLICATE_SN", _batchId));
-                    return;
-                }
-
-                // Step 2: 通过 ADB 读取设备 SN
+                // Step 1: 通过 ADB 读取设备 SN
                 var adbResult = await _adbAccessService.ReadDeviceSnAsync();
                 if (!adbResult.IsSuccess)
                 {
                     var result = adbResult.IsTimeout ? "TIMEOUT" : "FAIL";
-                    var failReason = adbResult.IsTimeout ? "ADB_TIMEOUT" : adbResult.ErrorReason;
-                    await SaveOrUpdateFailResultAsync(sn, result, failReason);
-                    _loggingService?.LogInfo($"检验结果 [{result}] , [扫码枪SN: {sn}, ADB SN: N/A] , 错误结果: {failReason}");
+                    var failReason = adbResult.IsTimeout ? "ADB读取设备超时" : adbResult.ErrorReason;
+                    await SaveOrUpdateFailResultAsync(sn, result, failReason, null);
+                    _loggingService?.LogInfo($"检验结果 [{result}] , [扫码枪SN: {sn}, 设备SN: N/A] , 错误结果: {failReason}");
                     _loggingService?.LogInfo("检验结束");
                     UpdateSnapshot(VerificationSnapshot.Completed(sn, result, failReason, _batchId));
                     return;
                 }
 
-                var snAdb = adbResult.Sn;
-                if (string.IsNullOrWhiteSpace(snAdb))
+                var deviceSN = adbResult.Sn;
+                if (string.IsNullOrWhiteSpace(deviceSN))
                 {
-                    await SaveOrUpdateFailResultAsync(sn, "FAIL", "ADB_SN_EMPTY");
-                    _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {sn}, ADB SN: N/A] , 错误结果: ADB_SN_EMPTY");
+                    const string failReason = "ADB读取设备SN为空";
+                    await SaveOrUpdateFailResultAsync(sn, "FAIL", failReason, null);
+                    _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {sn}, 设备SN: N/A] , 错误结果: {failReason}");
                     _loggingService?.LogInfo("检验结束");
-                    UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", "ADB_SN_EMPTY", _batchId));
+                    UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", failReason, _batchId));
                     return;
                 }
 
-                // Step 3: 校验 SN 一致性（区分大小写）
-                var snScanNormalized = sn.Trim();
-                var snAdbNormalized = snAdb.Trim();
+                // Step 2: 决策树校验逻辑（基于 SN_Sticker_Device_Relation_Rules.md）
+                var stickerSN = sn.Trim();
+                var deviceSNNormalized = deviceSN.Trim();
 
-                if (snScanNormalized == snAdbNormalized)
+                // 规则 1：绑定一致，且无历史 PASS 绑定 → PASS
+                if (stickerSN == deviceSNNormalized)
                 {
-                    // PASS
-                    await SaveResultAsync(sn, "PASS", null);
-                    _loggingService?.LogInfo($"检验结果 [PASS] , [扫码枪SN: {sn}, ADB SN: {snAdb}] , 成功结果");
-                    _loggingService?.LogInfo("检验结束");
-                    UpdateSnapshot(VerificationSnapshot.Completed(sn, "PASS", null, _batchId));
+                    // 优先检查绑定关系（规则2优先于规则1）
+                    var bindingExists = await _storageService.IsBindingInPassHistoryAsync(stickerSN, deviceSNNormalized);
+                    if (bindingExists)
+                    {
+                        // 规则 2：绑定一致，但存在历史 PASS 绑定 → FAIL（已出站）
+                        const string failReason = "设备SN已存在";
+                        await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", failReason, deviceSNNormalized);
+                        _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 错误结果: {failReason}");
+                        _loggingService?.LogInfo("检验结束");
+                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _batchId));
+                        return;
+                    }
+
+                    // 检查是否在历史 PASS 中（用于规则1判断）
+                    var stickerExists = await _storageService.IsStickerSnInPassHistoryAsync(stickerSN);
+                    var deviceExists = await _storageService.IsDeviceSnInPassHistoryAsync(deviceSNNormalized);
+
+                    if (!stickerExists && !deviceExists)
+                    {
+                        // 规则 1：PASS
+                        await SaveResultAsync(stickerSN, "PASS", null, deviceSNNormalized);
+                        _loggingService?.LogInfo($"检验结果 [PASS] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 成功结果");
+                        _loggingService?.LogInfo("检验结束");
+                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "PASS", null, _batchId));
+                        return;
+                    }
+                    else
+                    {
+                        // 规则 2：绑定一致，但存在历史 PASS 绑定 → FAIL（已出站）
+                        const string failReason = "设备SN已存在";
+                        await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", failReason, deviceSNNormalized);
+                        _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 错误结果: {failReason}");
+                        _loggingService?.LogInfo("检验结束");
+                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _batchId));
+                        return;
+                    }
                 }
                 else
                 {
-                    // FAIL - SN 不一致
-                    var failReason = $"MISMATCH: Scan={snScanNormalized}, ADB={snAdbNormalized}";
-                    await SaveOrUpdateFailResultAsync(sn, "FAIL", failReason);
-                    _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {sn}, ADB SN: {snAdb}] , 错误结果: {failReason}");
+                    // 绑定不一致：StickerSN != DeviceSN
+                    const string mismatchReason = "设备SN 与 条形码SN [不匹配]";
+
+                    // 规则 3：StickerSN 已存在于历史 PASS 绑定中 → FAIL（贴纸重复）
+                    var stickerExists = await _storageService.IsStickerSnInPassHistoryAsync(stickerSN);
+                    if (stickerExists)
+                    {
+                        var failReason = $"{mismatchReason}，并且 条形码SN 已存在";
+                        await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", failReason, deviceSNNormalized);
+                        _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 错误结果: {failReason}");
+                        _loggingService?.LogInfo("检验结束");
+                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _batchId));
+                        return;
+                    }
+
+                    // 规则 4：DeviceSN 已存在于历史 PASS 绑定中 → FAIL（设备已出站）
+                    var deviceExists = await _storageService.IsDeviceSnInPassHistoryAsync(deviceSNNormalized);
+                    if (deviceExists)
+                    {
+                        var failReason = $"{mismatchReason}，并且 设备SN 已存在";
+                        await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", failReason, deviceSNNormalized);
+                        _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 错误结果: {failReason}");
+                        _loggingService?.LogInfo("检验结束");
+                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _batchId));
+                        return;
+                    }
+
+                    // 规则 5：绑定不一致，且双方均无历史 PASS 绑定 → FAIL（包装不一致）
+                    var failReason5 = mismatchReason;
+                    await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", failReason5, deviceSNNormalized);
+                    _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 错误结果: {failReason5}");
                     _loggingService?.LogInfo("检验结束");
-                    UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", failReason, _batchId));
+                    UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason5, _batchId));
+                    return;
                 }
             }
             catch (Exception ex)
             {
                 // 异常处理
-                await SaveOrUpdateFailResultAsync(sn, "FAIL", $"EXCEPTION: {ex.Message}");
-                _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {sn}, ADB SN: N/A] , 错误结果: EXCEPTION: {ex.Message}");
+                await SaveOrUpdateFailResultAsync(sn, "FAIL", $"EXCEPTION: {ex.Message}", null);
+                _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {sn}, 设备SN: N/A] , 错误结果: EXCEPTION: {ex.Message}");
                 _loggingService?.LogInfo("检验结束");
                 UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", $"EXCEPTION: {ex.Message}", _batchId));
             }
@@ -183,7 +232,7 @@ namespace SnVerify.Services.Coordination
         /// <summary>
         /// 保存或更新 FAIL 结果：如果存在 FAIL 记录则更新，否则创建新记录
         /// </summary>
-        private async Task SaveOrUpdateFailResultAsync(string sn, string result, string failReason)
+        private async Task SaveOrUpdateFailResultAsync(string sn, string result, string failReason, string deviceSN)
         {
             try
             {
@@ -195,6 +244,7 @@ namespace SnVerify.Services.Coordination
                     // 存在 FAIL 记录，更新它
                     existingFailResult.Result = result;
                     existingFailResult.FailReason = failReason;
+                    existingFailResult.DeviceSN = deviceSN;
                     existingFailResult.VerifyTime = DateTime.Now;
                     await _storageService.UpdateVerifyResultAsync(existingFailResult);
                 }
@@ -205,6 +255,7 @@ namespace SnVerify.Services.Coordination
                     {
                         BatchId = _batchId,
                         SN = sn,
+                        DeviceSN = deviceSN,
                         Result = result,
                         FailReason = failReason,
                         VerifyTime = DateTime.Now
@@ -222,7 +273,7 @@ namespace SnVerify.Services.Coordination
         /// <summary>
         /// 保存校验结果到存储服务
         /// </summary>
-        private async Task SaveResultAsync(string sn, string result, string failReason)
+        private async Task SaveResultAsync(string sn, string result, string failReason, string deviceSN)
         {
             try
             {
@@ -230,6 +281,7 @@ namespace SnVerify.Services.Coordination
                 {
                     BatchId = _batchId,
                     SN = sn,
+                    DeviceSN = deviceSN,
                     Result = result,
                     FailReason = failReason,
                     VerifyTime = DateTime.Now

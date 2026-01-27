@@ -56,6 +56,28 @@ namespace SnVerify.Services.Storage
         Task<bool> IsSnDuplicateInPassAsync(string batchId, string sn);
 
         /// <summary>
+        /// 检查 StickerSN 是否存在于历史 PASS 绑定中（跨批次查询）
+        /// </summary>
+        /// <param name="stickerSN">贴纸 SN（扫码枪输入的 SN）</param>
+        /// <returns>是否存在</returns>
+        Task<bool> IsStickerSnInPassHistoryAsync(string stickerSN);
+
+        /// <summary>
+        /// 检查 DeviceSN 是否存在于历史 PASS 绑定中（跨批次查询）
+        /// </summary>
+        /// <param name="deviceSN">设备 SN（从设备内部读取的 SN）</param>
+        /// <returns>是否存在</returns>
+        Task<bool> IsDeviceSnInPassHistoryAsync(string deviceSN);
+
+        /// <summary>
+        /// 检查绑定关系（StickerSN <-> DeviceSN）是否存在于历史 PASS 绑定中（跨批次查询）
+        /// </summary>
+        /// <param name="stickerSN">贴纸 SN</param>
+        /// <param name="deviceSN">设备 SN</param>
+        /// <returns>绑定关系是否存在</returns>
+        Task<bool> IsBindingInPassHistoryAsync(string stickerSN, string deviceSN);
+
+        /// <summary>
         /// 获取指定批次和 SN 的 FAIL 记录（如果存在）
         /// </summary>
         /// <param name="batchId">批次 ID</param>
