@@ -885,8 +885,8 @@ namespace SnVerify.Services.Storage
         private void WriteSheetHeader(ExcelWorksheet sheet)
         {
             sheet.Cells[1, 1].Value = "Id";
-            sheet.Cells[1, 2].Value = "SN";
-            sheet.Cells[1, 3].Value = "DeviceSN";
+            sheet.Cells[1, 2].Value = "条形码SN";
+            sheet.Cells[1, 3].Value = "设备SN";
             sheet.Cells[1, 4].Value = "Result";
             sheet.Cells[1, 5].Value = "FailReason";
             sheet.Cells[1, 6].Value = "VerifyTime";

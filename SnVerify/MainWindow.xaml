@@ -11,49 +11,42 @@
         <!-- 转换器 -->
         <local:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
         
-        <!-- 样式定义 -->
-        <Style x:Key="HeaderTextStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="16"/>
+        <!-- 工业上位机样式：简约、清晰、无装饰 -->
+        
+        <!-- 批次区标题样式 -->
+        <Style x:Key="BatchHeaderStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="14"/>
             <Setter Property="FontWeight" Value="Bold"/>
-            <Setter Property="Margin" Value="5"/>
-        </Style>
-        <Style x:Key="StatusTextStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="24"/>
-            <Setter Property="FontWeight" Value="Bold"/>
-            <Setter Property="HorizontalAlignment" Value="Center"/>
             <Setter Property="VerticalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="5,0"/>
         </Style>
 
-        <!-- 结果卡片样式：四角圆角 + 轻量投影 -->
+        <!-- 主状态卡片样式：纯色背景，无阴影无渐变 -->
         <Style x:Key="ResultCardStyle" TargetType="Border">
-            <Setter Property="CornerRadius" Value="24"/>
-            <Setter Property="Padding" Value="40,30"/>
+            <Setter Property="CornerRadius" Value="8"/>
+            <Setter Property="Padding" Value="60,40"/>
             <Setter Property="Margin" Value="20"/>
-            <Setter Property="Effect">
-                <Setter.Value>
-                    <DropShadowEffect BlurRadius="20" ShadowDepth="3" Opacity="0.4" Color="Black"/>
-                </Setter.Value>
-            </Setter>
-            <Setter Property="Background" Value="#E0E0E0"/>
+            <Setter Property="Background" Value="#808080"/>
             <Style.Triggers>
                 <DataTrigger Binding="{Binding UiState}" Value="Pass">
-                    <Setter Property="Background" Value="#2E7D32"/>
+                    <Setter Property="Background" Value="#00FF00"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding UiState}" Value="Fail">
-                    <Setter Property="Background" Value="#C62828"/>
+                    <Setter Property="Background" Value="#FF0000"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding UiState}" Value="Processing">
-                    <Setter Property="Background" Value="#1976D2"/>
+                    <Setter Property="Background" Value="#0080FF"/>
                 </DataTrigger>
                 <DataTrigger Binding="{Binding UiState}" Value="Idle">
-                    <Setter Property="Background" Value="#757575"/>
+                    <Setter Property="Background" Value="#808080"/>
                 </DataTrigger>
             </Style.Triggers>
         </Style>
 
-        <!-- 结果文字样式 -->
+        <!-- 主状态文字样式：字号≥48，粗体，白色 -->
         <Style x:Key="ResultTextStyle" TargetType="TextBlock">
-            <Setter Property="FontSize" Value="64"/>
+            <!-- 稍微缩小主状态字号，但仍≥48 -->
+            <Setter Property="FontSize" Value="48"/>
             <Setter Property="FontWeight" Value="Bold"/>
             <Setter Property="Foreground" Value="White"/>
             <Setter Property="HorizontalAlignment" Value="Center"/>
@@ -61,16 +54,34 @@
             <Setter Property="TextAlignment" Value="Center"/>
         </Style>
 
-        <!-- 错误详情面板样式 -->
-        <Style x:Key="ErrorDetailPanelStyle" TargetType="Border">
-            <Setter Property="Background" Value="#FFEBEE"/>
-            <Setter Property="BorderBrush" Value="#EF5350"/>
-            <Setter Property="BorderThickness" Value="2"/>
-            <Setter Property="CornerRadius" Value="8"/>
-            <Setter Property="Padding" Value="15"/>
-            <Setter Property="Width" Value="500"/>
+        <!-- SN显示样式：字号≥20 -->
+        <Style x:Key="SnDisplayStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="24"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="Black"/>
             <Setter Property="HorizontalAlignment" Value="Center"/>
-            <Setter Property="VerticalAlignment" Value="Top"/>
+            <Setter Property="TextTrimming" Value="CharacterEllipsis"/>
+            <Setter Property="TextWrapping" Value="NoWrap"/>
+        </Style>
+
+        <!-- 失败原因样式：字号≥16 -->
+        <Style x:Key="FailReasonStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Foreground" Value="#8B0000"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="Margin" Value="10"/>
+        </Style>
+
+        <!-- 错误详情面板样式：仅FAIL时显示 -->
+        <Style x:Key="ErrorDetailPanelStyle" TargetType="Border">
+            <Setter Property="Background" Value="#FFE0E0"/>
+            <Setter Property="BorderBrush" Value="#FF0000"/>
+            <Setter Property="BorderThickness" Value="2"/>
+            <Setter Property="CornerRadius" Value="6"/>
+            <Setter Property="Padding" Value="20"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
             <Setter Property="Visibility" Value="Collapsed"/>
             <Style.Triggers>
                 <DataTrigger Binding="{Binding ShowFailReason}" Value="True">
@@ -80,259 +91,318 @@
         </Style>
     </Window.Resources>
     
-    <Grid>
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto"/> <!-- 批次区 -->
-            <RowDefinition Height="*"/> <!-- 检验区 -->
-            <RowDefinition Height="Auto"/> <!-- 调试日志区 -->
-            <RowDefinition Height="Auto"/> <!-- 状态栏 -->
-        </Grid.RowDefinitions>
-
-        <!-- 批次区 -->
-        <Border Grid.Row="0" BorderBrush="Gray" BorderThickness="1" Padding="10" Margin="5">
-            <StackPanel Orientation="Horizontal">
-                <TextBlock Text="批次号：" Style="{StaticResource HeaderTextStyle}" VerticalAlignment="Center"/>
-                <TextBox x:Name="BatchIdTextBox" MinWidth="200" Margin="5" VerticalAlignment="Center"
-                         Text="{Binding BatchNameInput, UpdateSourceTrigger=PropertyChanged}">
-                    <TextBox.Style>
-                        <Style TargetType="TextBox">
-                            <Setter Property="IsEnabled" Value="True"/>
-                            <Style.Triggers>
-                                <DataTrigger Binding="{Binding IsBatchActive}" Value="True">
-                                    <Setter Property="IsEnabled" Value="False"/>
-                                </DataTrigger>
-                            </Style.Triggers>
-                        </Style>
-                    </TextBox.Style>
-                </TextBox>
-                <Button x:Name="StartBatchButton" Content="开始" Width="100" Margin="5"
-                        Command="{Binding StartBatchCommand}"/>
-                <Button x:Name="EndBatchButton" Content="结束" Width="100" Margin="5"
-                        Command="{Binding EndBatchCommand}"/>
-                <Button x:Name="ExportBatchButton" Content="导出" Width="80" Margin="5"
-                        Command="{Binding ExportCommand}"/>
-                <TextBlock x:Name="BatchStatusText" Margin="10,0" VerticalAlignment="Center"
-                           Text="{Binding IsBatchActive, StringFormat='状态: {0}'}"/>
-            </StackPanel>
-        </Border>
-
-        <!-- 检验区 -->
-        <Grid Grid.Row="1" Margin="5">
+    <DockPanel LastChildFill="True">
+        <!-- 1. 批次控制区（顶部，次要） -->
+        <Grid DockPanel.Dock="Top" Margin="5">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
-
-            <!-- 主检验区域 -->
-            <Border Grid.Column="0" BorderBrush="DarkBlue" BorderThickness="2" Padding="20">
-                <Grid>
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="*"/>
-                        <RowDefinition Height="Auto"/>
-                    </Grid.RowDefinitions>
-
-                    <!-- 检验状态标题 -->
-                    <TextBlock Grid.Row="0" Text="检验结果" Style="{StaticResource HeaderTextStyle}"/>
-                    
-                    <!-- 中间区域：包含正方形卡片、SN信息显示、错误详情面板 -->
-                    <Grid Grid.Row="1">
-                        <Grid.RowDefinitions>
-                            <RowDefinition Height="*"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                            <RowDefinition Height="Auto"/>
-                        </Grid.RowDefinitions>
-
-                        <!-- 正方形中间区域：结果卡片（四角圆角、轻量投影） -->
-                        <Grid Grid.Row="0" HorizontalAlignment="Center" VerticalAlignment="Center">
-                            <Border Style="{StaticResource ResultCardStyle}" 
-                                    Width="350" Height="350"
-                                    HorizontalAlignment="Center" 
-                                    VerticalAlignment="Center">
-                                <TextBlock>
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock" BasedOn="{StaticResource ResultTextStyle}">
-                                            <Setter Property="Text" Value="等待扫码"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding UiState}" Value="Pass">
-                                                    <Setter Property="Text" Value="PASS"/>
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding UiState}" Value="Fail">
-                                                    <Setter Property="Text" Value="FAIL"/>
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding UiState}" Value="Processing">
-                                                    <Setter Property="Text" Value="检验中..."/>
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding UiState}" Value="Idle">
-                                                    <Setter Property="Text" Value="等待扫码"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                            </Border>
-                        </Grid>
-
-                        <!-- SN信息显示区域（扫码SN和设备SN，固定宽度，超长省略） -->
-                        <Border Grid.Row="1" 
-                                Background="#F5F5F5" 
-                                BorderBrush="#E0E0E0" 
-                                BorderThickness="1"
-                                CornerRadius="6"
-                                Padding="15,10"
-                                Margin="20,10"
-                                HorizontalAlignment="Center"
-                                Width="680">
-                            <Grid>
-                                <Grid.ColumnDefinitions>
-                                    <ColumnDefinition Width="*"/>
-                                    <ColumnDefinition Width="Auto"/>
-                                    <ColumnDefinition Width="*"/>
-                                </Grid.ColumnDefinitions>
-                                <!-- 扫码SN -->
-                                <StackPanel Grid.Column="0" Margin="0,0,20,0" HorizontalAlignment="Stretch">
-                                    <TextBlock Text="扫码SN" 
-                                               FontSize="14" 
-                                               FontWeight="Bold"
-                                               Foreground="#666666"
-                                               Margin="0,0,0,5"
-                                               HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding CurrentSn}" 
-                                               FontSize="16" 
-                                               Foreground="#424242"
-                                               HorizontalAlignment="Center"
-                                               TextTrimming="CharacterEllipsis"
-                                               TextWrapping="NoWrap">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Text" Value="--"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding CurrentSn}" Value="">
-                                                        <Setter Property="Text" Value="--"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </StackPanel>
-                                <!-- 分隔线 -->
-                                <Rectangle Grid.Column="1" Width="1" 
-                                           Fill="#E0E0E0" 
-                                           VerticalAlignment="Stretch" 
-                                           Margin="0,5"/>
-                                <!-- 设备SN -->
-                                <StackPanel Grid.Column="2" Margin="20,0,0,0" HorizontalAlignment="Stretch">
-                                    <TextBlock Text="设备SN" 
-                                               FontSize="14" 
-                                               FontWeight="Bold"
-                                               Foreground="#666666"
-                                               Margin="0,0,0,5"
-                                               HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding DeviceSN}" 
-                                               FontSize="16" 
-                                               Foreground="#424242"
-                                               HorizontalAlignment="Center"
-                                               TextTrimming="CharacterEllipsis"
-                                               TextWrapping="NoWrap">
-                                        <TextBlock.Style>
-                                            <Style TargetType="TextBlock">
-                                                <Setter Property="Text" Value="--"/>
-                                                <Style.Triggers>
-                                                    <DataTrigger Binding="{Binding DeviceSN}" Value="">
-                                                        <Setter Property="Text" Value="--"/>
-                                                    </DataTrigger>
-                                                </Style.Triggers>
-                                            </Style>
-                                        </TextBlock.Style>
-                                    </TextBlock>
-                                </StackPanel>
-                            </Grid>
-                        </Border>
-
-                        <!-- 错误详情面板（固定区域，避免跳动） -->
-                        <Grid Grid.Row="3" MinHeight="100" Margin="0,10,0,10">
-                            <Border Style="{StaticResource ErrorDetailPanelStyle}">
-                                <StackPanel>
-                                    <TextBlock Text="错误详情" FontSize="14" FontWeight="Bold" 
-                                               Foreground="#C62828" Margin="0,0,0,8"/>
-                                    <TextBlock Text="{Binding FailReason}" 
-                                               FontSize="13" 
-                                               Foreground="#424242"
-                                               TextWrapping="Wrap"
-                                               LineHeight="20"/>
-                                </StackPanel>
-                            </Border>
-                        </Grid>
-                    </Grid>
-
-                    <!-- 扫码输入框（核心交互控件） -->
-                    <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Center" Margin="10">
-                        <TextBlock Text="扫码输入：" VerticalAlignment="Center" Margin="5"/>
-                        <TextBox x:Name="ScanInputTextBox" Width="300" Height="35" Margin="5"
-                                 Text="{Binding ScanInputText, UpdateSourceTrigger=PropertyChanged}"
-                                 KeyDown="ScanInputTextBox_KeyDown"
-                                 GotFocus="ScanInputTextBox_GotFocus"
-                                 FontSize="16">
-                            <TextBox.Style>
-                                <Style TargetType="TextBox">
-                                    <Setter Property="IsEnabled" Value="True"/>
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsProcessing}" Value="True">
-                                            <Setter Property="IsEnabled" Value="False"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBox.Style>
-                        </TextBox>
-                    </StackPanel>
-                </Grid>
+            
+            <!-- 批次控制区 -->
+            <Border Grid.Column="0" BorderBrush="#CCCCCC" BorderThickness="1" Padding="10" Background="#F5F5F5">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="批次号：" Style="{StaticResource BatchHeaderStyle}"/>
+                    <TextBox x:Name="BatchIdTextBox" MinWidth="200" Height="28" Margin="5,0" VerticalAlignment="Center"
+                             Text="{Binding BatchNameInput, UpdateSourceTrigger=PropertyChanged}">
+                        <TextBox.Style>
+                            <Style TargetType="TextBox">
+                                <Setter Property="IsEnabled" Value="True"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsBatchActive}" Value="True">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                        <Setter Property="Background" Value="#E0E0E0"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBox.Style>
+                    </TextBox>
+                    <Button x:Name="StartBatchButton" Content="开始批次" Width="100" Height="28" Margin="5,0"
+                            Command="{Binding StartBatchCommand}">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="IsEnabled" Value="True"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsBatchActive}" Value="True">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <Button x:Name="EndBatchButton" Content="结束批次" Width="100" Height="28" Margin="5,0"
+                            Command="{Binding EndBatchCommand}">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="IsEnabled" Value="False"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsBatchActive}" Value="True">
+                                        <Setter Property="IsEnabled" Value="True"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <Button x:Name="ExportBatchButton" Content="导出" Width="80" Height="28" Margin="5,0"
+                            Command="{Binding ExportCommand}">
+                        <Button.Style>
+                            <Style TargetType="Button">
+                                <Setter Property="IsEnabled" Value="False"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsBatchActive}" Value="False">
+                                        <Setter Property="IsEnabled" Value="True"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Button.Style>
+                    </Button>
+                    <TextBlock x:Name="BatchStatusText" Margin="15,0,5,0" VerticalAlignment="Center" FontSize="12"
+                               Text="{Binding IsBatchActive, StringFormat='状态: {0}'}"/>
+                </StackPanel>
             </Border>
-
-            <!-- 右侧按钮区域 -->
-            <StackPanel Grid.Column="1" Margin="10,0,0,0" VerticalAlignment="Top">
-                <Button x:Name="StartVerifyButton" Content="人工检验" Width="120" Height="40" Margin="5"
-                        Command="{Binding StartVerifyCommand}"
-                        IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBooleanConverter}}"
-                        Click="StartVerifyButton_Click"/>
-                <Button x:Name="SelfCheckButton" Content="自检" Width="120" Height="40" Margin="5"
-                        Command="{Binding SelfCheckCommand}"
-                        Click="SelfCheckButton_Click"/>
-            </StackPanel>
         </Grid>
 
-        <!-- 调试日志区域（可折叠，在状态栏上方） -->
-        <Expander x:Name="DebugLogExpander" Grid.Row="2" Header="调试日志（Debug）" IsExpanded="False" Margin="5">
-            <Border BorderBrush="Gray" BorderThickness="1" Padding="5">
+        <!-- 6. 全局状态栏（窗口最底部，固定显示） -->
+        <StatusBar DockPanel.Dock="Bottom" Height="28" Background="#F0F0F0">
+            <StatusBarItem>
+                <TextBlock Text="{Binding CurrentBatchId, StringFormat='批次: {0}'}" FontSize="12"/>
+            </StatusBarItem>
+            <Separator/>
+            <StatusBarItem>
+                <TextBlock Text="{Binding IsProcessing, StringFormat='处理中: {0}'}" FontSize="12"/>
+            </StatusBarItem>
+            <Separator/>
+            <StatusBarItem>
+                <TextBlock Text="{Binding StatusText, StringFormat='最近结果: {0}'}" FontSize="12"/>
+            </StatusBarItem>
+        </StatusBar>
+
+        <!-- 5. 日志/测试记录区（默认折叠；展开时不应挤占掉底部状态栏） -->
+        <Expander x:Name="DebugLogExpander"
+                  DockPanel.Dock="Bottom"
+                  Header="调试日志（Debug）"
+                  IsExpanded="False"
+                  Margin="5"
+                  MaxHeight="260">
+            <Border BorderBrush="#CCCCCC" BorderThickness="1" Padding="5" Background="White">
                 <ListBox ItemsSource="{Binding UiLogs}" 
                          FontFamily="Consolas" 
                          FontSize="12" 
                          MinHeight="150"
                          MaxHeight="300"
                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
-                         ScrollViewer.VerticalScrollBarVisibility="Auto">
+                         ScrollViewer.VerticalScrollBarVisibility="Auto"
+                         Background="White"
+                         BorderThickness="0">
                     <ListBox.ItemTemplate>
                         <DataTemplate>
-                            <TextBlock Text="{Binding}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="2"/>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
             </Border>
         </Expander>
 
-        <!-- 状态栏（窗口最底部，不被日志遮挡） -->
-        <StatusBar Grid.Row="3" Height="30">
-            <StatusBarItem>
-                <TextBlock Text="{Binding CurrentBatchId, StringFormat='批次: {0}'}"/>
-            </StatusBarItem>
-            <Separator/>
-            <StatusBarItem>
-                <TextBlock Text="{Binding IsProcessing, StringFormat='处理中: {0}'}"/>
-            </StatusBarItem>
-            <Separator/>
-            <StatusBarItem>
-                <TextBlock Text="{Binding StatusText, StringFormat='最近结果: {0}'}"/>
-            </StatusBarItem>
-        </StatusBar>
-    </Grid>
+        <!-- 2. 主检验区（中部，核心区域，高度≥60%，最小高度保证主卡片不被挤占） -->
+        <Grid Margin="10" MinHeight="500">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- 主检验显示区域 -->
+            <Border Grid.Column="0" BorderBrush="#999999" BorderThickness="1" Padding="30" Background="White">
+                <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <!-- 主状态卡片行，设置较小的最小高度，便于整体紧凑 -->
+                        <RowDefinition Height="*" MinHeight="260"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
+
+                    <!-- 当前SN显示（大字号，清晰可见） -->
+                    <!-- <Border Grid.Row="0" Margin="0,0,0,20" HorizontalAlignment="Center">
+                        <StackPanel>
+                            <TextBlock Text="当前SN" FontSize="16" FontWeight="Bold" Foreground="#666666" 
+                                       HorizontalAlignment="Center" Margin="0,0,0,8"/>
+                            <TextBlock MinWidth="400" MaxWidth="600">
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource SnDisplayStyle}">
+                                        <Setter Property="Text" Value="{Binding CurrentSn}"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding CurrentSn}" Value="">
+                                                <Setter Property="Text" Value=""/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </StackPanel>
+                    </Border> -->
+                    
+                    <!-- 主状态卡片（居中，最大视觉权重，稍微缩小尺寸） -->
+                    <Grid Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Border Style="{StaticResource ResultCardStyle}" 
+                                Width="320" Height="320"
+                                HorizontalAlignment="Center" 
+                                VerticalAlignment="Center">
+                            <TextBlock>
+                                <TextBlock.Style>
+                                    <Style TargetType="TextBlock" BasedOn="{StaticResource ResultTextStyle}">
+                                        <Setter Property="Text" Value="等待扫码"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding UiState}" Value="Pass">
+                                                <Setter Property="Text" Value="PASS"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding UiState}" Value="Fail">
+                                                <Setter Property="Text" Value="FAIL"/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding UiState}" Value="Processing">
+                                                <Setter Property="Text" Value="检验中..."/>
+                                            </DataTrigger>
+                                            <DataTrigger Binding="{Binding UiState}" Value="Idle">
+                                                <Setter Property="Text" Value="等待扫码"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBlock.Style>
+                            </TextBlock>
+                        </Border>
+                    </Grid>
+
+                    <!-- 扫码输入框（弱化样式，位于主状态卡片与 SN 信息之间） -->
+                    <Border Grid.Row="2"
+                            HorizontalAlignment="Center"
+                            Margin="0,10,0,0"
+                            Background="#F0F0F0"
+                            BorderBrush="#CCCCCC"
+                            BorderThickness="1"
+                            Padding="8,4"
+                            CornerRadius="4">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="扫码：" VerticalAlignment="Center" Margin="0,0,8,0" FontSize="12" Foreground="#666666"/>
+                            <TextBox x:Name="ScanInputTextBox" Width="260" Height="26" Margin="0"
+                                     Text="{Binding ScanInputText, UpdateSourceTrigger=PropertyChanged}"
+                                     KeyDown="ScanInputTextBox_KeyDown"
+                                     GotFocus="ScanInputTextBox_GotFocus"
+                                     FontSize="14"
+                                     Background="White"
+                                     BorderBrush="#999999"
+                                     BorderThickness="1">
+                                <TextBox.Style>
+                                    <Style TargetType="TextBox">
+                                        <Setter Property="IsEnabled" Value="True"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsProcessing}" Value="True">
+                                                <Setter Property="IsEnabled" Value="False"/>
+                                                <Setter Property="Background" Value="#E0E0E0"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBox.Style>
+                            </TextBox>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- SN信息显示（扫码SN和设备SN） -->
+                    <Border Grid.Row="3" 
+                            Background="#F8F8F8" 
+                            BorderBrush="#DDDDDD" 
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="15,8"
+                            Margin="0,15,0,8"
+                            HorizontalAlignment="Center"
+                            Width="680">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <!-- 扫码SN -->
+                            <StackPanel Grid.Column="0" Margin="0,0,20,0">
+                                <TextBlock Text="扫码SN" 
+                                           FontSize="13" 
+                                           FontWeight="Bold"
+                                           Foreground="#666666"
+                                           Margin="0,0,0,4"
+                                           HorizontalAlignment="Center"/>
+                                <TextBlock Text="{Binding CurrentSn}" 
+                                           FontSize="20" 
+                                           Foreground="#333333"
+                                           HorizontalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           TextWrapping="NoWrap">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="--"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding CurrentSn}" Value="">
+                                                    <Setter Property="Text" Value="--"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                            <!-- 分隔线 -->
+                            <Rectangle Grid.Column="1" Width="1" 
+                                       Fill="#DDDDDD" 
+                                       VerticalAlignment="Stretch" 
+                                       Margin="0,3"/>
+                            <!-- 设备SN -->
+                            <StackPanel Grid.Column="2" Margin="20,0,0,0">
+                                <TextBlock Text="设备SN" 
+                                           FontSize="13" 
+                                           FontWeight="Bold"
+                                           Foreground="#666666"
+                                           Margin="0,0,0,4"
+                                           HorizontalAlignment="Center"/>
+                                <TextBlock Text="{Binding DeviceSN}" 
+                                           FontSize="20" 
+                                           Foreground="#333333"
+                                           HorizontalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           TextWrapping="NoWrap">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="--"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding DeviceSN}" Value="">
+                                                    <Setter Property="Text" Value="--"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- 失败原因显示（仅FAIL时显示） -->
+                    <Grid Grid.Row="4" MinHeight="80" Margin="0,10,0,10">
+                        <Border Style="{StaticResource ErrorDetailPanelStyle}">
+                            <TextBlock Text="{Binding FailReason}" Style="{StaticResource FailReasonStyle}"/>
+                        </Border>
+                    </Grid>
+                </Grid>
+            </Border>
+
+            <!-- 3. 辅助功能区（右侧：人工检验、自检） -->
+            <StackPanel Grid.Column="1" Margin="15,0,0,0" VerticalAlignment="Top">
+                <Button x:Name="StartVerifyButton" Content="人工检验" Width="120" Height="45" Margin="0,5"
+                        Command="{Binding StartVerifyCommand}"
+                        IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBooleanConverter}}"
+                        Click="StartVerifyButton_Click"
+                        FontSize="14" FontWeight="Bold"/>
+                <Button x:Name="SelfCheckButton" Content="自检" Width="120" Height="45" Margin="0,5"
+                        Command="{Binding SelfCheckCommand}"
+                        Click="SelfCheckButton_Click"
+                        FontSize="14" FontWeight="Bold"/>
+            </StackPanel>
+        </Grid>
+    </DockPanel>
 </Window>
