@@ -36,6 +36,8 @@
 * UI、ProcessCoordinator 仍可暂时沿用 Batch 术语与调用，在阶段 2 再切到 Order/Session。
 * MES 不涉及。
 
+> **自检规则与本节约定**：`Phase2.5_Step1_Cursor_SelfCheck_Prompt` 规则 1 要求「Step 1 后完全无 Batch」；本节约定阶段 1 可沿用 Batch、阶段 2 再切。若以自检为准则，需在阶段 1 内完成 Batch 退场。差异与 TODO 见 `Phase2.5_Step1_SelfCheck_Result.md`。
+
 ### 2.4 风险与依赖
 
 * 无前置依赖。完成后，B/C 均依赖本阶段的「表 + 导出 API + 命名规则」。
@@ -74,6 +76,10 @@
 
 * 强依赖阶段 1 的 Order/Session/TestRecord 与导出 API。
 * 本阶段建议在 Cursor 内**连续上下文**完成，减少接口反复。
+
+### 3.5 可执行 Prompt
+
+* 阶段 2 的**可执行 Prompt**（开发原则、必读文档、交付物与验收标准）见：**`docs/Architecture/Phase2.5_Stage2_Executable_Prompt.md`**。执行时严格遵循其中 TDD 与架构约束；前置条件为阶段 1 已完成（含 Batch 退场放到本阶段、阶段 1 单元测试已人工 review 通过）。
 
 ---
 

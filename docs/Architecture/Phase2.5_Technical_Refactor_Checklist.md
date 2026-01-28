@@ -161,6 +161,8 @@ Project
 
 **阶段 1 可执行 Prompt**（开发原则、TDD、必读文档、交付物与验收标准）见：**`docs/Architecture/Phase2.5_Stage1_Executable_Prompt.md`**。Agent 执行阶段 1 时请以该文档为准，严格遵循其中 TDD 与架构约束。
 
+**阶段 2 可执行 Prompt**（开发原则、必读文档、交付物与验收标准）见：**`docs/Architecture/Phase2.5_Stage2_Executable_Prompt.md`**。前置条件为阶段 1 已完成；执行阶段 2 时请以该文档为准，严格遵循其中 TDD 与架构约束。
+
 阶段顺序概要：
 
 1. **阶段 1（A）**：模型与概念重构 — Order / TestSession / TestRecord 表结构、SessionId 规则、按 Session 导出及 PASS/FAIL 去重规则。
