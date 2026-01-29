@@ -80,14 +80,15 @@ namespace SnVerify.Services.Logging
         }
 
         /// <summary>
-        /// 开始新批次日志（创建新的日志文件）
+        /// 开始新的 Session 日志：以 SessionName 作为唯一标识创建日志文件。
+        /// 文件命名规则：session_{SessionName}.log（经过文件系统安全处理）。
         /// </summary>
-        public void StartBatch(string batchId)
+        public void StartSession(string sessionName)
         {
-            if (string.IsNullOrWhiteSpace(batchId))
+            if (string.IsNullOrWhiteSpace(sessionName))
             {
-                Snapshot = LoggingSnapshot.Error("批次 ID 不能为空");
-                throw new ArgumentException("批次 ID 不能为空", nameof(batchId));
+                Snapshot = LoggingSnapshot.Error("SessionName 不能为空");
+                throw new ArgumentException("SessionName 不能为空", nameof(sessionName));
             }
 
             lock (_lockObject)
@@ -97,33 +98,46 @@ namespace SnVerify.Services.Logging
                     // 关闭当前日志文件（如果存在）
                     EndBatchInternal();
 
-                    // 创建新日志文件
-                    _currentBatchId = batchId;
-                    var fileName = $"log_{batchId}_{DateTime.Now:yyyyMMdd_HHmmss}.txt";
+                    // 创建新的 Session 日志文件
+                    _currentBatchId = sessionName;
+                    var safeSessionName = ToSafeFileName(sessionName);
+                    var fileName = $"session_{safeSessionName}.log";
                     _currentLogFilePath = Path.Combine(_logDirectory, fileName);
 
-                    // 使用 FileShare.ReadWrite 模式，允许其他进程读取和写入文件
                     var fileStream = new FileStream(
                         _currentLogFilePath,
                         FileMode.Append,
                         FileAccess.Write,
                         FileShare.ReadWrite);
-                    
+
                     _currentWriter = new StreamWriter(fileStream, Encoding.UTF8)
                     {
                         AutoFlush = true
                     };
 
-                    var startMessage = $"批次 {batchId} 开始";
-                    Snapshot = LoggingSnapshot.Logged(_currentLogFilePath, batchId, startMessage, "INFO", GetRecentMessages());
+                    var startMessage = $"Session {sessionName} 开始";
+                    Snapshot = LoggingSnapshot.Logged(_currentLogFilePath, sessionName, startMessage, "INFO", GetRecentMessages());
                     LogInfo(startMessage);
                 }
                 catch (Exception ex)
                 {
-                    Snapshot = LoggingSnapshot.Error($"开始批次日志失败: {ex.Message}", batchId, GetRecentMessages());
+                    Snapshot = LoggingSnapshot.Error($"开始 Session 日志失败: {ex.Message}", sessionName, GetRecentMessages());
                     throw;
                 }
             }
+        }
+
+        /// <summary>
+        /// 获取指定 SessionName 对应的日志文件绝对路径；不存在时返回 null。
+        /// </summary>
+        public string GetLogFilePath(string sessionName)
+        {
+            if (string.IsNullOrWhiteSpace(sessionName))
+                throw new ArgumentException("SessionName 不能为空", nameof(sessionName));
+
+            var safeSessionName = ToSafeFileName(sessionName);
+            var path = Path.Combine(_logDirectory, $"session_{safeSessionName}.log");
+            return File.Exists(path) ? path : null;
         }
 
         /// <summary>
@@ -152,7 +166,7 @@ namespace SnVerify.Services.Logging
                     _currentWriter.Dispose();
                     _currentWriter = null;
 
-                    // 可选：压缩日志文件
+                    // 可选：压缩日志文件（不删除原始 .log，便于按 SessionName 直接导出）
                     CompressLogFile(_currentLogFilePath);
 
                     _currentLogFilePath = null;
@@ -176,7 +190,7 @@ namespace SnVerify.Services.Logging
         }
 
         /// <summary>
-        /// 压缩日志文件
+        /// 压缩日志文件（为磁盘占用做归档备份，但不删除原始 .log）。
         /// </summary>
         private void CompressLogFile(string logFilePath)
         {
@@ -185,17 +199,36 @@ namespace SnVerify.Services.Logging
 
             try
             {
-                var zipFilePath = logFilePath.Replace(".txt", ".zip");
+                var zipFilePath = Path.ChangeExtension(logFilePath, ".zip");
                 using (var archive = ZipFile.Open(zipFilePath, ZipArchiveMode.Create))
                 {
                     archive.CreateEntryFromFile(logFilePath, Path.GetFileName(logFilePath));
                 }
-                File.Delete(logFilePath);
             }
             catch
             {
                 // 压缩失败不影响主流程，忽略异常
             }
+        }
+
+        /// <summary>
+        /// 将 SessionName 转换为文件系统安全的名称：非法字符统一替换为下划线。
+        /// </summary>
+        private static string ToSafeFileName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return "_";
+
+            var invalidChars = Path.GetInvalidFileNameChars();
+            var chars = name.ToCharArray();
+            for (var i = 0; i < chars.Length; i++)
+            {
+                if (invalidChars.Contains(chars[i]))
+                {
+                    chars[i] = '_';
+                }
+            }
+            return new string(chars);
         }
 
         /// <summary>
@@ -207,8 +240,8 @@ namespace SnVerify.Services.Logging
             {
                 try
                 {
-                    var logFiles = Directory.GetFiles(_logDirectory, "log_*.txt")
-                        .Concat(Directory.GetFiles(_logDirectory, "log_*.zip"))
+                    var logFiles = Directory.GetFiles(_logDirectory, "session_*.log")
+                        .Concat(Directory.GetFiles(_logDirectory, "session_*.zip"))
                         .OrderByDescending(f => new FileInfo(f).CreationTime)
                         .ToList();
 
@@ -273,8 +306,8 @@ namespace SnVerify.Services.Logging
                 {
                     if (_currentWriter == null)
                     {
-                        // 如果没有活动批次，创建一个默认日志文件
-                        StartBatch($"default_{DateTime.Now:yyyyMMdd_HHmmss}");
+                        // 如果没有活动 Session 日志，创建一个默认 Session 日志
+                        StartSession($"default_{DateTime.Now:yyyyMMdd_HHmmss}");
                     }
 
                     var timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss");
@@ -298,7 +331,7 @@ namespace SnVerify.Services.Logging
                     if (new FileInfo(_currentLogFilePath).Length > _maxLogFileSizeBytes)
                     {
                         EndBatchInternal();
-                        StartBatch(_currentBatchId ?? $"rotated_{DateTime.Now:yyyyMMdd_HHmmss}");
+                        StartSession(_currentBatchId ?? $"rotated_{DateTime.Now:yyyyMMdd_HHmmss}");
                     }
 
                     Snapshot = LoggingSnapshot.Logged(_currentLogFilePath, _currentBatchId, message, level, GetRecentMessages());

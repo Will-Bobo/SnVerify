@@ -74,8 +74,8 @@ namespace SnVerify.Infrastructure
             // 校验流程服务工厂：按批次 ID 创建 ProcessCoordinator+VerificationFlowService
             var flowServiceFactory = new VerificationFlowServiceFactory(storageService, adbAccessService, loggingService);
 
-            // 导出聚合服务（阶段 2 B 做，阶段 3 C 调用）
-            var exportAggregationService = new ExportAggregationService(storageService, loggingService);
+            // 导出聚合服务（阶段 2 B 做，阶段 3 C 调用）：使用 LoggingService 提供的 Session 日志文件
+            var exportAggregationService = new ExportAggregationService(storageService, loggingService, loggingService);
 
             // 命名校验服务（阶段 3 C1.3 校验弹窗挂接）
             var orderNameValidator = new OrderNameValidator();

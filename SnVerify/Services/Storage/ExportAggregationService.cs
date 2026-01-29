@@ -21,16 +21,19 @@ namespace SnVerify.Services.Storage
     {
         private readonly IStorageService _storage;
         private readonly IFileLogger _logger;
+        private readonly ILoggingService _loggingService;
 
         /// <summary>
         /// 初始化导出聚合服务
         /// </summary>
-        /// <param name="storage">存储服务（需提供 GetSessionsByOrderIdAsync、GetSessionsByProjectIdAsync、ExportBySessionAsync）</param>
-        /// <param name="logger">日志（可选）</param>
-        public ExportAggregationService(IStorageService storage, IFileLogger logger = null)
+        /// <param name="storage">存储服务（需提供 GetSessionsByOrderIdAsync、GetSessionsByProjectIdAsync）</param>
+        /// <param name="logger">日志（可选，仅用于记录导出过程）</param>
+        /// <param name="loggingService">运行时日志服务（用于查询 Session 对应的日志文件路径）</param>
+        public ExportAggregationService(IStorageService storage, IFileLogger logger = null, ILoggingService loggingService = null)
         {
             _storage = storage ?? throw new ArgumentNullException(nameof(storage));
             _logger = logger ?? new NullFileLogger();
+            _loggingService = loggingService;
         }
 
         /// <inheritdoc />
@@ -58,13 +61,10 @@ namespace SnVerify.Services.Storage
                 throw new InvalidOperationException($"目标 ZIP 已存在，无法导出：{zipFilePath}");
             }
 
-            var tempDir = CreateTempDirectory();
+            string tempDir = null;
             try
             {
-                foreach (var s in sessions)
-                {
-                    await _storage.ExportBySessionAsync(s.Id, tempDir);
-                }
+                tempDir = CreateTempDirectory();
 
                 using (var zipStream = new FileStream(zipFilePath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
                 using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create))
@@ -72,29 +72,43 @@ namespace SnVerify.Services.Storage
                     foreach (var s in sessions)
                     {
                         var safeSessionName = ToSafeFileName(s.SessionName);
-                        var xlsxPath = Path.Combine(tempDir, $"{s.Id}.xlsx");
-                        var txtPath = Path.Combine(tempDir, $"{s.Id}.txt");
 
-                        if (File.Exists(xlsxPath))
+                        // 1) 先为当前 Session 生成结果表格（基于 StorageService / TestRecord）
+                        try
                         {
-                            var entryName = $"{safeOrderName}/{safeSessionName}.xlsx";
-                            archive.CreateEntryFromFile(xlsxPath, entryName);
+                            await _storage.ExportBySessionAsync(s.Id, tempDir);
+                            var excelPath = Path.Combine(tempDir, $"{s.Id}.xlsx");
+                            if (File.Exists(excelPath))
+                            {
+                                var excelEntryName = $"{safeOrderName}/{safeSessionName}.xlsx";
+                                archive.CreateEntryFromFile(excelPath, excelEntryName);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            // 表格导出失败不影响日志导出，记录错误后继续
+                            _logger?.LogError($"按订单导出 Session={s.SessionName} 表格失败：{ex.Message}", ex);
                         }
 
-                        if (File.Exists(txtPath))
-                        {
-                            var entryName = $"{safeOrderName}/{safeSessionName}.txt";
-                            archive.CreateEntryFromFile(txtPath, entryName);
-                        }
+                        // 2) 保持原有日志文件导出逻辑不变
+                        if (_loggingService == null)
+                            continue;
+
+                        var sessionLogPath = _loggingService.GetLogFilePath(s.SessionName);
+                        if (string.IsNullOrEmpty(sessionLogPath) || !File.Exists(sessionLogPath))
+                            continue;
+
+                        var logEntryName = $"{safeOrderName}/{safeSessionName}.log";
+                        archive.CreateEntryFromFile(sessionLogPath, logEntryName);
                     }
                 }
-
-                _logger?.LogInfo($"按订单导出 ZIP 完成: OrderId={orderId}, SessionCount={sessions.Count}, Zip={zipFilePath}");
             }
             finally
             {
                 TryDeleteDirectory(tempDir);
             }
+
+            _logger?.LogInfo($"按订单导出 ZIP 完成: OrderId={orderId}, SessionCount={sessions.Count}, Zip={zipFilePath}");
         }
 
         /// <inheritdoc />
@@ -126,13 +140,10 @@ namespace SnVerify.Services.Storage
             var orders = await _storage.GetAllOrdersAsync();
             var orderNameById = orders.ToDictionary(o => o.Id, o => o.OrderName);
 
-            var tempDir = CreateTempDirectory();
+            string tempDir = null;
             try
             {
-                foreach (var s in sessions)
-                {
-                    await _storage.ExportBySessionAsync(s.Id, tempDir);
-                }
+                tempDir = CreateTempDirectory();
 
                 using (var zipStream = new FileStream(zipFilePath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
                 using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create))
@@ -148,29 +159,41 @@ namespace SnVerify.Services.Storage
                         var safeOrderName = ToSafeFileName(orderName);
                         var safeSessionName = ToSafeFileName(s.SessionName);
 
-                        var xlsxPath = Path.Combine(tempDir, $"{s.Id}.xlsx");
-                        var txtPath = Path.Combine(tempDir, $"{s.Id}.txt");
-
-                        if (File.Exists(xlsxPath))
+                        // 1) 先为当前 Session 生成结果表格（基于 StorageService / TestRecord）
+                        try
                         {
-                            var entryName = $"{safeProductName}/{safeOrderName}/{safeSessionName}.xlsx";
-                            archive.CreateEntryFromFile(xlsxPath, entryName);
+                            await _storage.ExportBySessionAsync(s.Id, tempDir);
+                            var excelPath = Path.Combine(tempDir, $"{s.Id}.xlsx");
+                            if (File.Exists(excelPath))
+                            {
+                                var excelEntryName = $"{safeProductName}/{safeOrderName}/{safeSessionName}.xlsx";
+                                archive.CreateEntryFromFile(excelPath, excelEntryName);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger?.LogError($"按项目导出 Session={s.SessionName} 表格失败：{ex.Message}", ex);
                         }
 
-                        if (File.Exists(txtPath))
-                        {
-                            var entryName = $"{safeProductName}/{safeOrderName}/{safeSessionName}.txt";
-                            archive.CreateEntryFromFile(txtPath, entryName);
-                        }
+                        // 2) 保持原有日志文件导出逻辑不变
+                        if (_loggingService == null)
+                            continue;
+
+                        var sessionLogPath = _loggingService.GetLogFilePath(s.SessionName);
+                        if (string.IsNullOrEmpty(sessionLogPath) || !File.Exists(sessionLogPath))
+                            continue;
+
+                        var logEntryName = $"{safeProductName}/{safeOrderName}/{safeSessionName}.log";
+                        archive.CreateEntryFromFile(sessionLogPath, logEntryName);
                     }
                 }
-
-                _logger?.LogInfo($"按项目导出 ZIP 完成: ProjectId={projectId}, SessionCount={sessions.Count}, Zip={zipFilePath}");
             }
             finally
             {
                 TryDeleteDirectory(tempDir);
             }
+
+            _logger?.LogInfo($"按项目导出 ZIP 完成: ProjectId={projectId}, SessionCount={sessions.Count}, Zip={zipFilePath}");
         }
 
         /// <summary>

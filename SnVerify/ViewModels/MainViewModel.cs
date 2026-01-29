@@ -5,6 +5,7 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -431,6 +432,9 @@ namespace SnVerify.ViewModels
 
             // 从设置中读取上次选择的导出文件夹路径（不在 ViewModel 中做文件系统级验证，仅保存字符串）
             _lastExportFolder = Settings.Default.LastExportFolder;
+            // 从设置中读取上次使用的项目名、订单号，启动时回填到输入框
+            _projectIdInput = Settings.Default.LastProjectId ?? "";
+            _orderIdInput = Settings.Default.LastOrderId ?? "";
 
             // 规则 3/5/8：自检期间禁用 Start/End/导出；检验中也禁用 Start/End/导出（防止重复点击/并发操作）。
             StartBatchCommand = new RelayCommand(async () => await StartBatchAsync(), () => !IsSessionActive && !IsSelfChecking && !IsProcessing);
@@ -505,11 +509,11 @@ namespace SnVerify.ViewModels
                     return;
                 }
 
-                // 创建并开始 Session
+                // 创建并开始 Session，并以 SessionName 启动会话日志
                 var sessionId = await System.Threading.Tasks.Task.Run(() =>
                 {
                     var sid = _sessionLifecycleService.CreateAndStartSession(orderId, orderId, projectId);
-                    _loggingService.StartBatch(sid); // 最小改动方案：保留接口名，但传入 sessionId
+                    _loggingService.StartSession(sid);
                     return sid;
                 });
 
@@ -519,6 +523,11 @@ namespace SnVerify.ViewModels
                 SessionSnapshot = _sessionLifecycleService.Snapshot;
                 VerificationSnapshot = _verificationFlowService.Snapshot;
                 LoggingSnapshot = _loggingService.Snapshot;
+
+                // 保存本次使用的项目名、订单号，下次启动时回填（与导出路径保存方式一致）
+                Settings.Default.LastProjectId = projectId;
+                Settings.Default.LastOrderId = orderId;
+                Settings.Default.Save();
 
                 // 清除错误提示（Session 已开始）
                 ClearBatchError();
@@ -548,7 +557,7 @@ namespace SnVerify.ViewModels
                     StatusBarMessage = "本次操作无效/已忽略";
                     _loggingService.LogInfo("结束测试被忽略：本次测试未产生任何记录");
                     LoggingSnapshot = _loggingService.Snapshot;
-                    return;
+                    // return;
                 }
 
                 _lastEndedSessionId = sessionId;
@@ -628,7 +637,34 @@ namespace SnVerify.ViewModels
             Settings.Default.LastExportFolder = selectedFolder;
             Settings.Default.Save();
 
-            // Step 4: 执行导出（所有路径/ZIP/文件系统逻辑均在 Service 层实现）
+            // Step 4: 检查 ZIP 是否已存在，必要时弹出覆盖确认对话框
+            var safeName = ToSafeFileName(selectedId);
+            var zipPath = Path.Combine(selectedFolder, safeName + ".zip");
+
+            if (File.Exists(zipPath))
+            {
+                var confirm = _dialogService.ConfirmOverwrite(
+                    $"目标导出文件已存在：{zipPath}{Environment.NewLine}是否覆盖？");
+                if (!confirm)
+                {
+                    _loggingService.LogInfo("导出已取消：目标 ZIP 已存在且用户选择不覆盖");
+                    LoggingSnapshot = _loggingService.Snapshot;
+                    return;
+                }
+
+                try
+                {
+                    File.Delete(zipPath);
+                }
+                catch (Exception ex)
+                {
+                    _loggingService.LogError("导出失败：无法删除已存在的 ZIP 文件：" + ex.Message, ex);
+                    LoggingSnapshot = _loggingService.Snapshot;
+                    return;
+                }
+            }
+
+            // Step 5: 执行导出（所有路径/ZIP/文件系统逻辑均在 Service 层实现）
             try
             {
                 if (exportDimension == ExportDimension.ByProject)
@@ -838,6 +874,27 @@ namespace SnVerify.ViewModels
         protected virtual void OnPropertyChanged([CallerMemberName] string propertyName = null)
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+        }
+
+        /// <summary>
+        /// 将业务名称转换为文件系统安全的名称：非法字符统一替换为下划线。
+        /// 与导出服务中的规则保持一致，确保 ZIP 命名与冲突检测行为一致。
+        /// </summary>
+        private static string ToSafeFileName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return "_";
+
+            var invalidChars = Path.GetInvalidFileNameChars();
+            var chars = name.ToCharArray();
+            for (var i = 0; i < chars.Length; i++)
+            {
+                if (invalidChars.Contains(chars[i]))
+                {
+                    chars[i] = '_';
+                }
+            }
+            return new string(chars);
         }
     }
 

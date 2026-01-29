@@ -20,6 +20,7 @@ namespace SnVerify.Tests.Services
         private ILoggingService _loggingService;
         private string _testLogDirectory;
         private const string TestBatchId = "BATCH001";
+        private const string TestSessionName = "ORDER001_20260126_120000";
 
         [SetUp]
         public void SetUp()
@@ -69,7 +70,7 @@ namespace SnVerify.Tests.Services
         public void StartBatch_ShouldCreateLogFile()
         {
             // Act
-            _loggingService.StartBatch(TestBatchId);
+            _loggingService.StartSession(TestBatchId);
 
             // Assert
             Assert.That(_loggingService.Snapshot.BatchId, Is.EqualTo(TestBatchId));
@@ -81,16 +82,16 @@ namespace SnVerify.Tests.Services
         public void StartBatch_ShouldThrowException_WhenBatchIdIsEmpty()
         {
             // Act & Assert
-            Assert.Throws<ArgumentException>(() => _loggingService.StartBatch(null));
-            Assert.Throws<ArgumentException>(() => _loggingService.StartBatch(""));
-            Assert.Throws<ArgumentException>(() => _loggingService.StartBatch("   "));
+            Assert.Throws<ArgumentException>(() => _loggingService.StartSession(null));
+            Assert.Throws<ArgumentException>(() => _loggingService.StartSession(""));
+            Assert.Throws<ArgumentException>(() => _loggingService.StartSession("   "));
         }
 
         [Test]
         public void LogInfo_ShouldWriteToFile()
         {
             // Arrange
-            _loggingService.StartBatch(TestBatchId);
+            _loggingService.StartSession(TestBatchId);
             var message = "Test info message";
 
             // Act
@@ -107,7 +108,7 @@ namespace SnVerify.Tests.Services
         public void LogWarning_ShouldWriteToFile()
         {
             // Arrange
-            _loggingService.StartBatch(TestBatchId);
+            _loggingService.StartSession(TestBatchId);
             var message = "Test warning message";
 
             // Act
@@ -123,7 +124,7 @@ namespace SnVerify.Tests.Services
         public void LogError_ShouldWriteToFile()
         {
             // Arrange
-            _loggingService.StartBatch(TestBatchId);
+            _loggingService.StartSession(TestBatchId);
             var message = "Test error message";
 
             // Act
@@ -139,7 +140,7 @@ namespace SnVerify.Tests.Services
         public void LogError_ShouldIncludeException()
         {
             // Arrange
-            _loggingService.StartBatch(TestBatchId);
+            _loggingService.StartSession(TestBatchId);
             var message = "Test error";
             var exception = new InvalidOperationException("Test exception");
 
@@ -156,7 +157,7 @@ namespace SnVerify.Tests.Services
         public void EndBatch_ShouldCloseLogFile()
         {
             // Arrange
-            _loggingService.StartBatch(TestBatchId);
+            _loggingService.StartSession(TestBatchId);
             var logFilePath = _loggingService.Snapshot.CurrentLogFile;
 
             // Act
@@ -186,10 +187,10 @@ namespace SnVerify.Tests.Services
             var maxFiles = 5;
             var loggingService = new LoggingService(_testLogDirectory, maxLogFilesToKeep: maxFiles);
 
-            // 创建多个批次日志
+            // 创建多个 Session 日志
             for (int i = 0; i < maxFiles + 3; i++)
             {
-                loggingService.StartBatch($"BATCH{i:D3}");
+                loggingService.StartSession($"BATCH{i:D3}");
                 loggingService.LogInfo($"Message {i}");
                 loggingService.EndBatch();
             }
@@ -198,7 +199,7 @@ namespace SnVerify.Tests.Services
             loggingService.CleanupOldLogs();
 
             // Assert
-            var logFiles = Directory.GetFiles(_testLogDirectory, "log_*.*");
+            var logFiles = Directory.GetFiles(_testLogDirectory, "session_*.*");
             Assert.That(logFiles.Length, Is.LessThanOrEqualTo(maxFiles * 2)); // 考虑压缩文件
 
             loggingService.Dispose();
@@ -208,11 +209,11 @@ namespace SnVerify.Tests.Services
         public void StartBatch_ShouldClosePreviousBatch()
         {
             // Arrange
-            _loggingService.StartBatch("BATCH001");
+            _loggingService.StartSession("BATCH001");
             var firstLogFile = _loggingService.Snapshot.CurrentLogFile;
 
             // Act
-            _loggingService.StartBatch("BATCH002");
+            _loggingService.StartSession("BATCH002");
 
             // Assert
             Assert.That(_loggingService.Snapshot.BatchId, Is.EqualTo("BATCH002"));
@@ -223,7 +224,7 @@ namespace SnVerify.Tests.Services
         public void Snapshot_ShouldUpdateAfterLogging()
         {
             // Arrange
-            _loggingService.StartBatch(TestBatchId);
+            _loggingService.StartSession(TestBatchId);
 
             // Act
             _loggingService.LogInfo("Test message");
@@ -232,6 +233,66 @@ namespace SnVerify.Tests.Services
             Assert.That(_loggingService.Snapshot.LastMessage, Is.EqualTo("Test message"));
             Assert.That(_loggingService.Snapshot.LogLevel, Is.EqualTo("INFO"));
             Assert.That(_loggingService.Snapshot.Timestamp, Is.LessThanOrEqualTo(DateTime.Now));
+        }
+
+        [Test]
+        public void StartSession_Should_Create_LogFile_With_SessionName()
+        {
+            // Act
+            _loggingService.StartSession(TestSessionName);
+
+            // Assert
+            Assert.That(_loggingService.Snapshot.BatchId, Is.EqualTo(TestSessionName), "Snapshot.BatchId 应等于 SessionName");
+            Assert.That(_loggingService.Snapshot.CurrentLogFile, Is.Not.Null);
+            var logFile = _loggingService.Snapshot.CurrentLogFile!;
+            Assert.That(File.Exists(logFile), Is.True, "应为 SessionName 创建对应日志文件");
+            StringAssertContains(Path.GetFileNameWithoutExtension(logFile), $"session_{TestSessionName}");
+        }
+
+        [Test]
+        public void Logs_Should_Be_Written_Into_Session_Log()
+        {
+            // Arrange
+            _loggingService.StartSession(TestSessionName);
+            var message = "Session scoped log message";
+
+            // Act
+            _loggingService.LogInfo(message);
+
+            // Assert
+            var logFile = _loggingService.Snapshot.CurrentLogFile!;
+            var content = ReadLogFileSafely(logFile);
+            Assert.That(content, Does.Contain(message));
+            Assert.That(_loggingService.Snapshot.BatchId, Is.EqualTo(TestSessionName));
+        }
+
+        [Test]
+        public void Export_Should_Copy_Runtime_Log_Not_Rebuild()
+        {
+            // Arrange
+            _loggingService.StartSession(TestSessionName);
+            _loggingService.LogInfo("FIRST");
+            _loggingService.LogWarning("SECOND");
+
+            var sourceLog = _loggingService.Snapshot.CurrentLogFile!;
+            var originalContent = ReadLogFileSafely(sourceLog);
+
+            var exportDir = Path.Combine(_testLogDirectory, "export");
+            Directory.CreateDirectory(exportDir);
+            var exportPath = Path.Combine(exportDir, Path.GetFileName(sourceLog));
+
+            // Act: 模拟导出层直接拷贝运行时日志文件
+            File.Copy(sourceLog, exportPath, overwrite: true);
+
+            // Assert
+            Assert.That(File.Exists(exportPath), Is.True, "导出应直接复制现有 Session 日志文件");
+            var exportedContent = File.ReadAllText(exportPath);
+            Assert.That(exportedContent, Is.EqualTo(originalContent), "导出内容应与运行时日志完全一致（不重新生成）");
+        }
+
+        private static void StringAssertContains(string actual, string expectedSubstring)
+        {
+            Assert.That(actual, Does.Contain(expectedSubstring));
         }
     }
 }

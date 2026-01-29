@@ -41,5 +41,35 @@ namespace SnVerify.Properties
                 this["LastExportFolder"] = value;
             }
         }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string LastProjectId
+        {
+            get
+            {
+                return ((string)(this["LastProjectId"]));
+            }
+            set
+            {
+                this["LastProjectId"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string LastOrderId
+        {
+            get
+            {
+                return ((string)(this["LastOrderId"]));
+            }
+            set
+            {
+                this["LastOrderId"] = value;
+            }
+        }
     }
 }

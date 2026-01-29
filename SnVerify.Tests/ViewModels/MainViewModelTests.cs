@@ -408,7 +408,7 @@ namespace SnVerify.Tests.ViewModels
             // Assert
             _sessionLifecycleServiceMock.Verify(s => s.CreateAndStartSession(orderId, orderId, projectId), Times.Once);
             _flowServiceFactoryMock.Verify(f => f.Create(sessionId, orderId), Times.Once);
-            _loggingServiceMock.Verify(l => l.StartBatch(sessionId), Times.Once);
+            _loggingServiceMock.Verify(l => l.StartSession(sessionId), Times.Once);
         }
 
         [Test]
@@ -426,6 +426,161 @@ namespace SnVerify.Tests.ViewModels
             Assert.That(_viewModel.StartBatchCommand.CanExecute(null), Is.False);
             Assert.That(_viewModel.EndBatchCommand.CanExecute(null), Is.True);
             Assert.That(_viewModel.ExportCommand.CanExecute(null), Is.False);
+        }
+
+        [Test]
+        public async Task ExportAsync_WhenTargetZipNotExists_ShouldExportWithoutOverwritePrompt()
+        {
+            // Arrange
+            var exportRoot = Path.Combine(Path.GetTempPath(), "SnVerify_Export_Test_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(exportRoot);
+
+            try
+            {
+                var order = new Order { Id = 1, OrderName = "OrderX", ProductId = 1 };
+
+                _dialogServiceMock.Setup(d => d.ChooseExportDimension())
+                    .Returns(ExportDimension.ByOrder);
+
+                _storageServiceMock.Setup(s => s.GetAllOrdersAsync())
+                    .ReturnsAsync(new[] { order });
+
+                _dialogServiceMock.Setup(d => d.ChooseOrder(It.IsAny<IReadOnlyList<Order>>()))
+                    .Returns(order);
+
+                _dialogServiceMock.Setup(d => d.ChooseFolder(It.IsAny<string>(), It.IsAny<string>()))
+                    .Returns(exportRoot);
+
+                var tcs = new TaskCompletionSource<bool>();
+                _exportAggregationServiceMock
+                    .Setup(s => s.ExportByOrderIdAsync("OrderX", exportRoot))
+                    .Returns(() =>
+                    {
+                        tcs.TrySetResult(true);
+                        return Task.CompletedTask;
+                    });
+
+                // Act
+                _viewModel.ExportCommand.Execute(null);
+                await WaitUntilAsync(() => tcs.Task.IsCompleted);
+
+                // Assert
+                _dialogServiceMock.Verify(d => d.ConfirmOverwrite(It.IsAny<string>()), Times.Never);
+                _exportAggregationServiceMock.Verify(s => s.ExportByOrderIdAsync("OrderX", exportRoot), Times.Once);
+            }
+            finally
+            {
+                if (Directory.Exists(exportRoot))
+                {
+                    Directory.Delete(exportRoot, true);
+                }
+            }
+        }
+
+        [Test]
+        public async Task ExportAsync_WhenTargetZipExists_AndUserCancelsOverwrite_ShouldNotExportAndLogInfo()
+        {
+            // Arrange
+            var exportRoot = Path.Combine(Path.GetTempPath(), "SnVerify_Export_Test_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(exportRoot);
+            var zipPath = Path.Combine(exportRoot, "OrderY.zip");
+            File.WriteAllText(zipPath, "ORIGINAL");
+
+            try
+            {
+                var order = new Order { Id = 1, OrderName = "OrderY", ProductId = 1 };
+
+                _dialogServiceMock.Setup(d => d.ChooseExportDimension())
+                    .Returns(ExportDimension.ByOrder);
+
+                _storageServiceMock.Setup(s => s.GetAllOrdersAsync())
+                    .ReturnsAsync(new[] { order });
+
+                _dialogServiceMock.Setup(d => d.ChooseOrder(It.IsAny<IReadOnlyList<Order>>()))
+                    .Returns(order);
+
+                _dialogServiceMock.Setup(d => d.ChooseFolder(It.IsAny<string>(), It.IsAny<string>()))
+                    .Returns(exportRoot);
+
+                _dialogServiceMock.Setup(d => d.ConfirmOverwrite(It.IsAny<string>()))
+                    .Returns(false);
+
+                // Act
+                _viewModel.ExportCommand.Execute(null);
+                // 等待一小段时间让异步导出逻辑完成
+                await Task.Delay(100);
+
+                // Assert
+                _exportAggregationServiceMock.Verify(s => s.ExportByOrderIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+                _loggingServiceMock.Verify(l => l.LogInfo(It.Is<string>(m => m.Contains("导出已取消"))), Times.AtLeastOnce);
+                Assert.That(File.Exists(zipPath), Is.True, "当用户取消覆盖时，原 ZIP 文件应保持不变");
+            }
+            finally
+            {
+                if (Directory.Exists(exportRoot))
+                {
+                    Directory.Delete(exportRoot, true);
+                }
+            }
+        }
+
+        [Test]
+        public async Task ExportAsync_WhenTargetZipExists_AndUserConfirmsOverwrite_ShouldDeleteAndExport()
+        {
+            // Arrange
+            var exportRoot = Path.Combine(Path.GetTempPath(), "SnVerify_Export_Test_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(exportRoot);
+            var zipPath = Path.Combine(exportRoot, "OrderZ.zip");
+            File.WriteAllText(zipPath, "ORIGINAL");
+
+            try
+            {
+                var order = new Order { Id = 1, OrderName = "OrderZ", ProductId = 1 };
+
+                _dialogServiceMock.Setup(d => d.ChooseExportDimension())
+                    .Returns(ExportDimension.ByOrder);
+
+                _storageServiceMock.Setup(s => s.GetAllOrdersAsync())
+                    .ReturnsAsync(new[] { order });
+
+                _dialogServiceMock.Setup(d => d.ChooseOrder(It.IsAny<IReadOnlyList<Order>>()))
+                    .Returns(order);
+
+                _dialogServiceMock.Setup(d => d.ChooseFolder(It.IsAny<string>(), It.IsAny<string>()))
+                    .Returns(exportRoot);
+
+                _dialogServiceMock.Setup(d => d.ConfirmOverwrite(It.IsAny<string>()))
+                    .Returns(true);
+
+                var tcs = new TaskCompletionSource<bool>();
+                _exportAggregationServiceMock
+                    .Setup(s => s.ExportByOrderIdAsync("OrderZ", exportRoot))
+                    .Callback(() =>
+                    {
+                        // 在调用导出服务之前，ZIP 应已被删除
+                        Assert.That(File.Exists(zipPath), Is.False);
+                    })
+                    .Returns(() =>
+                    {
+                        tcs.TrySetResult(true);
+                        return Task.CompletedTask;
+                    });
+
+                // Act
+                _viewModel.ExportCommand.Execute(null);
+                await WaitUntilAsync(() => tcs.Task.IsCompleted);
+
+                // Assert
+                _dialogServiceMock.Verify(d => d.ConfirmOverwrite(It.IsAny<string>()), Times.Once);
+                _exportAggregationServiceMock.Verify(s => s.ExportByOrderIdAsync("OrderZ", exportRoot), Times.Once);
+            }
+            finally
+            {
+                if (Directory.Exists(exportRoot))
+                {
+                    Directory.Delete(exportRoot, true);
+                }
+            }
         }
     }
 }

@@ -33,10 +33,11 @@ namespace SnVerify.Tests.Services
         }
 
         [Test]
-        public async Task ExportByOrderIdAsync_ShouldCreateZipWithExpectedStructure_AndNotUseIds()
+        public async Task ExportByOrderIdAsync_Should_Include_Actual_SessionLogs()
         {
             // Arrange
             var storageMock = new Mock<IStorageService>(MockBehavior.Strict);
+            var logServiceMock = new Mock<ILoggingService>(MockBehavior.Strict);
             var logger = new NullFileLogger();
 
             var orderName = "Order_A";
@@ -50,17 +51,17 @@ namespace SnVerify.Tests.Services
                 .Setup(s => s.GetSessionsByOrderIdAsync(orderName))
                 .ReturnsAsync(sessions);
 
-            storageMock
-                .Setup(s => s.ExportBySessionAsync(It.IsAny<int>(), It.IsAny<string>()))
-                .Returns<int, string>((sessionId, dir) =>
-                {
-                    Directory.CreateDirectory(dir);
-                    File.WriteAllText(Path.Combine(dir, $"{sessionId}.xlsx"), $"xlsx-{sessionId}");
-                    File.WriteAllText(Path.Combine(dir, $"{sessionId}.txt"), $"txt-{sessionId}");
-                    return Task.CompletedTask;
-                });
+            // 为每个 Session 创建对应的日志文件，并通过 ILoggingService 暴露路径
+            foreach (var s in sessions)
+            {
+                var logPath = Path.Combine(_outputDir, $"session_{s.SessionName}.log");
+                File.WriteAllText(logPath, $"LOG-{s.SessionName}");
+                logServiceMock
+                    .Setup(ls => ls.GetLogFilePath(s.SessionName))
+                    .Returns(logPath);
+            }
 
-            var service = new ExportAggregationService(storageMock.Object, logger);
+            var service = new ExportAggregationService(storageMock.Object, logger, logServiceMock.Object);
 
             // Act
             await service.ExportByOrderIdAsync(orderName, _outputDir);
@@ -71,32 +72,39 @@ namespace SnVerify.Tests.Services
 
             using (var archive = ZipFile.OpenRead(zipPath))
             {
-                var entryNames = archive.Entries.Select(e => e.FullName).OrderBy(n => n).ToList();
+                var entries = archive.Entries.ToDictionary(e => e.FullName, e => e);
 
-                var expected1Xlsx = $"{orderName}/{sessions[0].SessionName}.xlsx";
-                var expected1Txt = $"{orderName}/{sessions[0].SessionName}.txt";
-                var expected2Xlsx = $"{orderName}/{sessions[1].SessionName}.xlsx";
-                var expected2Txt = $"{orderName}/{sessions[1].SessionName}.txt";
+                var expected1Log = $"{orderName}/{sessions[0].SessionName}.log";
+                var expected2Log = $"{orderName}/{sessions[1].SessionName}.log";
 
-                Assert.That(entryNames, Does.Contain(expected1Xlsx), "应包含 Session1 的 xlsx");
-                Assert.That(entryNames, Does.Contain(expected1Txt), "应包含 Session1 的 txt");
-                Assert.That(entryNames, Does.Contain(expected2Xlsx), "应包含 Session2 的 xlsx");
-                Assert.That(entryNames, Does.Contain(expected2Txt), "应包含 Session2 的 txt");
+                Assert.That(entries.ContainsKey(expected1Log), Is.True, "应包含 Session1 的日志文件");
+                Assert.That(entries.ContainsKey(expected2Log), Is.True, "应包含 Session2 的日志文件");
 
-                // 不应在任何文件或目录名中直接使用内部 Id（101/102/1001）
-                Assert.That(entryNames.All(n => !n.Contains("101") && !n.Contains("102") && !n.Contains("1001")),
-                    Is.True,
-                    "ZIP 内路径不应包含内部数据库 Id");
+                // 内容应与 LogService 提供的日志完全一致
+                foreach (var s in sessions)
+                {
+                    var expectedEntryName = $"{orderName}/{s.SessionName}.log";
+                    using (var entryStream = entries[expectedEntryName].Open())
+                    using (var reader = new StreamReader(entryStream))
+                    {
+                        var zipContent = reader.ReadToEnd();
+                        var logPath = Path.Combine(_outputDir, $"session_{s.SessionName}.log");
+                        var originalContent = File.ReadAllText(logPath);
+                        Assert.That(zipContent, Is.EqualTo(originalContent), $"ZIP 中 {expectedEntryName} 内容应与 LogService 日志一致");
+                    }
+                }
             }
 
             storageMock.VerifyAll();
+            logServiceMock.VerifyAll();
         }
 
         [Test]
-        public async Task ExportByProjectIdAsync_ShouldCreateZipWithExpectedStructure_AndNotUseIds()
+        public async Task ExportByProjectIdAsync_Should_Include_Actual_SessionLogs()
         {
             // Arrange
             var storageMock = new Mock<IStorageService>(MockBehavior.Strict);
+            var logServiceMock = new Mock<ILoggingService>(MockBehavior.Strict);
             var logger = new NullFileLogger();
 
             var productName = "Product_X";
@@ -115,20 +123,20 @@ namespace SnVerify.Tests.Services
                 .ReturnsAsync(sessions);
 
             storageMock
-                .Setup(s => s.ExportBySessionAsync(It.IsAny<int>(), It.IsAny<string>()))
-                .Returns<int, string>((sessionId, dir) =>
-                {
-                    Directory.CreateDirectory(dir);
-                    File.WriteAllText(Path.Combine(dir, $"{sessionId}.xlsx"), $"xlsx-{sessionId}");
-                    File.WriteAllText(Path.Combine(dir, $"{sessionId}.txt"), $"txt-{sessionId}");
-                    return Task.CompletedTask;
-                });
-
-            storageMock
                 .Setup(s => s.GetAllOrdersAsync())
                 .ReturnsAsync(new[] { order1, order2 });
 
-            var service = new ExportAggregationService(storageMock.Object, logger);
+            // 为每个 Session 创建对应的日志文件，并通过 ILoggingService 暴露路径
+            foreach (var s in sessions)
+            {
+                var logPath = Path.Combine(_outputDir, $"session_{s.SessionName}.log");
+                File.WriteAllText(logPath, $"LOG-{s.SessionName}");
+                logServiceMock
+                    .Setup(ls => ls.GetLogFilePath(s.SessionName))
+                    .Returns(logPath);
+            }
+
+            var service = new ExportAggregationService(storageMock.Object, logger, logServiceMock.Object);
 
             // Act
             await service.ExportByProjectIdAsync(productName, _outputDir);
@@ -139,105 +147,96 @@ namespace SnVerify.Tests.Services
 
             using (var archive = ZipFile.OpenRead(zipPath))
             {
-                var entryNames = archive.Entries.Select(e => e.FullName).OrderBy(n => n).ToList();
+                var entries = archive.Entries.ToDictionary(e => e.FullName, e => e);
 
-                var expected1Xlsx = $"{productName}/{order1.OrderName}/{sessions[0].SessionName}.xlsx";
-                var expected1Txt = $"{productName}/{order1.OrderName}/{sessions[0].SessionName}.txt";
-                var expected2Xlsx = $"{productName}/{order2.OrderName}/{sessions[1].SessionName}.xlsx";
-                var expected2Txt = $"{productName}/{order2.OrderName}/{sessions[1].SessionName}.txt";
+                var expected1Log = $"{productName}/{order1.OrderName}/{sessions[0].SessionName}.log";
+                var expected2Log = $"{productName}/{order2.OrderName}/{sessions[1].SessionName}.log";
 
-                Assert.That(entryNames, Does.Contain(expected1Xlsx), "应包含 Order_Alpha 的 Session xlsx");
-                Assert.That(entryNames, Does.Contain(expected1Txt), "应包含 Order_Alpha 的 Session txt");
-                Assert.That(entryNames, Does.Contain(expected2Xlsx), "应包含 Order_Beta 的 Session xlsx");
-                Assert.That(entryNames, Does.Contain(expected2Txt), "应包含 Order_Beta 的 Session txt");
+                Assert.That(entries.ContainsKey(expected1Log), Is.True, "应包含 Order_Alpha 的 Session 日志");
+                Assert.That(entries.ContainsKey(expected2Log), Is.True, "应包含 Order_Beta 的 Session 日志");
 
-                // 不应在任何文件或目录名中直接使用内部 Id（2001/2002/301/302）
-                Assert.That(entryNames.All(n =>
-                        !n.Contains("2001") && !n.Contains("2002") &&
-                        !n.Contains("301") && !n.Contains("302")),
-                    Is.True,
-                    "ZIP 内路径不应包含内部数据库 Id");
+                foreach (var s in sessions)
+                {
+                    var orderName = s.OrderId == order1.Id ? order1.OrderName : order2.OrderName;
+                    var expectedEntryName = $"{productName}/{orderName}/{s.SessionName}.log";
+                    using (var entryStream = entries[expectedEntryName].Open())
+                    using (var reader = new StreamReader(entryStream))
+                    {
+                        var zipContent = reader.ReadToEnd();
+                        var logPath = Path.Combine(_outputDir, $"session_{s.SessionName}.log");
+                        var originalContent = File.ReadAllText(logPath);
+                        Assert.That(zipContent, Is.EqualTo(originalContent), $"ZIP 中 {expectedEntryName} 内容应与 LogService 日志一致");
+                    }
+                }
             }
 
             storageMock.VerifyAll();
+            logServiceMock.VerifyAll();
         }
 
         [Test]
-        public async Task Export_ShouldSanitizeIllegalCharactersInNames()
+        public async Task Exported_Log_Content_Should_Be_Identical_To_LogService()
         {
             // Arrange
             var storageMock = new Mock<IStorageService>(MockBehavior.Strict);
+            var logServiceMock = new Mock<ILoggingService>(MockBehavior.Strict);
             var logger = new NullFileLogger();
 
-            var rawProductName = "Prod/Name:001";
-            var rawOrderName = "Order*Name?002";
-            var rawSessionName = "Sess\"Name<2026>|01";
-
-            var order = new Order { Id = 4001, OrderName = rawOrderName, ProductId = 1 };
+            var productName = "Prod_Log";
+            var order = new Order { Id = 4001, OrderName = "Order_Log", ProductId = 1 };
+            var sessionName = "Order_Log_20260126_150000";
 
             var sessions = new[]
             {
-                new TestSession { Id = 501, OrderId = order.Id, SessionName = rawSessionName, StartTime = DateTime.Now }
+                new TestSession { Id = 501, OrderId = order.Id, SessionName = sessionName, StartTime = DateTime.Now }
             };
 
             storageMock
-                .Setup(s => s.GetSessionsByProjectIdAsync(rawProductName))
+                .Setup(s => s.GetSessionsByProjectIdAsync(productName))
                 .ReturnsAsync(sessions);
-
-            storageMock
-                .Setup(s => s.ExportBySessionAsync(It.IsAny<int>(), It.IsAny<string>()))
-                .Returns<int, string>((sessionId, dir) =>
-                {
-                    Directory.CreateDirectory(dir);
-                    File.WriteAllText(Path.Combine(dir, $"{sessionId}.xlsx"), $"xlsx-{sessionId}");
-                    File.WriteAllText(Path.Combine(dir, $"{sessionId}.txt"), $"txt-{sessionId}");
-                    return Task.CompletedTask;
-                });
 
             storageMock
                 .Setup(s => s.GetAllOrdersAsync())
                 .ReturnsAsync(new[] { order });
 
-            var service = new ExportAggregationService(storageMock.Object, logger);
+            // 为单个 Session 写入多行日志，验证导出内容逐字一致
+            var logPath = Path.Combine(_outputDir, $"session_{sessionName}.log");
+            var originalLines = new[]
+            {
+                "FIRST LINE",
+                "SECOND LINE",
+                "THIRD LINE"
+            };
+            File.WriteAllLines(logPath, originalLines);
+
+            logServiceMock
+                .Setup(ls => ls.GetLogFilePath(sessionName))
+                .Returns(logPath);
+
+            var service = new ExportAggregationService(storageMock.Object, logger, logServiceMock.Object);
 
             // Act
-            await service.ExportByProjectIdAsync(rawProductName, _outputDir);
+            await service.ExportByProjectIdAsync(productName, _outputDir);
 
             // Assert
-            // 非法字符应被替换为下划线
-            var safeProduct = "Prod_Name_001";
+            var safeProduct = "Prod_Log";
             var zipPath = Path.Combine(_outputDir, $"{safeProduct}.zip");
-            Assert.That(File.Exists(zipPath), Is.True, "ZIP 文件名应为经过安全处理的 ProductName");
+            Assert.That(File.Exists(zipPath), Is.True, "ZIP 文件名应存在");
 
             using (var archive = ZipFile.OpenRead(zipPath))
             {
-                var entryNames = archive.Entries.Select(e => e.FullName).ToList();
-                var safeOrder = "Order_Name_002";
-                var safeSession = "Sess_Name_2026__01";
-
-                var expectedXlsx = $"{safeProduct}/{safeOrder}/{safeSession}.xlsx";
-                var expectedTxt = $"{safeProduct}/{safeOrder}/{safeSession}.txt";
-
-                Assert.That(entryNames, Does.Contain(expectedXlsx), "应使用安全化后的 SessionName 作为文件名（xlsx）");
-                Assert.That(entryNames, Does.Contain(expectedTxt), "应使用安全化后的 SessionName 作为文件名（txt）");
-
-                // ZIP 内部路径不应包含任何非法字符
-                Assert.That(entryNames.All(name =>
-                        !name.Contains("/") || name.StartsWith("Prod_")), // 只有目录分隔符允许
-                    Is.True);
-                Assert.That(entryNames.All(name =>
-                        !name.Contains(":") &&
-                        !name.Contains("*") &&
-                        !name.Contains("?") &&
-                        !name.Contains("\"") &&
-                        !name.Contains("<") &&
-                        !name.Contains(">") &&
-                        !name.Contains("|")),
-                    Is.True,
-                    "ZIP 内路径不应包含未被替换的非法字符");
+                var entry = archive.Entries.Single(e => e.FullName.EndsWith($"{sessionName}.log"));
+                using (var entryStream = entry.Open())
+                using (var reader = new StreamReader(entryStream))
+                {
+                    var exportedContent = reader.ReadToEnd();
+                    var originalContent = string.Join(Environment.NewLine, originalLines) + Environment.NewLine;
+                    Assert.That(exportedContent, Is.EqualTo(originalContent), "导出的日志内容应与 LogService 源日志逐字一致");
+                }
             }
 
             storageMock.VerifyAll();
+            logServiceMock.VerifyAll();
         }
     }
 }
