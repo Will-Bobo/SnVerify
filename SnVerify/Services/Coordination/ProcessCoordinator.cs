@@ -94,14 +94,6 @@ namespace SnVerify.Services.Coordination
         }
 
         /// <summary>
-        /// 兼容旧调用：按 batchId 构造，内部按 sessionId 处理（Phase 2.5 Batch 退场过渡）
-        /// </summary>
-        public static ProcessCoordinator FromBatchId(string batchId, IStorageService storageService, IAdbAccessService adbAccessService, ILoggingService loggingService = null)
-        {
-            return new ProcessCoordinator(batchId, storageService, adbAccessService, loggingService, null, null, MesMode.Disabled, null);
-        }
-
-        /// <summary>
         /// 启动校验流程（原子化执行）
         /// </summary>
         public async Task StartVerificationAsync(string sn)
@@ -274,6 +266,10 @@ namespace SnVerify.Services.Coordination
 
         /// <summary>
         /// 保存或更新 FAIL 结果（Phase 2.5 使用 TestRecord）；落库后执行 MES Post-Report。
+        /// 
+        /// 重要约束：
+        /// - 若当前 Session + StickerSN 下已存在 PASS 记录，则保持该 PASS 事实不变，新的 FAIL/TIMEOUT 仅追加记录。
+        /// - 若仅存在 FAIL/TIMEOUT 记录，则在原记录上更新（同一次重试场景）。
         /// </summary>
         private async Task SaveOrUpdateFailResultAsync(string sn, string result, string failReason, string deviceSN)
         {
@@ -287,10 +283,15 @@ namespace SnVerify.Services.Coordination
                     return;
                 }
 
-                var existing = await _storageService.GetTestRecordBySessionAndStickerSnAsync(internalSessionId.Value, sn).ConfigureAwait(false);
+                var existing = await _storageService
+                    .GetTestRecordBySessionAndStickerSnAsync(internalSessionId.Value, sn)
+                    .ConfigureAwait(false);
+
                 var at = DateTime.Now;
-                if (existing != null)
+
+                if (existing != null && !string.Equals(existing.Result, "PASS", StringComparison.OrdinalIgnoreCase))
                 {
+                    // 仅在不存在 PASS 事实时才覆盖原有记录（例如重复 FAIL/重试场景）。
                     existing.Result = result;
                     existing.FailReason = failReason;
                     existing.DeviceSN = deviceSN;
@@ -299,6 +300,7 @@ namespace SnVerify.Services.Coordination
                 }
                 else
                 {
+                    // 若已存在 PASS，则追加一条新的 FAIL/TIMEOUT 记录，避免污染历史 PASS。
                     var record = new TestRecord
                     {
                         SessionId = internalSessionId.Value,
@@ -310,6 +312,7 @@ namespace SnVerify.Services.Coordination
                     };
                     await _storageService.SaveTestRecordAsync(record).ConfigureAwait(false);
                 }
+
                 await PostReportAsync(sn, result, failReason, deviceSN).ConfigureAwait(false);
             }
             catch

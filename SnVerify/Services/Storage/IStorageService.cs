@@ -27,14 +27,6 @@ namespace SnVerify.Services.Storage
         Task InitializeAsync();
 
         /// <summary>
-        /// 检查指定批次内 SN 是否重复（仅在该批次内判断，不跨批次）。
-        /// </summary>
-        /// <param name="batchId">批次 ID</param>
-        /// <param name="sn">待检查的 SN</param>
-        /// <returns>若在同一批次中已存在相同 SN，则返回 true；否则返回 false。</returns>
-        Task<bool> IsSnDuplicateAsync(string batchId, string sn);
-
-        /// <summary>
         /// 检查 StickerSN 是否存在于历史 PASS 绑定中（跨批次查询）
         /// </summary>
         /// <param name="stickerSN">贴纸 SN（扫码枪输入的 SN）</param>
@@ -70,10 +62,20 @@ namespace SnVerify.Services.Storage
         Task<IReadOnlyList<Product>> GetAllProductsAsync();
 
         /// <summary>
+        /// 按产品名称获取产品 Id，不存在则返回 null。
+        /// </summary>
+        Task<int?> GetProductIdByProductNameAsync(string productName);
+
+        /// <summary>
         /// 创建订单记录，返回自增 Id。
         /// </summary>
         /// <param name="order">订单实体</param>
         Task<int> CreateOrderAsync(Order order);
+
+        /// <summary>
+        /// 按订单名称更新订单的 ProductId（用于修正历史订单的 ProductId 为 0 的情况）。
+        /// </summary>
+        Task SetOrderProductIdAsync(string orderName, int productId);
 
         /// <summary>
         /// 判断给定订单是否已存在（兼容旧接口名，语义等同于按订单名称检查）。

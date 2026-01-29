@@ -16,7 +16,6 @@ using SnVerify.Domain.Validation;
 using SnVerify.Services.Adb;
 using SnVerify.Services.Coordination;
 using SnVerify.Services.Logging;
-using SnVerify.Services.MES;
 using SnVerify.Services.Session;
 using SnVerify.Services.Storage;
 using SnVerify.Services.Ui;
@@ -43,7 +42,6 @@ namespace SnVerify.ViewModels
         private readonly ISessionLifecycleService _sessionLifecycleService;
         private readonly IVerificationFlowServiceFactory _flowServiceFactory;
         private readonly ILoggingService _loggingService;
-        private readonly IMESInterface _mesInterface;
         private readonly IStorageService _storageService;
         private readonly IAdbAccessService _adbAccessService;
         private readonly IExportAggregationService _exportAggregationService;
@@ -57,7 +55,6 @@ namespace SnVerify.ViewModels
         private SessionSnapshot _sessionSnapshot;
         private VerificationSnapshot _verificationSnapshot;
         private LoggingSnapshot _loggingSnapshot;
-        private MESSnapshot _mesSnapshot;
         private string _scanInputText;
         private string _projectIdInput;
         private string _orderIdInput;
@@ -83,29 +80,10 @@ namespace SnVerify.ViewModels
                     OnPropertyChanged(nameof(CurrentOrderId));
                     OnPropertyChanged(nameof(CurrentTestIdentifier));
                     OnPropertyChanged(nameof(IsSessionActive));
-                    // 向后兼容：保留 BatchSnapshot 别名
-                    OnPropertyChanged(nameof(BatchSnapshot));
-                    OnPropertyChanged(nameof(CurrentBatchId));
-                    OnPropertyChanged(nameof(IsBatchActive));
                     StartBatchCommand?.RaiseCanExecuteChanged();
                     EndBatchCommand?.RaiseCanExecuteChanged();
                     ExportCommand?.RaiseCanExecuteChanged();
                 }
-            }
-        }
-
-        /// <summary>
-        /// 向后兼容：BatchSnapshot 作为 SessionSnapshot 的别名（Phase 2.5 过渡期）
-        /// </summary>
-        [Obsolete("Use SessionSnapshot instead. This property is kept for backward compatibility during Phase 2.5 transition.")]
-        public BatchSnapshot BatchSnapshot
-        {
-            get
-            {
-                if (_sessionSnapshot == null) return BatchSnapshot.Idle();
-                if (_sessionSnapshot.IsActive)
-                    return BatchSnapshot.Active(_sessionSnapshot.SessionId ?? "", _sessionSnapshot.OrderId ?? "", _sessionSnapshot.StartTime ?? DateTime.Now);
-                return BatchSnapshot.Idle();
             }
         }
 
@@ -155,21 +133,7 @@ namespace SnVerify.ViewModels
             }
         }
 
-        /// <summary>
-        /// MES 接口状态快照
-        /// </summary>
-        public MESSnapshot MESSnapshot
-        {
-            get => _mesSnapshot;
-            private set
-            {
-                if (_mesSnapshot != value)
-                {
-                    _mesSnapshot = value;
-                    OnPropertyChanged();
-                }
-            }
-        }
+        // Phase 2.5: 保留 MESSnapshot 类型以便后续接入 MES Gate，但当前不在 UI 中直接使用。
 
         /// <summary>
         /// 扫码输入文本。若包含 \r 或 \n，则提取首段为 SN 并自动触发检验（兼容扫码枪不发 Enter 的情况）。
@@ -200,12 +164,6 @@ namespace SnVerify.ViewModels
         /// 当前订单 ID（用于显示）- Phase 2.5：从 SessionSnapshot.OrderId 获取
         /// </summary>
         public string CurrentOrderId => SessionSnapshot?.OrderId ?? "未开始";
-
-        /// <summary>
-        /// 向后兼容：CurrentBatchId 作为 CurrentOrderId 的别名
-        /// </summary>
-        [Obsolete("Use CurrentOrderId instead. This property is kept for backward compatibility during Phase 2.5 transition.")]
-        public string CurrentBatchId => CurrentOrderId;
 
         /// <summary>
         /// 本次测试标识（只读，从 SessionId 提取时间段，如 yyyyMMdd_HHmmss，不显示 Session 字样）
@@ -282,12 +240,6 @@ namespace SnVerify.ViewModels
         public bool IsSessionActive => SessionSnapshot?.IsActive ?? false;
 
         /// <summary>
-        /// 向后兼容：IsBatchActive 作为 IsSessionActive 的别名
-        /// </summary>
-        [Obsolete("Use IsSessionActive instead. This property is kept for backward compatibility during Phase 2.5 transition.")]
-        public bool IsBatchActive => IsSessionActive;
-
-        /// <summary>
         /// 扫码输入框是否可用（自检规则 8：自检期间禁用扫码）
         /// </summary>
         public bool IsScanInputEnabled => !IsProcessing && !IsSelfChecking;
@@ -350,9 +302,8 @@ namespace SnVerify.ViewModels
                 if (!string.IsNullOrEmpty(_batchError))
                     return _batchError;
                 var currentFailReason = VerificationSnapshot?.FailReason ?? "";
-                // C1.6：重复「设备SN已存在」UI只一条（若与上次相同则不重复显示）
-                if (currentFailReason == "设备SN已存在" && currentFailReason == _lastFailReason)
-                    return ""; // 不重复显示
+                // C1.6：重复「设备SN已存在」UI也要显示错误信息（不跳过）
+                // （始终显示 "设备SN已存在"，不管是否与上次相同）
                 _lastFailReason = currentFailReason;
                 return currentFailReason;
             }
@@ -454,7 +405,6 @@ namespace SnVerify.ViewModels
             ISessionLifecycleService sessionLifecycleService,
             IVerificationFlowServiceFactory flowServiceFactory,
             ILoggingService loggingService,
-            IMESInterface mesInterface,
             IStorageService storageService,
             IAdbAccessService adbAccessService,
             IExportAggregationService exportAggregationService,
@@ -465,7 +415,6 @@ namespace SnVerify.ViewModels
             _sessionLifecycleService = sessionLifecycleService ?? throw new ArgumentNullException(nameof(sessionLifecycleService));
             _flowServiceFactory = flowServiceFactory ?? throw new ArgumentNullException(nameof(flowServiceFactory));
             _loggingService = loggingService ?? throw new ArgumentNullException(nameof(loggingService));
-            _mesInterface = mesInterface ?? throw new ArgumentNullException(nameof(mesInterface));
             _storageService = storageService ?? throw new ArgumentNullException(nameof(storageService));
             _adbAccessService = adbAccessService ?? throw new ArgumentNullException(nameof(adbAccessService));
             _exportAggregationService = exportAggregationService ?? throw new ArgumentNullException(nameof(exportAggregationService));
@@ -480,7 +429,6 @@ namespace SnVerify.ViewModels
             SessionSnapshot = _sessionLifecycleService.Snapshot;
             VerificationSnapshot = _verificationFlowService.Snapshot;
             LoggingSnapshot = _loggingService.Snapshot;
-            MESSnapshot = _mesInterface.Snapshot;
 
             // 从设置中读取上次选择的导出文件夹路径
             _lastExportFolder = Settings.Default.LastExportFolder;
@@ -493,7 +441,8 @@ namespace SnVerify.ViewModels
             // 规则 3/5/8：自检期间禁用 Start/End/导出；检验中也禁用 Start/End/导出（防止重复点击/并发操作）。
             StartBatchCommand = new RelayCommand(async () => await StartBatchAsync(), () => !IsSessionActive && !IsSelfChecking && !IsProcessing);
             EndBatchCommand = new RelayCommand(async () => await EndBatchAsync(), () => IsSessionActive && !IsSelfChecking && !IsProcessing);
-            ExportCommand = new RelayCommand(async () => await ExportAsync(), () => !IsSessionActive && !IsSelfChecking && !IsProcessing && !string.IsNullOrEmpty(_lastEndedSessionId));
+            // 导出：仅在进行中的测试时段（开始测试→结束测试）不可用，其余时间均可点击
+            ExportCommand = new RelayCommand(async () => await ExportAsync(), () => !IsSessionActive);
             // 规则 8：自检期间禁用人工检验
             StartVerifyCommand = new RelayCommand(async () => await StartVerifyAsync(), () => !IsProcessing && !IsSelfChecking);
             SelfCheckCommand = new RelayCommand(async () => await SelfCheckAsync(), () => !IsSelfChecking);

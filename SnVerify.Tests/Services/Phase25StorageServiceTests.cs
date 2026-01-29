@@ -328,5 +328,84 @@ namespace SnVerify.Tests.Services
             Assert.That(existsPassBinding, Is.True, "存在 PASS 绑定时应返回 true");
             Assert.That(notExistsBinding, Is.False, "不存在完全匹配的 PASS 绑定时应返回 false");
         }
+
+        [Test]
+        public async Task GetProductIdByProductNameAsync_WhenProductExists_ReturnsId()
+        {
+            await _storage.InitializeAsync();
+
+            var createdProductId = await _storage.CreateProductAsync(new Product
+            {
+                ProductName = "TestProduct",
+                Description = "Test Description",
+                CreatedAt = DateTime.Now
+            });
+
+            var foundProductId = await _storage.GetProductIdByProductNameAsync("TestProduct");
+
+            Assert.That(foundProductId, Is.Not.Null);
+            Assert.That(foundProductId.Value, Is.EqualTo(createdProductId));
+        }
+
+        [Test]
+        public async Task GetProductIdByProductNameAsync_WhenProductNotExists_ReturnsNull()
+        {
+            await _storage.InitializeAsync();
+
+            var foundProductId = await _storage.GetProductIdByProductNameAsync("NonExistentProduct");
+
+            Assert.That(foundProductId, Is.Null);
+        }
+
+        [Test]
+        public async Task GetProductIdByProductNameAsync_WhenProductNameIsEmpty_ReturnsNull()
+        {
+            await _storage.InitializeAsync();
+
+            var foundProductId = await _storage.GetProductIdByProductNameAsync("");
+
+            Assert.That(foundProductId, Is.Null);
+        }
+
+        [Test]
+        public async Task SetOrderProductIdAsync_ShouldUpdateOrderProductId()
+        {
+            await _storage.InitializeAsync();
+
+            var productId1 = await _storage.CreateProductAsync(new Product { ProductName = "Product1" });
+            var productId2 = await _storage.CreateProductAsync(new Product { ProductName = "Product2" });
+            var orderId = await _storage.CreateOrderAsync(new Order
+            {
+                OrderName = "OrderToUpdate",
+                ProductId = productId1,
+                CreatedAt = DateTime.Now
+            });
+
+            // 验证初始 ProductId
+            var allOrders = await _storage.GetAllOrdersAsync();
+            var order = allOrders.FirstOrDefault(o => o.OrderName == "OrderToUpdate");
+            Assert.That(order, Is.Not.Null);
+            Assert.That(order.ProductId, Is.EqualTo(productId1));
+
+            // 更新 ProductId
+            await _storage.SetOrderProductIdAsync("OrderToUpdate", productId2);
+
+            // 验证更新后的 ProductId
+            allOrders = await _storage.GetAllOrdersAsync();
+            order = allOrders.FirstOrDefault(o => o.OrderName == "OrderToUpdate");
+            Assert.That(order, Is.Not.Null);
+            Assert.That(order.ProductId, Is.EqualTo(productId2));
+        }
+
+        [Test]
+        public async Task SetOrderProductIdAsync_WhenOrderNameIsEmpty_ThrowsArgumentException()
+        {
+            await _storage.InitializeAsync();
+
+            Assert.ThrowsAsync<ArgumentException>(async () =>
+            {
+                await _storage.SetOrderProductIdAsync("", 1);
+            });
+        }
     }
 }

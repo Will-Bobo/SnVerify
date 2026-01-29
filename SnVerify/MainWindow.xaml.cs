@@ -1,4 +1,4 @@
-﻿/// <author>
+/// <author>
 /// AI Assistant
 /// </author>
 
@@ -45,11 +45,74 @@ namespace SnVerify
                 _previousIsBatchActive = _viewModel.IsSessionActive; // Phase 2.5: 使用 IsSessionActive
                 _previousIsProcessing = _viewModel.IsProcessing;
                 _previousIsSelfChecking = _viewModel.IsSelfChecking;
+
+                // 订阅 ViewModel 属性变化：开始测试后聚焦并清空扫码框；检验完成后焦点回扫码框
+                _viewModel.PropertyChanged += ViewModel_PropertyChanged;
             }
             catch (Exception ex)
             {
                 MessageBox.Show($"初始化失败: {ex.Message}\n\n{ex.StackTrace}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
             }
+        }
+
+        /// <summary>
+        /// 1) 开始测试后：焦点放入扫码输入框并清空内容。
+        /// 2) 人工检验完成后：焦点回到扫码输入框并刷新光标（解决竖条不闪烁问题）。
+        /// </summary>
+        private void ViewModel_PropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (_viewModel == null) return;
+
+            if (e.PropertyName == nameof(MainViewModel.IsSessionActive))
+            {
+                bool nowActive = _viewModel.IsSessionActive;
+                if (!_previousIsBatchActive && nowActive)
+                {
+                    FocusScanInputAndClear();
+                }
+                _previousIsBatchActive = nowActive;
+                return;
+            }
+
+            if (e.PropertyName == nameof(MainViewModel.IsProcessing))
+            {
+                bool nowProcessing = _viewModel.IsProcessing;
+                if (_previousIsProcessing && !nowProcessing)
+                {
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        FocusScanInput();
+                    }), System.Windows.Threading.DispatcherPriority.Input);
+                }
+                _previousIsProcessing = nowProcessing;
+                return;
+            }
+        }
+
+        /// <summary>
+        /// 焦点放入扫码输入框并清空内容（用于「开始测试」后）
+        /// </summary>
+        private void FocusScanInputAndClear()
+        {
+            _viewModel.ScanInputText = "";
+            var textBox = ScanInputTextBox;
+            if (textBox != null)
+            {
+                textBox.Focus();
+                textBox.SelectAll();
+            }
+        }
+
+        /// <summary>
+        /// 将焦点设回扫码输入框并全选（用于检验完成后，含人工检验；配合 Keyboard.Focus 恢复光标闪烁）
+        /// </summary>
+        private void FocusScanInput()
+        {
+            var textBox = ScanInputTextBox;
+            if (textBox == null) return;
+            textBox.Focus();
+            Keyboard.Focus(textBox);
+            textBox.SelectAll();
         }
 
         /// <summary>

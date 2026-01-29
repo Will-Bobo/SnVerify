@@ -76,19 +76,50 @@ namespace SnVerify.Services.Session
 
             try
             {
+                // 防止同一秒内快速 End/Start 导致 SessionName 重复（SessionId 格式到秒）
+                // 仅通过调整传入 Format 的时间来保证仍符合既定格式：OrderId_yyyyMMdd_HHmmss
+                var guard = 0;
+                while (_storage.SessionExistsAsync(sessionId).GetAwaiter().GetResult())
+                {
+                    at = at.AddSeconds(1);
+                    sessionId = SessionIdGenerator.Format(orderId, at);
+                    guard++;
+                    if (guard > 10)
+                        throw new InvalidOperationException("生成 SessionId 失败：短时间内重复冲突过多");
+                }
+
                 // Phase 2.5：Order 使用新的模型（Id / OrderName / ProductId / CreatedAt），
                 // 这里按订单名称（orderName ?? orderId）进行存在性检查与创建。
                 var displayOrderName = orderName ?? orderId;
+
+                // 解析或创建 Product（项目名 = ProductName），供 Order 关联
+                int productId = 0;
+                if (!string.IsNullOrWhiteSpace(projectId))
+                {
+                    var existingProductId = _storage.GetProductIdByProductNameAsync(projectId.Trim()).GetAwaiter().GetResult();
+                    if (existingProductId.HasValue)
+                    {
+                        productId = existingProductId.Value;
+                    }
+                    else
+                    {
+                        var product = new Product
+                        {
+                            ProductName = projectId.Trim(),
+                            Description = null,
+                            CreatedAt = at
+                        };
+                        productId = _storage.CreateProductAsync(product).GetAwaiter().GetResult();
+                    }
+                }
 
                 var orderExists = _storage.OrderExistsAsync(orderId).GetAwaiter().GetResult();
                 if (!orderExists)
                 {
                     var order = new Order
                     {
-                        // 仅使用业务订单名称，ProductId 后续由上层配置，这里先占位为 0。
-                        // TODO Phase2.5: 挂接真实 ProductId 维度。
                         OrderName = displayOrderName,
-                        ProductId = 0,
+                        ProductId = productId,
                         CreatedAt = at
                     };
                     _storage.CreateOrderAsync(order).GetAwaiter().GetResult();
@@ -100,6 +131,11 @@ namespace SnVerify.Services.Session
                 if (orderEntity == null)
                 {
                     throw new InvalidOperationException($"未能找到订单记录: {displayOrderName}");
+                }
+                // 若订单此前 ProductId 为 0 且本次有项目，则修正关联
+                if (orderEntity.ProductId == 0 && productId != 0)
+                {
+                    _storage.SetOrderProductIdAsync(displayOrderName, productId).GetAwaiter().GetResult();
                 }
 
                 var session = new TestSession

@@ -5,7 +5,6 @@
 using System;
 using SnVerify.Services.Coordination;
 using SnVerify.Services.Logging;
-using SnVerify.Services.MES;
 using SnVerify.Services.Session;
 using SnVerify.Services.Storage;
 using SnVerify.Services.Input;
@@ -72,10 +71,6 @@ namespace SnVerify.Infrastructure
             // 创建扫码输入服务
             var scanInputService = new ScanInputService();
 
-            // 创建 MES 接口服务（使用占位 URL）
-            var mesBaseUrl = "http://localhost/mes"; // 占位 URL，实际使用时需要配置
-            var mesInterface = new MESInterface(mesBaseUrl, loggingService);
-
             // 校验流程服务工厂：按批次 ID 创建 ProcessCoordinator+VerificationFlowService
             var flowServiceFactory = new VerificationFlowServiceFactory(storageService, adbAccessService, loggingService);
 
@@ -93,7 +88,6 @@ namespace SnVerify.Infrastructure
                 sessionLifecycleService,
                 flowServiceFactory,
                 loggingService,
-                mesInterface,
                 storageService,
                 adbAccessService,
                 exportAggregationService,

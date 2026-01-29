@@ -14,13 +14,11 @@ using SnVerify.Domain.Validation;
 using SnVerify.Services.Adb;
 using SnVerify.Services.Coordination;
 using SnVerify.Services.Logging;
-using SnVerify.Services.MES;
 using SnVerify.Services.Mes.Gate;
 using SnVerify.Services.Session;
 using SnVerify.Services.Storage;
 using SnVerify.Services.Ui;
 using SnVerify.ViewModels;
-using SnVerify.Domain.Validation;
 
 namespace SnVerify.Tests.ViewModels
 {
@@ -35,7 +33,6 @@ namespace SnVerify.Tests.ViewModels
         private Mock<IVerificationFlowServiceFactory> _flowServiceFactoryMock;
         private Mock<IVerificationFlowService> _verificationFlowServiceMock;
         private Mock<ILoggingService> _loggingServiceMock;
-        private Mock<IMESInterface> _mesInterfaceMock;
         private Mock<IStorageService> _storageServiceMock;
         private Mock<IAdbAccessService> _adbAccessServiceMock;
         private Mock<IExportAggregationService> _exportAggregationServiceMock;
@@ -60,7 +57,6 @@ namespace SnVerify.Tests.ViewModels
             _flowServiceFactoryMock = new Mock<IVerificationFlowServiceFactory>();
             _verificationFlowServiceMock = new Mock<IVerificationFlowService>();
             _loggingServiceMock = new Mock<ILoggingService>();
-            _mesInterfaceMock = new Mock<IMESInterface>();
             _storageServiceMock = new Mock<IStorageService>();
             _adbAccessServiceMock = new Mock<IAdbAccessService>();
             _exportAggregationServiceMock = new Mock<IExportAggregationService>();
@@ -71,13 +67,11 @@ namespace SnVerify.Tests.ViewModels
             _verificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
             _flowServiceFactoryMock.Setup(f => f.Create(It.IsAny<string>(), It.IsAny<string>())).Returns(_verificationFlowServiceMock.Object);
             _loggingServiceMock.Setup(m => m.Snapshot).Returns(LoggingSnapshot.Idle());
-            _mesInterfaceMock.Setup(m => m.Snapshot).Returns(MESSnapshot.Idle());
 
             _viewModel = new MainViewModel(
                 _sessionLifecycleServiceMock.Object,
                 _flowServiceFactoryMock.Object,
                 _loggingServiceMock.Object,
-                _mesInterfaceMock.Object,
                 _storageServiceMock.Object,
                 _adbAccessServiceMock.Object,
                 _exportAggregationServiceMock.Object,
@@ -362,7 +356,8 @@ namespace SnVerify.Tests.ViewModels
             Assert.That(_viewModel.StartVerifyCommand.CanExecute(null), Is.False);
             Assert.That(_viewModel.StartBatchCommand.CanExecute(null), Is.False);
             Assert.That(_viewModel.EndBatchCommand.CanExecute(null), Is.False);
-            Assert.That(_viewModel.ExportCommand.CanExecute(null), Is.False);
+            // 新逻辑：导出仅在“开始测试→结束测试”期间禁用；自检期间（未开始测试）仍可导出
+            Assert.That(_viewModel.ExportCommand.CanExecute(null), Is.True);
 
             // Cleanup
             tcs.SetResult(AdbSnReadResult.Success("DEVICE_SN"));

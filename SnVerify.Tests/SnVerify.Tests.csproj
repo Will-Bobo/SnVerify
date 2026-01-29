@@ -27,6 +27,7 @@
   <ItemGroup>
     <Compile Remove="Services\StorageServiceTests.cs" />
     <Compile Remove="Services\StorageServicePhase2Tests.cs" />
+    <Compile Remove="Services\MESInterfaceTests.cs" />
   </ItemGroup>
 
 </Project>

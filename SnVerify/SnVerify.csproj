@@ -101,12 +101,10 @@
     <Compile Include="Domain\Models\TestSession.cs" />
     <Compile Include="Domain\Models\TestRecord.cs" />
     <Compile Include="Domain\Models\SnCapturedEventArgs.cs" />
-    <Compile Include="Domain\Models\SnVerifyResult.cs" />
     <Compile Include="Domain\Validation\SessionIdGenerator.cs" />
     <Compile Include="Domain\Validation\IOrderNameValidator.cs" />
     <Compile Include="Domain\Validation\OrderNameValidator.cs" />
     <Compile Include="Domain\State\AdbSnapshot.cs" />
-    <Compile Include="Domain\State\BatchSnapshot.cs" />
     <Compile Include="Domain\State\LoggingSnapshot.cs" />
     <Compile Include="Domain\State\SessionSnapshot.cs" />
     <Compile Include="Domain\State\MESSnapshot.cs" />
@@ -146,8 +144,6 @@
     <Compile Include="Services\Mes\Gate\MesEventArgs.cs" />
     <Compile Include="Services\Mes\Gate\IMesPreCheck.cs" />
     <Compile Include="Services\Mes\Gate\IMesResultReporter.cs" />
-    <Compile Include="Services\MES\IMESInterface.cs" />
-    <Compile Include="Services\MES\MESInterface.cs" />
     <Compile Include="Services\Storage\IStorageService.cs" />
     <Compile Include="Services\Storage\StorageService.cs" />
     <Compile Include="Services\Storage\IExportAggregationService.cs" />

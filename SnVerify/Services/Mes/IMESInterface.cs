@@ -5,7 +5,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using SnVerify.Domain.Models;
 using SnVerify.Domain.State;
 
 namespace SnVerify.Services.MES
@@ -62,20 +61,21 @@ namespace SnVerify.Services.MES
         MESSnapshot Snapshot { get; }
 
         /// <summary>
-        /// 异步上传校验结果到 MES 系统
+        /// 异步上传校验结果到 MES 系统（基于 Session/TestRecord 语义）
         /// </summary>
-        /// <param name="result">校验结果</param>
+        /// <param name="context">MES 上下文（包含 SessionId/OrderId/StickerSN/DeviceSN 等）</param>
+        /// <param name="result">校验结果：PASS / FAIL / TIMEOUT</param>
+        /// <param name="failReason">失败原因（可选）</param>
         /// <returns>上传结果</returns>
         /// <remarks>
-        /// 如果上传失败，结果会被缓存，等待后续重试或人工干预
+        /// 如果失败，结果会被缓存，等待后续重试或人工处理。
         /// </remarks>
-        Task<MESResult> UploadTestResultAsync(SnVerifyResult result);
+        Task<MESResult> UploadResultAsync(MesContext context, string result, string failReason = null);
 
         /// <summary>
-        /// 获取缓存的结果列表
+        /// 获取缓存的结果上下文列表
         /// </summary>
-        /// <returns>缓存的结果列表（只读）</returns>
-        IReadOnlyList<SnVerifyResult> GetCachedResults();
+        IReadOnlyList<MesContext> GetCachedResults();
 
         /// <summary>
         /// 重试上传所有缓存的结果

@@ -376,336 +376,6 @@ CREATE INDEX IF NOT EXISTS idx_testrecord_devicesn ON TestRecord(DeviceSN);";
             }
         }
 
-        /// <summary>
-        /// 更新现有的校验结果记录
-        /// </summary>
-        public async Task UpdateVerifyResultAsync(SnVerifyResult result)
-        {
-            if (result == null)
-                throw new ArgumentNullException(nameof(result));
-            if (result.Id <= 0)
-                throw new ArgumentException("记录 ID 必须大于 0", nameof(result));
-            if (string.IsNullOrWhiteSpace(result.BatchId))
-                throw new ArgumentException("批次 ID 不能为空", nameof(result));
-            if (string.IsNullOrWhiteSpace(result.SN))
-                throw new ArgumentException("SN 不能为空", nameof(result));
-            if (string.IsNullOrWhiteSpace(result.Result))
-                throw new ArgumentException("校验结果不能为空", nameof(result));
-
-            EnsureConnectionInitialized();
-
-            try
-            {
-                Snapshot = StorageSnapshot.Processing(result.BatchId);
-
-                var sql = @"
-                    UPDATE SnVerifyResult 
-                    SET Result = @Result, FailReason = @FailReason, DeviceSN = @DeviceSN, VerifyTime = @VerifyTime
-                    WHERE Id = @Id";
-
-                await Task.Run(() =>
-                {
-                    lock (_lockObject)
-                    {
-                        if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
-                        {
-                            throw new InvalidOperationException("数据库连接未初始化或已关闭");
-                        }
-
-                        using (var command = new SQLiteCommand(sql, _connection))
-                        {
-                            command.Parameters.AddWithValue("@Id", result.Id);
-                            command.Parameters.AddWithValue("@Result", result.Result);
-                            command.Parameters.AddWithValue("@FailReason", (object)result.FailReason ?? DBNull.Value);
-                            command.Parameters.AddWithValue("@DeviceSN", (object)result.DeviceSN ?? DBNull.Value);
-                            command.Parameters.AddWithValue("@VerifyTime", result.VerifyTime);
-                            command.ExecuteNonQuery();
-                        }
-                    }
-                });
-
-                var recordCount = await GetRecordCountAsync(result.BatchId);
-                Snapshot = StorageSnapshot.Saved(result.SN, result.BatchId, recordCount);
-
-                _logger?.LogInfo($"校验结果更新成功: Id={result.Id}, BatchId={result.BatchId}, SN={result.SN}, Result={result.Result}");
-            }
-            catch (Exception ex)
-            {
-                Snapshot = StorageSnapshot.Error($"更新失败: {ex.Message}", result.BatchId);
-                _logger?.LogError($"更新校验结果失败: {ex.Message}", ex);
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// 保存 SN 校验结果（Phase2：更新 Snapshot）
-        /// </summary>
-        public async Task SaveVerifyResultAsync(SnVerifyResult result)
-        {
-            if (result == null)
-                throw new ArgumentNullException(nameof(result));
-            if (string.IsNullOrWhiteSpace(result.BatchId))
-                throw new ArgumentException("批次 ID 不能为空", nameof(result));
-            if (string.IsNullOrWhiteSpace(result.SN))
-                throw new ArgumentException("SN 不能为空", nameof(result));
-            if (string.IsNullOrWhiteSpace(result.Result))
-                throw new ArgumentException("校验结果不能为空", nameof(result));
-
-            // 确保数据库连接已初始化
-            EnsureConnectionInitialized();
-
-            try
-            {
-                // 检查 SN 是否重复
-                var isDuplicate = await IsSnDuplicateAsync(result.BatchId, result.SN);
-                if (isDuplicate)
-                {
-                    Snapshot = StorageSnapshot.DuplicateSn(result.SN, result.BatchId);
-                    _logger?.LogWarning($"SN 重复，保存失败: BatchId={result.BatchId}, SN={result.SN}");
-                    throw new InvalidOperationException($"SN {result.SN} 在批次 {result.BatchId} 中已存在");
-                }
-
-                Snapshot = StorageSnapshot.Processing(result.BatchId);
-
-                var insertSql = @"
-                    INSERT INTO SnVerifyResult (BatchId, SN, DeviceSN, Result, FailReason, VerifyTime)
-                    VALUES (@BatchId, @SN, @DeviceSN, @Result, @FailReason, @VerifyTime)";
-
-                await Task.Run(() =>
-                {
-                    lock (_lockObject)
-                    {
-                        if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
-                        {
-                            throw new InvalidOperationException("数据库连接未初始化或已关闭");
-                        }
-
-                        using (var command = new SQLiteCommand(insertSql, _connection))
-                        {
-                            command.Parameters.AddWithValue("@BatchId", result.BatchId);
-                            command.Parameters.AddWithValue("@SN", result.SN);
-                            command.Parameters.AddWithValue("@DeviceSN", (object)result.DeviceSN ?? DBNull.Value);
-                            command.Parameters.AddWithValue("@Result", result.Result);
-                            command.Parameters.AddWithValue("@FailReason", (object)result.FailReason ?? DBNull.Value);
-                            command.Parameters.AddWithValue("@VerifyTime", result.VerifyTime);
-                            command.ExecuteNonQuery();
-                            
-                            // 获取最后插入的 Id
-                            using (var getIdCommand = new SQLiteCommand("SELECT last_insert_rowid()", _connection))
-                            {
-                                var insertedId = getIdCommand.ExecuteScalar();
-                                result.Id = Convert.ToInt32(insertedId);
-                            }
-                        }
-                    }
-                });
-
-                // 获取当前批次记录数
-                var recordCount = await GetRecordCountAsync(result.BatchId);
-                Snapshot = StorageSnapshot.Saved(result.SN, result.BatchId, recordCount);
-
-                _logger?.LogInfo($"校验结果保存成功: BatchId={result.BatchId}, SN={result.SN}, Result={result.Result}");
-            }
-            catch (InvalidOperationException)
-            {
-                throw;
-            }
-            catch (Exception ex)
-            {
-                Snapshot = StorageSnapshot.Error($"保存失败: {ex.Message}", result.BatchId);
-                _logger?.LogError($"保存校验结果失败: {ex.Message}", ex);
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// 检查指定批次内 SN 是否重复（仅在同一批次中检查，不跨批次）。
-        /// </summary>
-        /// <param name="batchId">批次 ID</param>
-        /// <param name="sn">待检查的 SN</param>
-        /// <returns>如果在该批次中已存在相同 SN，则返回 true；否则返回 false。</returns>
-        public async Task<bool> IsSnDuplicateAsync(string batchId, string sn)
-        {
-            if (string.IsNullOrWhiteSpace(batchId))
-                throw new ArgumentException("批次 ID 不能为空", nameof(batchId));
-            if (string.IsNullOrWhiteSpace(sn))
-                throw new ArgumentException("SN 不能为空", nameof(sn));
-
-            EnsureConnectionInitialized();
-
-            const string sql = @"
-                SELECT COUNT(1)
-                FROM SnVerifyResult
-                WHERE BatchId = @BatchId AND SN = @SN";
-
-            var count = await Task.Run(() =>
-            {
-                lock (_lockObject)
-                {
-                    if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
-                    {
-                        throw new InvalidOperationException("数据库连接未初始化或已关闭");
-                    }
-
-                    using (var command = new SQLiteCommand(sql, _connection))
-                    {
-                        command.Parameters.AddWithValue("@BatchId", batchId);
-                        command.Parameters.AddWithValue("@SN", sn);
-                        var obj = command.ExecuteScalar();
-                        return Convert.ToInt32(obj);
-                    }
-                }
-            });
-
-            return count > 0;
-        }
-
-        /// <summary>
-        /// 获取指定批次的记录数
-        /// </summary>
-        private async Task<int> GetRecordCountAsync(string batchId)
-        {
-            // 确保数据库连接已初始化
-            EnsureConnectionInitialized();
-
-            var sql = "SELECT COUNT(1) FROM SnVerifyResult WHERE BatchId = @BatchId";
-            return await Task.Run(() =>
-            {
-                lock (_lockObject)
-                {
-                    if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
-                    {
-                        throw new InvalidOperationException("数据库连接未初始化或已关闭");
-                    }
-
-                    using (var command = new SQLiteCommand(sql, _connection))
-                    {
-                        command.Parameters.AddWithValue("@BatchId", batchId);
-                        var count = command.ExecuteScalar();
-                        return Convert.ToInt32(count);
-                    }
-                }
-            });
-        }
-
-        /// <summary>
-        /// 获取指定批次的所有校验结果
-        /// </summary>
-        public async Task<IReadOnlyList<SnVerifyResult>> GetResultsByBatchAsync(string batchId)
-        {
-            if (string.IsNullOrWhiteSpace(batchId))
-                throw new ArgumentException("批次 ID 不能为空", nameof(batchId));
-
-            // 确保数据库连接已初始化
-            EnsureConnectionInitialized();
-
-            try
-            {
-                var sql = @"
-                    SELECT Id, BatchId, SN, DeviceSN, Result, FailReason, VerifyTime
-                    FROM SnVerifyResult
-                    WHERE BatchId = @BatchId
-                    ORDER BY VerifyTime ASC";
-
-                var results = await Task.Run(() =>
-                {
-                    lock (_lockObject)
-                    {
-                        if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
-                        {
-                            throw new InvalidOperationException("数据库连接未初始化或已关闭");
-                        }
-
-                        var list = new List<SnVerifyResult>();
-                        using (var command = new SQLiteCommand(sql, _connection))
-                        {
-                            command.Parameters.AddWithValue("@BatchId", batchId);
-                            using (var reader = command.ExecuteReader())
-                            {
-                                while (reader.Read())
-                                {
-                                    list.Add(new SnVerifyResult
-                                    {
-                                        Id = reader.GetInt32(0),
-                                        BatchId = reader.GetString(1),
-                                        SN = reader.GetString(2),
-                                        DeviceSN = reader.IsDBNull(3) ? null : reader.GetString(3),
-                                        Result = reader.GetString(4),
-                                        FailReason = reader.IsDBNull(5) ? null : reader.GetString(5),
-                                        VerifyTime = reader.GetDateTime(6)
-                                    });
-                                }
-                            }
-                        }
-                        return list;
-                    }
-                });
-
-                return results.AsReadOnly();
-            }
-            catch (Exception ex)
-            {
-                _logger?.LogError($"查询批次结果失败: {ex.Message}", ex);
-                throw;
-            }
-        }
-
-        /// <summary>
-        /// 导出批次结果到 Excel 文件（Phase2：支持 PASS/FAIL 分表，更新 Snapshot）
-        /// </summary>
-        public async Task ExportBatchResultAsync(string batchId, string outputDirectory)
-        {
-            if (string.IsNullOrWhiteSpace(batchId))
-                throw new ArgumentException("批次 ID 不能为空", nameof(batchId));
-            if (string.IsNullOrWhiteSpace(outputDirectory))
-                throw new ArgumentException("输出目录不能为空", nameof(outputDirectory));
-
-            try
-            {
-                Snapshot = StorageSnapshot.Processing(batchId);
-
-                if (!Directory.Exists(outputDirectory))
-                {
-                    Directory.CreateDirectory(outputDirectory);
-                }
-
-                var results = await GetResultsByBatchAsync(batchId);
-                var fileName = $"{batchId}.xlsx";
-                var filePath = Path.Combine(outputDirectory, fileName);
-
-                await Task.Run(() =>
-                {
-                    using (var package = new ExcelPackage())
-                    {
-                        // 创建 PASS Sheet
-                        var passSheet = package.Workbook.Worksheets.Add("PASS");
-                        WriteSheetHeader(passSheet);
-                        var passResults = results.Where(r => r.Result == "PASS").ToList();
-                        WriteSheetData(passSheet, passResults, startRow: 2);
-
-                        // 创建 FAIL Sheet（包含 FAIL 和 TIMEOUT）
-                        var failSheet = package.Workbook.Worksheets.Add("FAIL");
-                        WriteSheetHeader(failSheet);
-                        var failResults = results.Where(r => r.Result == "FAIL" || r.Result == "TIMEOUT").ToList();
-                        WriteSheetData(failSheet, failResults, startRow: 2);
-
-                        // 保存文件
-                        var fileInfo = new FileInfo(filePath);
-                        package.SaveAs(fileInfo);
-                    }
-                });
-
-                Snapshot = StorageSnapshot.Saved(null, batchId, results.Count);
-                _logger?.LogInfo($"批次结果导出成功: BatchId={batchId}, FilePath={filePath}");
-            }
-            catch (Exception ex)
-            {
-                Snapshot = StorageSnapshot.Error($"导出失败: {ex.Message}", batchId);
-                _logger?.LogError($"导出批次结果失败: {ex.Message}", ex);
-                throw;
-            }
-        }
-
         // ---------- Phase 2.5 Step 6：Product / Order / TestSession / TestRecord ----------
 
         /// <summary>
@@ -745,6 +415,33 @@ CREATE INDEX IF NOT EXISTS idx_testrecord_devicesn ON TestRecord(DeviceSN);";
                     }
                 }
             });
+        }
+
+        /// <summary>
+        /// 按产品名称获取产品 Id，不存在则返回 null。
+        /// </summary>
+        public async Task<int?> GetProductIdByProductNameAsync(string productName)
+        {
+            if (string.IsNullOrWhiteSpace(productName))
+                return null;
+            EnsureConnectionInitialized();
+            var sql = @"SELECT Id FROM Product WHERE ProductName = @ProductName LIMIT 1";
+            var id = await Task.Run(() =>
+            {
+                lock (_lockObject)
+                {
+                    if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        return (int?)null;
+                    using (var cmd = new SQLiteCommand(sql, _connection))
+                    {
+                        cmd.Parameters.AddWithValue("@ProductName", productName.Trim());
+                        var o = cmd.ExecuteScalar();
+                        if (o == null || o == DBNull.Value) return null;
+                        return Convert.ToInt32(o);
+                    }
+                }
+            });
+            return id;
         }
 
         /// <summary>
@@ -821,6 +518,31 @@ CREATE INDEX IF NOT EXISTS idx_testrecord_devicesn ON TestRecord(DeviceSN);";
         }
 
         /// <summary>
+        /// 按订单名称更新订单的 ProductId（用于修正历史订单的 ProductId 为 0 的情况）。
+        /// </summary>
+        public async Task SetOrderProductIdAsync(string orderName, int productId)
+        {
+            if (string.IsNullOrWhiteSpace(orderName))
+                throw new ArgumentException("OrderName 不能为空", nameof(orderName));
+            EnsureConnectionInitialized();
+            var sql = @"UPDATE ""Order"" SET ProductId = @ProductId WHERE OrderName = @OrderName";
+            await Task.Run(() =>
+            {
+                lock (_lockObject)
+                {
+                    if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        throw new InvalidOperationException("数据库连接未初始化或已关闭");
+                    using (var cmd = new SQLiteCommand(sql, _connection))
+                    {
+                        cmd.Parameters.AddWithValue("@ProductId", productId);
+                        cmd.Parameters.AddWithValue("@OrderName", orderName);
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+            });
+        }
+
+        /// <summary>
         /// 判断给定订单名称是否已存在（全局唯一）。
         /// </summary>
         public async Task<bool> OrderNameExistsAsync(string orderName)
@@ -883,13 +605,13 @@ CREATE INDEX IF NOT EXISTS idx_testrecord_devicesn ON TestRecord(DeviceSN);";
 
         /// <summary>
         /// 获取所有 ProjectId 列表（去重后，按字典序排序）。
+        /// Phase 2.5：Order 无 ProjectId 列，用 Product.ProductName 作为“项目”标识（Order 通过 ProductId 关联 Product）。
         /// </summary>
         public async Task<IReadOnlyList<string>> GetAllProjectIdsAsync()
         {
             EnsureConnectionInitialized();
 
-            // 注意：这里假定 Order 表中已存在 ProjectId 列（Phase 2.5 设计）。
-            const string sql = @"SELECT DISTINCT ProjectId FROM ""Order"" WHERE ProjectId IS NOT NULL AND ProjectId <> '' ORDER BY ProjectId";
+            const string sql = @"SELECT DISTINCT p.ProductName FROM ""Order"" o INNER JOIN Product p ON o.ProductId = p.Id WHERE p.ProductName IS NOT NULL AND p.ProductName <> '' ORDER BY p.ProductName";
 
             var list = await Task.Run(() =>
             {
@@ -1318,14 +1040,53 @@ CREATE INDEX IF NOT EXISTS idx_testrecord_devicesn ON TestRecord(DeviceSN);";
         }
 
         /// <summary>
-        /// 按 ProjectId 查该项目下所有 TestSession（Phase 2.5：Order 无 ProjectId，暂返回空）
+        /// 按 ProjectId 查该项目下所有 TestSession（Phase 2.5：ProjectId 视为 ProductName，经 Order→Product 关联查询）
         /// </summary>
         public async Task<IReadOnlyList<TestSession>> GetSessionsByProjectIdAsync(string projectId)
         {
             if (string.IsNullOrWhiteSpace(projectId))
                 throw new ArgumentException("ProjectId 不能为空", nameof(projectId));
-            await Task.CompletedTask;
-            return new List<TestSession>().AsReadOnly();
+            EnsureConnectionInitialized();
+
+            const string sql = @"
+                SELECT s.Id, s.SessionName, s.OrderId, s.StartTime, s.EndTime, s.Status
+                FROM TestSession s
+                INNER JOIN ""Order"" o ON s.OrderId = o.Id
+                INNER JOIN Product p ON o.ProductId = p.Id
+                WHERE p.ProductName = @ProjectId
+                ORDER BY s.StartTime ASC";
+
+            var list = await Task.Run(() =>
+            {
+                lock (_lockObject)
+                {
+                    if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        throw new InvalidOperationException("数据库连接未初始化或已关闭");
+
+                    var results = new List<TestSession>();
+                    using (var cmd = new SQLiteCommand(sql, _connection))
+                    {
+                        cmd.Parameters.AddWithValue("@ProjectId", projectId);
+                        using (var r = cmd.ExecuteReader())
+                        {
+                            while (r.Read())
+                            {
+                                results.Add(new TestSession
+                                {
+                                    Id = r.GetInt32(0),
+                                    SessionName = r.GetString(1),
+                                    OrderId = r.GetInt32(2),
+                                    StartTime = r.GetDateTime(3),
+                                    EndTime = r.IsDBNull(4) ? (DateTime?)null : r.GetDateTime(4),
+                                    Status = r.IsDBNull(5) ? null : r.GetString(5)
+                                });
+                            }
+                        }
+                    }
+                    return results;
+                }
+            });
+            return list.AsReadOnly();
         }
 
         /// <summary>
@@ -1492,28 +1253,6 @@ CREATE INDEX IF NOT EXISTS idx_testrecord_devicesn ON TestRecord(DeviceSN);";
                 range.Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
                 range.Style.Fill.BackgroundColor.SetColor(System.Drawing.Color.LightGray);
             }
-        }
-
-        /// <summary>
-        /// 写入 Sheet 数据
-        /// </summary>
-        private void WriteSheetData(ExcelWorksheet sheet, IList<SnVerifyResult> results, int startRow)
-        {
-            for (int i = 0; i < results.Count; i++)
-            {
-                var row = startRow + i;
-                var result = results[i];
-                sheet.Cells[row, 1].Value = result.Id;
-                sheet.Cells[row, 2].Value = result.SN;
-                sheet.Cells[row, 3].Value = result.DeviceSN ?? string.Empty;
-                sheet.Cells[row, 4].Value = result.Result;
-                // 将 VerifyTime 格式化为可读中文日期时间格式，例如 “2026年1月11日 13:21:22”
-                sheet.Cells[row, 5].Value = result.FailReason ?? string.Empty;
-                sheet.Cells[row, 6].Value = result.VerifyTime.ToString("yyyy年M月d日 HH:mm:ss");
-            }
-
-            // 自动调整列宽
-            sheet.Cells[sheet.Dimension.Address].AutoFitColumns();
         }
 
         /// <summary>
