@@ -5,7 +5,6 @@
 using System;
 using System.Collections.Generic;
 using System.ComponentModel;
-using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -430,13 +429,8 @@ namespace SnVerify.ViewModels
             VerificationSnapshot = _verificationFlowService.Snapshot;
             LoggingSnapshot = _loggingService.Snapshot;
 
-            // 从设置中读取上次选择的导出文件夹路径
+            // 从设置中读取上次选择的导出文件夹路径（不在 ViewModel 中做文件系统级验证，仅保存字符串）
             _lastExportFolder = Settings.Default.LastExportFolder;
-            // 验证路径是否存在，如果不存在则清空
-            if (!string.IsNullOrEmpty(_lastExportFolder) && !Directory.Exists(_lastExportFolder))
-            {
-                _lastExportFolder = null;
-            }
 
             // 规则 3/5/8：自检期间禁用 Start/End/导出；检验中也禁用 Start/End/导出（防止重复点击/并发操作）。
             StartBatchCommand = new RelayCommand(async () => await StartBatchAsync(), () => !IsSessionActive && !IsSelfChecking && !IsProcessing);
@@ -617,10 +611,10 @@ namespace SnVerify.ViewModels
                 return;
             }
 
-            // Step 3: 选择导出文件夹
-            var initialFolder = (!string.IsNullOrEmpty(_lastExportFolder) && Directory.Exists(_lastExportFolder))
+            // Step 3: 选择导出文件夹（不在 ViewModel 中访问文件系统，仅传递上次路径或日志目录字符串）
+            var initialFolder = !string.IsNullOrEmpty(_lastExportFolder)
                 ? _lastExportFolder
-                : (Directory.Exists(_logDirectory) ? _logDirectory : null);
+                : _logDirectory;
             var selectedFolder = _dialogService.ChooseFolder("请选择导出文件夹", initialFolder);
 
             if (string.IsNullOrEmpty(selectedFolder))
@@ -634,44 +628,9 @@ namespace SnVerify.ViewModels
             Settings.Default.LastExportFolder = selectedFolder;
             Settings.Default.Save();
 
-            // Step 4: 检查目标文件是否存在，弹窗确认覆盖
-            var sessions = exportDimension == ExportDimension.ByProject
-                ? await _storageService.GetSessionsByProjectIdAsync(selectedId)
-                : await _storageService.GetSessionsByOrderIdAsync(selectedId);
-            
-            if (sessions.Count == 0)
-            {
-                _dialogService.ShowInfo($"所选{(exportDimension == ExportDimension.ByProject ? "项目" : "订单")}下没有测试会话，无法导出");
-                return;
-            }
-
-            // 检查是否有已存在的导出文件（与 ExportBySessionAsync 一致，按 Session 内部 Id 命名）
-            bool hasExistingFiles = false;
-            foreach (var s in sessions)
-            {
-                var xlsxPath = Path.Combine(selectedFolder, $"{s.Id}.xlsx");
-                var txtPath = Path.Combine(selectedFolder, $"{s.Id}.txt");
-                if (File.Exists(xlsxPath) || File.Exists(txtPath))
-                {
-                    hasExistingFiles = true;
-                    break;
-                }
-            }
-
-            if (hasExistingFiles)
-            {
-                if (!_dialogService.ConfirmOverwrite("目标文件夹中已存在同名文件，是否覆盖？\n\n是 = 覆盖\n否 = 取消导出"))
-                {
-                    _loggingService.LogInfo("导出已取消（用户选择不覆盖）");
-                    LoggingSnapshot = _loggingService.Snapshot;
-                    return;
-                }
-            }
-
-            // Step 5: 执行导出
+            // Step 4: 执行导出（所有路径/ZIP/文件系统逻辑均在 Service 层实现）
             try
             {
-                Directory.CreateDirectory(selectedFolder);
                 if (exportDimension == ExportDimension.ByProject)
                     await _exportAggregationService.ExportByProjectIdAsync(selectedId, selectedFolder);
                 else

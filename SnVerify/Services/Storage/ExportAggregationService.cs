@@ -5,7 +5,11 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.IO.Compression;
+using System.Linq;
 using System.Threading.Tasks;
+using SnVerify.Domain.Models;
 using SnVerify.Services.Logging;
 
 namespace SnVerify.Services.Storage
@@ -37,13 +41,60 @@ namespace SnVerify.Services.Storage
             if (string.IsNullOrWhiteSpace(outputDirectory))
                 throw new ArgumentException("输出目录不能为空", nameof(outputDirectory));
 
+            Directory.CreateDirectory(outputDirectory);
+
             var sessions = await _storage.GetSessionsByOrderIdAsync(orderId);
-            foreach (var s in sessions)
+            if (sessions == null || sessions.Count == 0)
             {
-                // 使用内部 INT Id 作为导出 SessionId
-                await _storage.ExportBySessionAsync(s.Id, outputDirectory);
+                _logger?.LogInfo($"按订单导出时无 Session: OrderId={orderId}");
+                return;
             }
-            _logger?.LogInfo($"按订单导出完成: OrderId={orderId}, SessionCount={sessions.Count}");
+
+            var safeOrderName = ToSafeFileName(orderId);
+            var zipFilePath = Path.Combine(outputDirectory, safeOrderName + ".zip");
+
+            if (File.Exists(zipFilePath))
+            {
+                throw new InvalidOperationException($"目标 ZIP 已存在，无法导出：{zipFilePath}");
+            }
+
+            var tempDir = CreateTempDirectory();
+            try
+            {
+                foreach (var s in sessions)
+                {
+                    await _storage.ExportBySessionAsync(s.Id, tempDir);
+                }
+
+                using (var zipStream = new FileStream(zipFilePath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
+                using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create))
+                {
+                    foreach (var s in sessions)
+                    {
+                        var safeSessionName = ToSafeFileName(s.SessionName);
+                        var xlsxPath = Path.Combine(tempDir, $"{s.Id}.xlsx");
+                        var txtPath = Path.Combine(tempDir, $"{s.Id}.txt");
+
+                        if (File.Exists(xlsxPath))
+                        {
+                            var entryName = $"{safeOrderName}/{safeSessionName}.xlsx";
+                            archive.CreateEntryFromFile(xlsxPath, entryName);
+                        }
+
+                        if (File.Exists(txtPath))
+                        {
+                            var entryName = $"{safeOrderName}/{safeSessionName}.txt";
+                            archive.CreateEntryFromFile(txtPath, entryName);
+                        }
+                    }
+                }
+
+                _logger?.LogInfo($"按订单导出 ZIP 完成: OrderId={orderId}, SessionCount={sessions.Count}, Zip={zipFilePath}");
+            }
+            finally
+            {
+                TryDeleteDirectory(tempDir);
+            }
         }
 
         /// <inheritdoc />
@@ -54,12 +105,120 @@ namespace SnVerify.Services.Storage
             if (string.IsNullOrWhiteSpace(outputDirectory))
                 throw new ArgumentException("输出目录不能为空", nameof(outputDirectory));
 
+            Directory.CreateDirectory(outputDirectory);
+
             var sessions = await _storage.GetSessionsByProjectIdAsync(projectId);
-            foreach (var s in sessions)
+            if (sessions == null || sessions.Count == 0)
             {
-                await _storage.ExportBySessionAsync(s.Id, outputDirectory);
+                _logger?.LogInfo($"按项目导出时无 Session: ProjectId={projectId}");
+                return;
             }
-            _logger?.LogInfo($"按项目导出完成: ProjectId={projectId}, SessionCount={sessions.Count}");
+
+            // ProjectId 在当前阶段即为 ProductName
+            var safeProductName = ToSafeFileName(projectId);
+            var zipFilePath = Path.Combine(outputDirectory, safeProductName + ".zip");
+
+            if (File.Exists(zipFilePath))
+            {
+                throw new InvalidOperationException($"目标 ZIP 已存在，无法导出：{zipFilePath}");
+            }
+
+            var orders = await _storage.GetAllOrdersAsync();
+            var orderNameById = orders.ToDictionary(o => o.Id, o => o.OrderName);
+
+            var tempDir = CreateTempDirectory();
+            try
+            {
+                foreach (var s in sessions)
+                {
+                    await _storage.ExportBySessionAsync(s.Id, tempDir);
+                }
+
+                using (var zipStream = new FileStream(zipFilePath, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.None))
+                using (var archive = new ZipArchive(zipStream, ZipArchiveMode.Create))
+                {
+                    foreach (var s in sessions)
+                    {
+                        if (!orderNameById.TryGetValue(s.OrderId, out var orderName))
+                        {
+                            // 数据不一致时跳过该 Session
+                            continue;
+                        }
+
+                        var safeOrderName = ToSafeFileName(orderName);
+                        var safeSessionName = ToSafeFileName(s.SessionName);
+
+                        var xlsxPath = Path.Combine(tempDir, $"{s.Id}.xlsx");
+                        var txtPath = Path.Combine(tempDir, $"{s.Id}.txt");
+
+                        if (File.Exists(xlsxPath))
+                        {
+                            var entryName = $"{safeProductName}/{safeOrderName}/{safeSessionName}.xlsx";
+                            archive.CreateEntryFromFile(xlsxPath, entryName);
+                        }
+
+                        if (File.Exists(txtPath))
+                        {
+                            var entryName = $"{safeProductName}/{safeOrderName}/{safeSessionName}.txt";
+                            archive.CreateEntryFromFile(txtPath, entryName);
+                        }
+                    }
+                }
+
+                _logger?.LogInfo($"按项目导出 ZIP 完成: ProjectId={projectId}, SessionCount={sessions.Count}, Zip={zipFilePath}");
+            }
+            finally
+            {
+                TryDeleteDirectory(tempDir);
+            }
+        }
+
+        /// <summary>
+        /// 将业务名称转换为文件系统安全的名称：非法字符统一替换为下划线。
+        /// </summary>
+        private static string ToSafeFileName(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name))
+                return "_";
+
+            var invalidChars = Path.GetInvalidFileNameChars();
+            var chars = name.ToCharArray();
+            for (var i = 0; i < chars.Length; i++)
+            {
+                if (invalidChars.Contains(chars[i]))
+                {
+                    chars[i] = '_';
+                }
+            }
+            return new string(chars);
+        }
+
+        /// <summary>
+        /// 创建用于 Session 级中间文件的临时目录。
+        /// </summary>
+        private static string CreateTempDirectory()
+        {
+            var root = Path.Combine(Path.GetTempPath(), "SnVerify_Export_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(root);
+            return root;
+        }
+
+        /// <summary>
+        /// 安全删除临时目录（忽略 IO 异常）。
+        /// </summary>
+        private static void TryDeleteDirectory(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path) || !Directory.Exists(path))
+                return;
+
+            try
+            {
+                Directory.Delete(path, recursive: true);
+            }
+            catch
+            {
+                // 删除失败不影响主流程
+            }
         }
     }
 }

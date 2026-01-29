@@ -23,6 +23,11 @@
     <ProjectReference Include="..\SnVerify\SnVerify.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Reference Include="System.IO.Compression" />
+    <Reference Include="System.IO.Compression.FileSystem" />
+  </ItemGroup>
+
   <!-- Phase 2.5 Compile Fix：隔离旧 Batch/SnVerifyResult 测试，待迁移至 TestRecord 后重写 -->
   <ItemGroup>
     <Compile Remove="Services\StorageServiceTests.cs" />
