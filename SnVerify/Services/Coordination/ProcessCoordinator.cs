@@ -9,6 +9,7 @@ using SnVerify.Domain.Models;
 using SnVerify.Domain.State;
 using SnVerify.Services.Adb;
 using SnVerify.Services.Logging;
+using SnVerify.Services.Mes.Gate;
 using SnVerify.Services.Storage;
 
 namespace SnVerify.Services.Coordination
@@ -18,10 +19,14 @@ namespace SnVerify.Services.Coordination
     /// </summary>
     public class ProcessCoordinator : IProcessCoordinator
     {
-        private readonly string _batchId;
+        private readonly string _sessionId;
+        private readonly string _orderId;
         private readonly IStorageService _storageService;
         private readonly IAdbAccessService _adbAccessService;
         private readonly ILoggingService _loggingService;
+        private readonly IMesPreCheck _mesPreCheck;
+        private readonly IMesResultReporter _mesReporter;
+        private readonly MesMode _mesMode;
         private readonly object _lockObject = new object();
         private VerificationSnapshot _snapshot;
 
@@ -52,23 +57,48 @@ namespace SnVerify.Services.Coordination
         public event EventHandler<VerificationSnapshot> SnapshotChanged;
 
         /// <summary>
-        /// 初始化流程编排服务
+        /// MES 事件通知（仅弱提示用途，不得影响 PASS/FAIL）。
         /// </summary>
-        /// <param name="batchId">当前批次 ID</param>
+        public event EventHandler<MesEventArgs> MesEventOccurred;
+
+        /// <summary>
+        /// 初始化流程编排服务（Phase 2.5 以 SessionId 为入口，MES 预留）
+        /// </summary>
+        /// <param name="sessionId">当前会话 ID</param>
         /// <param name="storageService">存储服务</param>
         /// <param name="adbAccessService">ADB 访问服务</param>
         /// <param name="loggingService">日志服务（可选）</param>
+        /// <param name="mesPreCheck">MES Pre-Gate（可选，null 时不调用）</param>
+        /// <param name="mesReporter">MES Post-Report（可选，null 时不调用）</param>
+        /// <param name="mesMode">MES 模式，Disabled 时不调用 Pre/Post</param>
+        /// <param name="orderId">订单 ID（可选，用于 MES 上下文）</param>
         public ProcessCoordinator(
-            string batchId,
+            string sessionId,
             IStorageService storageService,
             IAdbAccessService adbAccessService,
-            ILoggingService loggingService = null)
+            ILoggingService loggingService = null,
+            IMesPreCheck mesPreCheck = null,
+            IMesResultReporter mesReporter = null,
+            MesMode mesMode = MesMode.Disabled,
+            string orderId = null)
         {
-            _batchId = batchId ?? throw new ArgumentNullException(nameof(batchId));
+            _sessionId = sessionId ?? throw new ArgumentNullException(nameof(sessionId));
+            _orderId = orderId;
             _storageService = storageService ?? throw new ArgumentNullException(nameof(storageService));
             _adbAccessService = adbAccessService ?? throw new ArgumentNullException(nameof(adbAccessService));
             _loggingService = loggingService;
-            _snapshot = VerificationSnapshot.Idle(_batchId);
+            _mesPreCheck = mesPreCheck;
+            _mesReporter = mesReporter;
+            _mesMode = mesMode;
+            _snapshot = VerificationSnapshot.Idle(_sessionId);
+        }
+
+        /// <summary>
+        /// 兼容旧调用：按 batchId 构造，内部按 sessionId 处理（Phase 2.5 Batch 退场过渡）
+        /// </summary>
+        public static ProcessCoordinator FromBatchId(string batchId, IStorageService storageService, IAdbAccessService adbAccessService, ILoggingService loggingService = null)
+        {
+            return new ProcessCoordinator(batchId, storageService, adbAccessService, loggingService, null, null, MesMode.Disabled, null);
         }
 
         /// <summary>
@@ -86,7 +116,7 @@ namespace SnVerify.Services.Coordination
                 if (!_snapshot.IsProcessing)
                 {
                     shouldProcess = true;
-                    UpdateSnapshot(VerificationSnapshot.Processing(sn, _batchId));
+                    UpdateSnapshot(VerificationSnapshot.Processing(sn, _sessionId));
                 }
             }
 
@@ -94,6 +124,19 @@ namespace SnVerify.Services.Coordination
             {
                 // 正在处理中，忽略本次请求
                 return;
+            }
+
+            // MES Pre-Gate（Phase 2.5 预留）：MesMode≠Disabled 且 PreCheck 非 null 时调用
+            if (_mesMode != MesMode.Disabled && _mesPreCheck != null)
+            {
+                var preCtx = new MesContext { SessionId = _sessionId, OrderId = _orderId, StickerSN = sn?.Trim(), At = DateTime.Now };
+                var preResult = await _mesPreCheck.CheckAsync(preCtx).ConfigureAwait(false);
+                if (preResult != null && preResult.Decision == MesPreCheckDecision.Reject)
+                {
+                    _loggingService?.LogInfo($"MES Pre-Gate 拒绝: {preResult.Reason ?? "Reject"}");
+                    UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", preResult.Reason ?? "MES拒绝", _sessionId, null));
+                    return;
+                }
             }
 
             // 记录检验开始
@@ -111,7 +154,7 @@ namespace SnVerify.Services.Coordination
                     await SaveOrUpdateFailResultAsync(sn, result, failReason, null);
                     _loggingService?.LogInfo($"检验结果 [{result}] , [扫码枪SN: {sn}, 设备SN: N/A] , 错误结果: {failReason}");
                     _loggingService?.LogInfo("检验结束");
-                    UpdateSnapshot(VerificationSnapshot.Completed(sn, result, failReason, _batchId, null));
+                    UpdateSnapshot(VerificationSnapshot.Completed(sn, result, failReason, _sessionId, null));
                     return;
                 }
 
@@ -122,7 +165,7 @@ namespace SnVerify.Services.Coordination
                     await SaveOrUpdateFailResultAsync(sn, "FAIL", failReason, null);
                     _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {sn}, 设备SN: N/A] , 错误结果: {failReason}");
                     _loggingService?.LogInfo("检验结束");
-                    UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", failReason, _batchId, null));
+                    UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", failReason, _sessionId, null));
                     return;
                 }
 
@@ -142,7 +185,7 @@ namespace SnVerify.Services.Coordination
                         await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", failReason, deviceSNNormalized);
                         _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 错误结果: {failReason}");
                         _loggingService?.LogInfo("检验结束");
-                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _batchId, deviceSNNormalized));
+                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _sessionId, deviceSNNormalized));
                         return;
                     }
 
@@ -156,7 +199,7 @@ namespace SnVerify.Services.Coordination
                         await SaveResultAsync(stickerSN, "PASS", null, deviceSNNormalized);
                         _loggingService?.LogInfo($"检验结果 [PASS] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 成功结果");
                         _loggingService?.LogInfo("检验结束");
-                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "PASS", null, _batchId, deviceSNNormalized));
+                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "PASS", null, _sessionId, deviceSNNormalized));
                         return;
                     }
                     else
@@ -166,7 +209,7 @@ namespace SnVerify.Services.Coordination
                         await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", failReason, deviceSNNormalized);
                         _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 错误结果: {failReason}");
                         _loggingService?.LogInfo("检验结束");
-                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _batchId, deviceSNNormalized));
+                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _sessionId, deviceSNNormalized));
                         return;
                     }
                 }
@@ -183,7 +226,7 @@ namespace SnVerify.Services.Coordination
                         await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", failReason, deviceSNNormalized);
                         _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 错误结果: {failReason}");
                         _loggingService?.LogInfo("检验结束");
-                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _batchId, deviceSNNormalized));
+                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _sessionId, deviceSNNormalized));
                         return;
                     }
 
@@ -195,7 +238,7 @@ namespace SnVerify.Services.Coordination
                         await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", failReason, deviceSNNormalized);
                         _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 错误结果: {failReason}");
                         _loggingService?.LogInfo("检验结束");
-                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _batchId, deviceSNNormalized));
+                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _sessionId, deviceSNNormalized));
                         return;
                     }
 
@@ -204,7 +247,7 @@ namespace SnVerify.Services.Coordination
                     await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", failReason5, deviceSNNormalized);
                     _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 错误结果: {failReason5}");
                     _loggingService?.LogInfo("检验结束");
-                    UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason5, _batchId, deviceSNNormalized));
+                    UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason5, _sessionId, deviceSNNormalized));
                     return;
                 }
             }
@@ -214,7 +257,7 @@ namespace SnVerify.Services.Coordination
                 await SaveOrUpdateFailResultAsync(sn, "FAIL", $"EXCEPTION: {ex.Message}", null);
                 _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {sn}, 设备SN: N/A] , 错误结果: EXCEPTION: {ex.Message}");
                 _loggingService?.LogInfo("检验结束");
-                UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", $"EXCEPTION: {ex.Message}", _batchId, null));
+                UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", $"EXCEPTION: {ex.Message}", _sessionId, null));
             }
         }
 
@@ -225,74 +268,116 @@ namespace SnVerify.Services.Coordination
         {
             lock (_lockObject)
             {
-                UpdateSnapshot(VerificationSnapshot.Idle(_batchId));
+                UpdateSnapshot(VerificationSnapshot.Idle(_sessionId));
             }
         }
 
         /// <summary>
-        /// 保存或更新 FAIL 结果：如果存在 FAIL 记录则更新，否则创建新记录
+        /// 保存或更新 FAIL 结果（Phase 2.5 使用 TestRecord）；落库后执行 MES Post-Report。
         /// </summary>
         private async Task SaveOrUpdateFailResultAsync(string sn, string result, string failReason, string deviceSN)
         {
             try
             {
-                // 检查是否存在 FAIL 记录
-                var existingFailResult = await _storageService.GetFailResultBySnAsync(_batchId, sn);
-                
-                if (existingFailResult != null)
+                // 将业务 SessionId（字符串）映射为内部自增 Id（TestSession.Id）
+                var internalSessionId = await _storageService.GetInternalSessionIdBySessionNameAsync(_sessionId).ConfigureAwait(false);
+                if (!internalSessionId.HasValue)
                 {
-                    // 存在 FAIL 记录，更新它
-                    existingFailResult.Result = result;
-                    existingFailResult.FailReason = failReason;
-                    existingFailResult.DeviceSN = deviceSN;
-                    existingFailResult.VerifyTime = DateTime.Now;
-                    await _storageService.UpdateVerifyResultAsync(existingFailResult);
+                    // 未找到对应 Session 记录时，不落库，仅跳过（不影响当前检验流程）
+                    return;
+                }
+
+                var existing = await _storageService.GetTestRecordBySessionAndStickerSnAsync(internalSessionId.Value, sn).ConfigureAwait(false);
+                var at = DateTime.Now;
+                if (existing != null)
+                {
+                    existing.Result = result;
+                    existing.FailReason = failReason;
+                    existing.DeviceSN = deviceSN;
+                    existing.VerifyTime = at;
+                    await _storageService.UpdateTestRecordAsync(existing).ConfigureAwait(false);
                 }
                 else
                 {
-                    // 不存在 FAIL 记录，创建新记录
-                    var verifyResult = new SnVerifyResult
+                    var record = new TestRecord
                     {
-                        BatchId = _batchId,
-                        SN = sn,
+                        SessionId = internalSessionId.Value,
+                        StickerSN = sn,
                         DeviceSN = deviceSN,
                         Result = result,
                         FailReason = failReason,
-                        VerifyTime = DateTime.Now
+                        VerifyTime = at
                     };
-                    await _storageService.SaveVerifyResultAsync(verifyResult);
+                    await _storageService.SaveTestRecordAsync(record).ConfigureAwait(false);
                 }
+                await PostReportAsync(sn, result, failReason, deviceSN).ConfigureAwait(false);
             }
             catch
             {
-                // 保存/更新失败不影响流程，记录到日志或忽略
-                // 根据需求，可以在这里添加日志记录
+                // 保存/更新失败不影响流程
             }
         }
 
         /// <summary>
-        /// 保存校验结果到存储服务
+        /// 保存校验结果到存储服务（Phase 2.5 使用 TestRecord）；落库后执行 MES Post-Report。
         /// </summary>
         private async Task SaveResultAsync(string sn, string result, string failReason, string deviceSN)
         {
             try
             {
-                var verifyResult = new SnVerifyResult
+                var internalSessionId = await _storageService.GetInternalSessionIdBySessionNameAsync(_sessionId).ConfigureAwait(false);
+                if (!internalSessionId.HasValue)
                 {
-                    BatchId = _batchId,
-                    SN = sn,
+                    // 未找到对应 Session 记录时，不落库，仅跳过（不影响当前检验流程）
+                    return;
+                }
+
+                var record = new TestRecord
+                {
+                    SessionId = internalSessionId.Value,
+                    StickerSN = sn,
                     DeviceSN = deviceSN,
                     Result = result,
                     FailReason = failReason,
                     VerifyTime = DateTime.Now
                 };
-
-                await _storageService.SaveVerifyResultAsync(verifyResult);
+                await _storageService.SaveTestRecordAsync(record).ConfigureAwait(false);
+                await PostReportAsync(sn, result, failReason, deviceSN).ConfigureAwait(false);
             }
             catch
             {
-                // 保存失败不影响流程，记录到日志或忽略
-                // 根据需求，可以在这里添加日志记录
+                // 保存失败不影响流程
+            }
+        }
+
+        /// <summary>
+        /// MES Post-Report 调用点（Phase 2.5 预留）。MesMode≠Disabled 且 Reporter 非 null 时调用，失败仅记日志。
+        /// </summary>
+        private async Task PostReportAsync(string stickerSN, string result, string failReason, string deviceSN)
+        {
+            if (_mesMode == MesMode.Disabled || _mesReporter == null) return;
+            try
+            {
+                await _mesReporter.ReportTestResultAsync(new TestResultContext
+                {
+                    SessionId = _sessionId,
+                    OrderId = _orderId,
+                    StickerSN = stickerSN,
+                    DeviceSN = deviceSN,
+                    Result = result,
+                    FailReason = failReason,
+                    VerifyTime = DateTime.Now
+                }).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                _loggingService?.LogInfo($"MES Post-Report 失败: {ex.Message}");
+                // Phase 2.5 规则：Post-Report 失败是“健康态异常”，不影响 PASS/FAIL，仅弱提示 + 日志。
+                MesEventOccurred?.Invoke(this, new MesEventArgs(
+                    MesEventType.ReportFailed,
+                    "MES 上报失败（不影响当前测试结果）",
+                    sessionId: _sessionId,
+                    orderId: _orderId));
             }
         }
 

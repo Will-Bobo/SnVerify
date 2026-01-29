@@ -5,6 +5,7 @@
 using System;
 using System.Threading.Tasks;
 using SnVerify.Domain.State;
+using SnVerify.Services.Mes.Gate;
 
 namespace SnVerify.Services.Coordination
 {
@@ -22,6 +23,11 @@ namespace SnVerify.Services.Coordination
         /// 状态快照变化事件
         /// </summary>
         event EventHandler<VerificationSnapshot> SnapshotChanged;
+
+        /// <summary>
+        /// MES 事件通知（仅弱提示用途，不得影响 PASS/FAIL）。
+        /// </summary>
+        event EventHandler<MesEventArgs> MesEventOccurred;
 
         /// <summary>
         /// 启动校验流程（原子化执行）

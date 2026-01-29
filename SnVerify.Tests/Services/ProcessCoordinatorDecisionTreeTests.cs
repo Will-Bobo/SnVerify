@@ -26,7 +26,7 @@ namespace SnVerify.Tests.Services
         private Mock<IAdbAccessService> _adbAccessServiceMock;
         private Mock<ILoggingService> _loggingServiceMock;
         private IProcessCoordinator _processCoordinator;
-        private const string TestBatchId = "BATCH001";
+        private const string TestSessionId = "BATCH001"; // Phase 2.5 以 SessionId 为入口
         private VerificationSnapshot _lastSnapshot;
 
         [SetUp]
@@ -35,9 +35,13 @@ namespace SnVerify.Tests.Services
             _storageServiceMock = new Mock<IStorageService>();
             _adbAccessServiceMock = new Mock<IAdbAccessService>();
             _loggingServiceMock = new Mock<ILoggingService>();
+            _storageServiceMock.Setup(x => x.GetInternalSessionIdBySessionNameAsync(TestSessionId)).ReturnsAsync(1);
+            _storageServiceMock.Setup(x => x.GetTestRecordBySessionAndStickerSnAsync(It.IsAny<int>(), It.IsAny<string>())).ReturnsAsync((TestRecord)null);
+            _storageServiceMock.Setup(x => x.SaveTestRecordAsync(It.IsAny<TestRecord>())).Returns(Task.CompletedTask);
+            _storageServiceMock.Setup(x => x.UpdateTestRecordAsync(It.IsAny<TestRecord>())).Returns(Task.CompletedTask);
 
             _processCoordinator = new ProcessCoordinator(
-                TestBatchId,
+                TestSessionId,
                 _storageServiceMock.Object,
                 _adbAccessServiceMock.Object,
                 _loggingServiceMock.Object);
@@ -71,10 +75,6 @@ namespace SnVerify.Tests.Services
                 .Setup(x => x.ReadDeviceSnAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(AdbSnReadResult.Success(deviceSN));
 
-            _storageServiceMock
-                .Setup(x => x.SaveVerifyResultAsync(It.IsAny<SnVerifyResult>()))
-                .Returns(Task.CompletedTask);
-
             // Act
             await _processCoordinator.StartVerificationAsync(stickerSN);
 
@@ -84,11 +84,8 @@ namespace SnVerify.Tests.Services
             Assert.That(_lastSnapshot.DeviceSN, Is.EqualTo(deviceSN), "快照应包含设备SN");
 
             _storageServiceMock.Verify(
-                x => x.SaveVerifyResultAsync(It.Is<SnVerifyResult>(r =>
-                    r.Result == "PASS" &&
-                    r.SN == stickerSN &&
-                    r.DeviceSN == deviceSN &&
-                    r.FailReason == null)),
+                x => x.SaveTestRecordAsync(It.Is<TestRecord>(r =>
+                    r.Result == "PASS" && r.StickerSN == stickerSN && r.DeviceSN == deviceSN && r.FailReason == null)),
                 Times.Once);
         }
 
@@ -114,14 +111,6 @@ namespace SnVerify.Tests.Services
                 .Setup(x => x.ReadDeviceSnAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(AdbSnReadResult.Success(deviceSN));
 
-            _storageServiceMock
-                .Setup(x => x.GetFailResultBySnAsync(TestBatchId, stickerSN))
-                .ReturnsAsync((SnVerifyResult)null);
-
-            _storageServiceMock
-                .Setup(x => x.SaveVerifyResultAsync(It.IsAny<SnVerifyResult>()))
-                .Returns(Task.CompletedTask);
-
             // Act
             await _processCoordinator.StartVerificationAsync(stickerSN);
 
@@ -131,11 +120,8 @@ namespace SnVerify.Tests.Services
             Assert.That(_lastSnapshot.DeviceSN, Is.EqualTo(deviceSN), "快照应包含设备SN");
 
             _storageServiceMock.Verify(
-                x => x.SaveVerifyResultAsync(It.Is<SnVerifyResult>(r =>
-                    r.Result == "FAIL" &&
-                    r.SN == stickerSN &&
-                    r.DeviceSN == deviceSN &&
-                    r.FailReason == "设备SN已存在")),
+                x => x.SaveTestRecordAsync(It.Is<TestRecord>(r =>
+                    r.Result == "FAIL" && r.StickerSN == stickerSN && r.DeviceSN == deviceSN && r.FailReason == "设备SN已存在")),
                 Times.Once);
         }
 
@@ -158,14 +144,6 @@ namespace SnVerify.Tests.Services
                 .Setup(x => x.ReadDeviceSnAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(AdbSnReadResult.Success(deviceSN));
 
-            _storageServiceMock
-                .Setup(x => x.GetFailResultBySnAsync(TestBatchId, stickerSN))
-                .ReturnsAsync((SnVerifyResult)null);
-
-            _storageServiceMock
-                .Setup(x => x.SaveVerifyResultAsync(It.IsAny<SnVerifyResult>()))
-                .Returns(Task.CompletedTask);
-
             // Act
             await _processCoordinator.StartVerificationAsync(stickerSN);
 
@@ -175,10 +153,8 @@ namespace SnVerify.Tests.Services
             Assert.That(_lastSnapshot.DeviceSN, Is.EqualTo(deviceSN), "快照应包含设备SN");
 
             _storageServiceMock.Verify(
-                x => x.SaveVerifyResultAsync(It.Is<SnVerifyResult>(r =>
-                    r.Result == "FAIL" &&
-                    r.SN == stickerSN &&
-                    r.DeviceSN == deviceSN &&
+                x => x.SaveTestRecordAsync(It.Is<TestRecord>(r =>
+                    r.Result == "FAIL" && r.StickerSN == stickerSN && r.DeviceSN == deviceSN &&
                     r.FailReason == "设备SN 与 条形码SN [不匹配]，并且 条形码SN 已存在")),
                 Times.Once);
         }
@@ -205,14 +181,6 @@ namespace SnVerify.Tests.Services
                 .Setup(x => x.ReadDeviceSnAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(AdbSnReadResult.Success(deviceSN));
 
-            _storageServiceMock
-                .Setup(x => x.GetFailResultBySnAsync(TestBatchId, stickerSN))
-                .ReturnsAsync((SnVerifyResult)null);
-
-            _storageServiceMock
-                .Setup(x => x.SaveVerifyResultAsync(It.IsAny<SnVerifyResult>()))
-                .Returns(Task.CompletedTask);
-
             // Act
             await _processCoordinator.StartVerificationAsync(stickerSN);
 
@@ -222,10 +190,8 @@ namespace SnVerify.Tests.Services
             Assert.That(_lastSnapshot.DeviceSN, Is.EqualTo(deviceSN), "快照应包含设备SN");
 
             _storageServiceMock.Verify(
-                x => x.SaveVerifyResultAsync(It.Is<SnVerifyResult>(r =>
-                    r.Result == "FAIL" &&
-                    r.SN == stickerSN &&
-                    r.DeviceSN == deviceSN &&
+                x => x.SaveTestRecordAsync(It.Is<TestRecord>(r =>
+                    r.Result == "FAIL" && r.StickerSN == stickerSN && r.DeviceSN == deviceSN &&
                     r.FailReason == "设备SN 与 条形码SN [不匹配]，并且 设备SN 已存在")),
                 Times.Once);
         }
@@ -252,14 +218,6 @@ namespace SnVerify.Tests.Services
                 .Setup(x => x.ReadDeviceSnAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(AdbSnReadResult.Success(deviceSN));
 
-            _storageServiceMock
-                .Setup(x => x.GetFailResultBySnAsync(TestBatchId, stickerSN))
-                .ReturnsAsync((SnVerifyResult)null);
-
-            _storageServiceMock
-                .Setup(x => x.SaveVerifyResultAsync(It.IsAny<SnVerifyResult>()))
-                .Returns(Task.CompletedTask);
-
             // Act
             await _processCoordinator.StartVerificationAsync(stickerSN);
 
@@ -269,10 +227,8 @@ namespace SnVerify.Tests.Services
             Assert.That(_lastSnapshot.DeviceSN, Is.EqualTo(deviceSN), "快照应包含设备SN");
 
             _storageServiceMock.Verify(
-                x => x.SaveVerifyResultAsync(It.Is<SnVerifyResult>(r =>
-                    r.Result == "FAIL" &&
-                    r.SN == stickerSN &&
-                    r.DeviceSN == deviceSN &&
+                x => x.SaveTestRecordAsync(It.Is<TestRecord>(r =>
+                    r.Result == "FAIL" && r.StickerSN == stickerSN && r.DeviceSN == deviceSN &&
                     r.FailReason == "设备SN 与 条形码SN [不匹配]")),
                 Times.Once);
         }
@@ -295,14 +251,6 @@ namespace SnVerify.Tests.Services
                 .Setup(x => x.ReadDeviceSnAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(AdbSnReadResult.Failure("Timeout", true));
 
-            _storageServiceMock
-                .Setup(x => x.GetFailResultBySnAsync(TestBatchId, stickerSN))
-                .ReturnsAsync((SnVerifyResult)null);
-
-            _storageServiceMock
-                .Setup(x => x.SaveVerifyResultAsync(It.IsAny<SnVerifyResult>()))
-                .Returns(Task.CompletedTask);
-
             // Act
             await _processCoordinator.StartVerificationAsync(stickerSN);
 
@@ -324,14 +272,6 @@ namespace SnVerify.Tests.Services
             _adbAccessServiceMock
                 .Setup(x => x.ReadDeviceSnAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(AdbSnReadResult.Success(""));
-
-            _storageServiceMock
-                .Setup(x => x.GetFailResultBySnAsync(TestBatchId, stickerSN))
-                .ReturnsAsync((SnVerifyResult)null);
-
-            _storageServiceMock
-                .Setup(x => x.SaveVerifyResultAsync(It.IsAny<SnVerifyResult>()))
-                .Returns(Task.CompletedTask);
 
             // Act
             await _processCoordinator.StartVerificationAsync(stickerSN);
@@ -363,14 +303,6 @@ namespace SnVerify.Tests.Services
             _adbAccessServiceMock
                 .Setup(x => x.ReadDeviceSnAsync(It.IsAny<CancellationToken>()))
                 .ReturnsAsync(AdbSnReadResult.Success(deviceSN));
-
-            _storageServiceMock
-                .Setup(x => x.GetFailResultBySnAsync(TestBatchId, stickerSN))
-                .ReturnsAsync((SnVerifyResult)null);
-
-            _storageServiceMock
-                .Setup(x => x.SaveVerifyResultAsync(It.IsAny<SnVerifyResult>()))
-                .Returns(Task.CompletedTask);
 
             // Act
             await _processCoordinator.StartVerificationAsync(stickerSN);

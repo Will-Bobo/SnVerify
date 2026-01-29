@@ -4,17 +4,23 @@
 
 using System;
 using System.IO;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Moq;
 using NUnit.Framework;
+using SnVerify.Domain.Models;
 using SnVerify.Domain.State;
+using SnVerify.Domain.Validation;
 using SnVerify.Services.Adb;
-using SnVerify.Services.Batch;
 using SnVerify.Services.Coordination;
 using SnVerify.Services.Logging;
 using SnVerify.Services.MES;
+using SnVerify.Services.Mes.Gate;
+using SnVerify.Services.Session;
 using SnVerify.Services.Storage;
+using SnVerify.Services.Ui;
 using SnVerify.ViewModels;
+using SnVerify.Domain.Validation;
 
 namespace SnVerify.Tests.ViewModels
 {
@@ -25,39 +31,112 @@ namespace SnVerify.Tests.ViewModels
     public class MainViewModelTests
     {
         private MainViewModel _viewModel;
-        private Mock<IBatchManager> _batchManagerMock;
+        private Mock<ISessionLifecycleService> _sessionLifecycleServiceMock;
         private Mock<IVerificationFlowServiceFactory> _flowServiceFactoryMock;
         private Mock<IVerificationFlowService> _verificationFlowServiceMock;
         private Mock<ILoggingService> _loggingServiceMock;
         private Mock<IMESInterface> _mesInterfaceMock;
         private Mock<IStorageService> _storageServiceMock;
         private Mock<IAdbAccessService> _adbAccessServiceMock;
+        private Mock<IExportAggregationService> _exportAggregationServiceMock;
+        private Mock<IOrderNameValidator> _orderNameValidatorMock;
+        private Mock<IUserDialogService> _dialogServiceMock;
+
+        private static async Task WaitUntilAsync(Func<bool> predicate, int timeoutMs = 1500, int pollMs = 20)
+        {
+            var start = DateTime.UtcNow;
+            while (!predicate())
+            {
+                if ((DateTime.UtcNow - start).TotalMilliseconds > timeoutMs)
+                    throw new TimeoutException("Condition not met within timeout.");
+                await Task.Delay(pollMs);
+            }
+        }
 
         [SetUp]
         public void SetUp()
         {
-            _batchManagerMock = new Mock<IBatchManager>();
+            _sessionLifecycleServiceMock = new Mock<ISessionLifecycleService>();
             _flowServiceFactoryMock = new Mock<IVerificationFlowServiceFactory>();
             _verificationFlowServiceMock = new Mock<IVerificationFlowService>();
             _loggingServiceMock = new Mock<ILoggingService>();
             _mesInterfaceMock = new Mock<IMESInterface>();
             _storageServiceMock = new Mock<IStorageService>();
             _adbAccessServiceMock = new Mock<IAdbAccessService>();
+            _exportAggregationServiceMock = new Mock<IExportAggregationService>();
+            _orderNameValidatorMock = new Mock<IOrderNameValidator>();
+            _dialogServiceMock = new Mock<IUserDialogService>();
 
-            _batchManagerMock.Setup(m => m.Snapshot).Returns(BatchSnapshot.Idle());
+            _sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Idle());
             _verificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
-            _flowServiceFactoryMock.Setup(f => f.Create(It.IsAny<string>())).Returns(_verificationFlowServiceMock.Object);
+            _flowServiceFactoryMock.Setup(f => f.Create(It.IsAny<string>(), It.IsAny<string>())).Returns(_verificationFlowServiceMock.Object);
             _loggingServiceMock.Setup(m => m.Snapshot).Returns(LoggingSnapshot.Idle());
             _mesInterfaceMock.Setup(m => m.Snapshot).Returns(MESSnapshot.Idle());
 
             _viewModel = new MainViewModel(
-                _batchManagerMock.Object,
+                _sessionLifecycleServiceMock.Object,
                 _flowServiceFactoryMock.Object,
                 _loggingServiceMock.Object,
                 _mesInterfaceMock.Object,
                 _storageServiceMock.Object,
                 _adbAccessServiceMock.Object,
+                _exportAggregationServiceMock.Object,
+                _orderNameValidatorMock.Object,
+                _dialogServiceMock.Object,
                 Path.GetTempPath());
+        }
+
+        [Test]
+        public async Task EndBatchCommand_ShouldBeIgnored_WhenNoTestRecordGenerated_AndShowStatusBarMessage()
+        {
+            // Arrange
+            var sessionId = "ORDER001_20250126_143000";
+            var orderId = "ORDER001";
+            var activeSessionSnapshot = SessionSnapshot.Active(sessionId, orderId, DateTime.Now);
+            _sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(activeSessionSnapshot);
+            _sessionLifecycleServiceMock.Setup(m => m.GetCurrentSessionId()).Returns(sessionId);
+            _viewModel.SessionSnapshot = activeSessionSnapshot;
+
+            _storageServiceMock
+                .Setup(s => s.GetTestRecordsBySessionAsync(sessionId))
+                .ReturnsAsync(Array.Empty<TestRecord>());
+
+            // Act
+            _viewModel.EndBatchCommand.Execute(null);
+            await WaitUntilAsync(() => _viewModel.StatusBarMessage == "本次操作无效/已忽略");
+
+            // Assert
+            _sessionLifecycleServiceMock.Verify(m => m.EndSession(), Times.Never);
+            _loggingServiceMock.Verify(m => m.EndBatch(), Times.Never);
+        }
+
+        [Test]
+        public void StartBatchCommand_ShouldBeDisabled_WhenIsProcessing()
+        {
+            // Arrange
+            _viewModel.VerificationSnapshot = VerificationSnapshot.Processing("SN");
+
+            // Act
+            var canExecute = _viewModel.StartBatchCommand.CanExecute(null);
+
+            // Assert
+            Assert.That(canExecute, Is.False);
+        }
+
+        [Test]
+        public void EndBatchCommand_ShouldBeDisabled_WhenIsProcessing()
+        {
+            // Arrange
+            var sessionId = "ORDER001_20250126_143000";
+            var orderId = "ORDER001";
+            _viewModel.SessionSnapshot = SessionSnapshot.Active(sessionId, orderId, DateTime.Now);
+            _viewModel.VerificationSnapshot = VerificationSnapshot.Processing("SN");
+
+            // Act
+            var canExecute = _viewModel.EndBatchCommand.CanExecute(null);
+
+            // Assert
+            Assert.That(canExecute, Is.False);
         }
 
         [Test]
@@ -147,9 +226,11 @@ namespace SnVerify.Tests.ViewModels
         {
             // Arrange
             var testSn = "TEST_SN_001";
-            var activeBatchSnapshot = BatchSnapshot.Active("BATCH001", "Batch 001", DateTime.Now);
-            _batchManagerMock.Setup(m => m.Snapshot).Returns(activeBatchSnapshot);
-            _viewModel.BatchSnapshot = activeBatchSnapshot; // 更新 ViewModel 的 BatchSnapshot
+            var sessionId = "ORDER001_20250126_143000";
+            var orderId = "ORDER001";
+            var activeSessionSnapshot = SessionSnapshot.Active(sessionId, orderId, DateTime.Now);
+            _sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(activeSessionSnapshot);
+            _viewModel.SessionSnapshot = activeSessionSnapshot;
             
             _verificationFlowServiceMock.SetupSequence(m => m.Snapshot)
                 .Returns(VerificationSnapshot.Idle())
@@ -168,7 +249,9 @@ namespace SnVerify.Tests.ViewModels
         {
             // Arrange
             var testSn = "TEST_SN_001";
-            _batchManagerMock.Setup(m => m.Snapshot).Returns(BatchSnapshot.Active("BATCH001", "Batch 001", DateTime.Now));
+            var sessionId = "ORDER001_20250126_143000";
+            var orderId = "ORDER001";
+            _sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Active(sessionId, orderId, DateTime.Now));
             _verificationFlowServiceMock.Setup(m => m.Snapshot)
                 .Returns(VerificationSnapshot.Processing("ANOTHER_SN"));
 
@@ -180,11 +263,11 @@ namespace SnVerify.Tests.ViewModels
         }
 
         [Test]
-        public async Task HandleScanInputAsync_ShouldIgnoreInput_WhenBatchNotActive()
+        public async Task HandleScanInputAsync_ShouldIgnoreInput_WhenSessionNotActive()
         {
             // Arrange
             var testSn = "TEST_SN_001";
-            _batchManagerMock.Setup(m => m.Snapshot).Returns(BatchSnapshot.Idle());
+            _sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Idle());
 
             // Act
             await _viewModel.HandleScanInputAsync(testSn);
@@ -198,9 +281,11 @@ namespace SnVerify.Tests.ViewModels
         {
             // Arrange
             var testSn = "TEST_SN_001";
-            var activeBatchSnapshot = BatchSnapshot.Active("BATCH001", "Batch 001", DateTime.Now);
-            _batchManagerMock.Setup(m => m.Snapshot).Returns(activeBatchSnapshot);
-            _viewModel.BatchSnapshot = activeBatchSnapshot; // 更新 ViewModel 的 BatchSnapshot
+            var sessionId = "ORDER001_20250126_143000";
+            var orderId = "ORDER001";
+            var activeSessionSnapshot = SessionSnapshot.Active(sessionId, orderId, DateTime.Now);
+            _sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(activeSessionSnapshot);
+            _viewModel.SessionSnapshot = activeSessionSnapshot;
             _viewModel.ScanInputText = testSn;
             
             _verificationFlowServiceMock.SetupSequence(m => m.Snapshot)
@@ -219,7 +304,9 @@ namespace SnVerify.Tests.ViewModels
         public async Task HandleScanInputAsync_ShouldIgnoreEmptyInput()
         {
             // Arrange
-            _batchManagerMock.Setup(m => m.Snapshot).Returns(BatchSnapshot.Active("BATCH001", "Batch 001", DateTime.Now));
+            var sessionId = "ORDER001_20250126_143000";
+            var orderId = "ORDER001";
+            _sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Active(sessionId, orderId, DateTime.Now));
 
             // Act
             await _viewModel.HandleScanInputAsync("");
@@ -227,6 +314,123 @@ namespace SnVerify.Tests.ViewModels
 
             // Assert
             _verificationFlowServiceMock.Verify(m => m.StartVerificationAsync(It.IsAny<string>()), Times.Never);
+        }
+
+        [Test]
+        public async Task HandleScanInputAsync_ShouldIgnoreInput_WhenIsSelfChecking()
+        {
+            // Arrange
+            var testSn = "TEST_SN_001";
+            var sessionId = "ORDER001_20250126_143000";
+            var orderId = "ORDER001";
+            _sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Active(sessionId, orderId, DateTime.Now));
+            _viewModel.SessionSnapshot = _sessionLifecycleServiceMock.Object.Snapshot;
+
+            var tcs = new TaskCompletionSource<AdbSnReadResult>();
+            _adbAccessServiceMock.Setup(m => m.ReadDeviceSnAsync(default)).Returns(tcs.Task);
+            _adbAccessServiceMock.Setup(m => m.CheckMultipleDevices(out It.Ref<List<string>>.IsAny))
+                .Returns(false);
+
+            // Act: start self-check and wait until VM enters self-checking state
+            _viewModel.SelfCheckCommand.Execute(null);
+            await WaitUntilAsync(() => _viewModel.IsSelfChecking);
+
+            await _viewModel.HandleScanInputAsync(testSn);
+
+            // Assert: should not trigger verification while self-checking
+            _verificationFlowServiceMock.Verify(m => m.StartVerificationAsync(It.IsAny<string>()), Times.Never);
+
+            // Cleanup: end self-check
+            tcs.SetResult(AdbSnReadResult.Success("DEVICE_SN"));
+            await WaitUntilAsync(() => !_viewModel.IsSelfChecking);
+        }
+
+        [Test]
+        public async Task Commands_ShouldBeDisabled_WhenIsSelfChecking()
+        {
+            // Arrange
+            var tcs = new TaskCompletionSource<AdbSnReadResult>();
+            _adbAccessServiceMock.Setup(m => m.ReadDeviceSnAsync(default)).Returns(tcs.Task);
+            _adbAccessServiceMock.Setup(m => m.CheckMultipleDevices(out It.Ref<List<string>>.IsAny))
+                .Returns(false);
+
+            // Act
+            _viewModel.SelfCheckCommand.Execute(null);
+            await WaitUntilAsync(() => _viewModel.IsSelfChecking);
+
+            // Assert
+            Assert.That(_viewModel.StartVerifyCommand.CanExecute(null), Is.False);
+            Assert.That(_viewModel.StartBatchCommand.CanExecute(null), Is.False);
+            Assert.That(_viewModel.EndBatchCommand.CanExecute(null), Is.False);
+            Assert.That(_viewModel.ExportCommand.CanExecute(null), Is.False);
+
+            // Cleanup
+            tcs.SetResult(AdbSnReadResult.Success("DEVICE_SN"));
+            await WaitUntilAsync(() => !_viewModel.IsSelfChecking);
+        }
+
+        [Test]
+        public async Task StatusBarMessage_ShouldUpdate_WhenMesPostReportFailedEventRaised()
+        {
+            // Arrange
+            var args = new MesEventArgs(MesEventType.ReportFailed, "MES 上报失败（不影响当前测试结果）", "S1", "O1");
+
+            // Act
+            _verificationFlowServiceMock.Raise(m => m.MesEventOccurred += null, args);
+
+            // Assert
+            await WaitUntilAsync(() => _viewModel.StatusBarMessage == "MES 上报失败（不影响当前测试结果）");
+        }
+
+        [Test]
+        public async Task StartBatchCommand_ShouldCreateSession_WhenProjectIdAndOrderIdProvided()
+        {
+            // Arrange
+            var projectId = "PROJECT001";
+            var orderId = "ORDER001";
+            var sessionId = "ORDER001_20250126_143000";
+            var startTime = DateTime.Now;
+
+            string validationMessage = null;
+            _orderNameValidatorMock.Setup(v => v.Validate(orderId, out validationMessage)).Returns(true);
+            _sessionLifecycleServiceMock
+                .Setup(s => s.CreateAndStartSession(orderId, orderId, projectId))
+                .Returns(sessionId);
+            _sessionLifecycleServiceMock
+                .SetupSequence(s => s.Snapshot)
+                .Returns(SessionSnapshot.Idle())
+                .Returns(SessionSnapshot.Active(sessionId, orderId, startTime));
+            _flowServiceFactoryMock
+                .Setup(f => f.Create(sessionId, orderId))
+                .Returns(_verificationFlowServiceMock.Object);
+
+            // Act
+            _viewModel.ProjectIdInput = projectId;
+            _viewModel.OrderIdInput = orderId;
+            _viewModel.StartBatchCommand.Execute(null);
+            await WaitUntilAsync(() => _viewModel.SessionSnapshot.IsActive, timeoutMs: 2000);
+
+            // Assert
+            _sessionLifecycleServiceMock.Verify(s => s.CreateAndStartSession(orderId, orderId, projectId), Times.Once);
+            _flowServiceFactoryMock.Verify(f => f.Create(sessionId, orderId), Times.Once);
+            _loggingServiceMock.Verify(l => l.StartBatch(sessionId), Times.Once);
+        }
+
+        [Test]
+        public void Commands_ShouldBeDisabled_WhenSessionIsActive()
+        {
+            // Arrange
+            var sessionId = "ORDER001_20250126_143000";
+            var orderId = "ORDER001";
+            var activeSessionSnapshot = SessionSnapshot.Active(sessionId, orderId, DateTime.Now);
+
+            // Act
+            _viewModel.SessionSnapshot = activeSessionSnapshot;
+
+            // Assert
+            Assert.That(_viewModel.StartBatchCommand.CanExecute(null), Is.False);
+            Assert.That(_viewModel.EndBatchCommand.CanExecute(null), Is.True);
+            Assert.That(_viewModel.ExportCommand.CanExecute(null), Is.False);
         }
     }
 }

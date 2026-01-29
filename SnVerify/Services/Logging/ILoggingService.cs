@@ -8,7 +8,6 @@ using System.IO.Compression;
 using System.Linq;
 using System.Threading;
 using SnVerify.Domain.State;
-using SnVerify.Services.Batch;
 
 namespace SnVerify.Services.Logging
 {

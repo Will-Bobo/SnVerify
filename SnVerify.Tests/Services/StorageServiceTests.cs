@@ -69,6 +69,10 @@ namespace SnVerify.Tests.Services
 
                 Assert.That(tableNames, Does.Contain("Batch"), "应该包含 Batch 表");
                 Assert.That(tableNames, Does.Contain("SnVerifyResult"), "应该包含 SnVerifyResult 表");
+                // Phase 2.5 阶段 1：Order / TestSession / TestRecord 表
+                Assert.That(tableNames, Does.Contain("Order"), "应该包含 Order 表（Phase 2.5）");
+                Assert.That(tableNames, Does.Contain("TestSession"), "应该包含 TestSession 表（Phase 2.5）");
+                Assert.That(tableNames, Does.Contain("TestRecord"), "应该包含 TestRecord 表（Phase 2.5）");
             }
         }
 

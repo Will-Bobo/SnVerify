@@ -3,14 +3,18 @@
 /// </author>
 
 using System;
-using SnVerify.Services.Batch;
 using SnVerify.Services.Coordination;
 using SnVerify.Services.Logging;
 using SnVerify.Services.MES;
+using SnVerify.Services.Session;
 using SnVerify.Services.Storage;
 using SnVerify.Services.Input;
 using SnVerify.Services.Adb;
 using SnVerify.ViewModels;
+using SnVerify.Domain.Validation;
+using SnVerify.Services.Ui;
+using SnVerify.Ui;
+using System.Threading.Tasks;
 
 namespace SnVerify.Infrastructure
 {
@@ -24,21 +28,24 @@ namespace SnVerify.Infrastructure
     public static class ServiceFactory
     {
         /// <summary>
-        /// 创建 MainViewModel 实例及其所有依赖
+        /// 创建 MainViewModel 实例及其所有依赖（异步版本，确保 ViewModel 在 UI 线程构造）
         /// </summary>
-        public static MainViewModel CreateMainViewModel()
+        public static async Task<MainViewModel> CreateMainViewModelAsync()
         {
             // 创建存储服务并初始化数据库连接
             var storageService = new StorageService("SnVerify.db");
-            // 同步初始化数据库（在 UI 线程上执行，避免异步问题）
-            storageService.InitializeAsync().GetAwaiter().GetResult();
+            // 关键：不要 ConfigureAwait(false)。
+            // CreateMainViewModelAsync 是从 MainWindow_Loaded(UI线程) 调用的，
+            // 若这里 ConfigureAwait(false)，后续会在后台线程继续执行并构造 MainViewModel，
+            // 导致 ViewModel 捕获的 SynchronizationContext 不是 UI 上下文，引发跨线程异常。
+            await storageService.InitializeAsync();
 
-            // 创建批次管理器
-            var batchManager = new BatchManager(storageService);
-
-            // 创建日志服务（使用临时目录）
+            // 创建日志服务（使用临时目录，最近 3000 条用于 UI 显示）
             var logDirectory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "SnVerify_Logs");
-            var loggingService = new LoggingService(logDirectory);
+            var loggingService = new LoggingService(logDirectory, maxRecentMessages: 3000);
+
+            // 创建 Session 生命周期服务（Phase 2.5：替代 BatchManager）
+            var sessionLifecycleService = new SessionLifecycleService(storageService, loggingService);
 
             // 创建 ADB 访问服务
             // 优先从输出目录查找，如果不存在则从项目根目录查找
@@ -72,17 +79,37 @@ namespace SnVerify.Infrastructure
             // 校验流程服务工厂：按批次 ID 创建 ProcessCoordinator+VerificationFlowService
             var flowServiceFactory = new VerificationFlowServiceFactory(storageService, adbAccessService, loggingService);
 
+            // 导出聚合服务（阶段 2 B 做，阶段 3 C 调用）
+            var exportAggregationService = new ExportAggregationService(storageService, loggingService);
+
+            // 命名校验服务（阶段 3 C1.3 校验弹窗挂接）
+            var orderNameValidator = new OrderNameValidator();
+
+            // UI 交互服务（阶段 3：ViewModel 禁止直接弹窗/FolderDialog）
+            IUserDialogService dialogService = new WpfUserDialogService();
+
             // 创建 MainViewModel（需 storage/adb 用于导出与自检，logDirectory 用于导出时复制日志）
             var viewModel = new MainViewModel(
-                batchManager,
+                sessionLifecycleService,
                 flowServiceFactory,
                 loggingService,
                 mesInterface,
                 storageService,
                 adbAccessService,
+                exportAggregationService,
+                orderNameValidator,
+                dialogService,
                 logDirectory);
 
             return viewModel;
+        }
+
+        /// <summary>
+        /// 创建 MainViewModel（同步兼容入口；尽量不要在 UI 线程调用）
+        /// </summary>
+        public static MainViewModel CreateMainViewModel()
+        {
+            return CreateMainViewModelAsync().GetAwaiter().GetResult();
         }
     }
 }

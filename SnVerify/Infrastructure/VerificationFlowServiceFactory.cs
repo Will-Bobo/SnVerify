@@ -10,7 +10,7 @@ using SnVerify.Services.Storage;
 namespace SnVerify.Infrastructure
 {
     /// <summary>
-    /// 校验流程服务工厂实现，按批次 ID 创建 ProcessCoordinator + VerificationFlowService（仅 Infrastructure，不修改 Service 行为）
+    /// 校验流程服务工厂实现，按 SessionId 创建 ProcessCoordinator + VerificationFlowService（Phase 2.5：Batch 退场后以 SessionId 为入口）
     /// </summary>
     public class VerificationFlowServiceFactory : IVerificationFlowServiceFactory
     {
@@ -29,9 +29,9 @@ namespace SnVerify.Infrastructure
         }
 
         /// <inheritdoc />
-        public IVerificationFlowService Create(string batchId)
+        public IVerificationFlowService Create(string sessionId, string orderId = null)
         {
-            var coordinator = new ProcessCoordinator(batchId, _storageService, _adbAccessService, _loggingService);
+            var coordinator = new ProcessCoordinator(sessionId, _storageService, _adbAccessService, _loggingService, null, null, Services.Mes.Gate.MesMode.Disabled, orderId);
             return new VerificationFlowService(coordinator);
         }
     }

@@ -15,7 +15,8 @@ using SnVerify.Services.Storage;
 namespace SnVerify.Tests.Services
 {
     /// <summary>
-    /// StorageService Phase2 单元测试
+    /// StorageService Phase2 单元测试（Batch / SnVerifyResult 时代行为）。
+    /// Phase 2.5 Order / TestSession / TestRecord 及按 Session 导出见 <see cref="Phase25StorageServiceTests"/>。
     /// </summary>
     [TestFixture]
     public class StorageServicePhase2Tests

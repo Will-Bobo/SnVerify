@@ -37,9 +37,14 @@ namespace SnVerify.Domain.State
         public string FailReason { get; }
 
         /// <summary>
-        /// 当前批次 ID
+        /// 当前批次 ID（Phase 2.5 退场后由 SessionId 替代，此处保留兼容）
         /// </summary>
         public string BatchId { get; }
+
+        /// <summary>
+        /// 当前会话 ID（Phase 2.5 Session 为入口时使用，与 BatchId 同源）
+        /// </summary>
+        public string SessionId => BatchId;
 
         /// <summary>
         /// 状态更新时间戳

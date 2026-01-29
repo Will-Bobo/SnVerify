@@ -8,12 +8,9 @@
         Title="Smartke SN校验程序" Height="800" Width="1300"
         WindowStartupLocation="CenterScreen">
     <Window.Resources>
-        <!-- 转换器 -->
-        <local:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
-        
         <!-- 工业上位机样式：简约、清晰、无装饰 -->
         
-        <!-- 批次区标题样式 -->
+        <!-- 订单/测试区标题样式（阶段 3 C1.1：文案改为「本次测试」「当前订单」，不出现 SessionId/Session） -->
         <Style x:Key="BatchHeaderStyle" TargetType="TextBlock">
             <Setter Property="FontSize" Value="14"/>
             <Setter Property="FontWeight" Value="Bold"/>
@@ -83,24 +80,24 @@
     </Window.Resources>
     
     <DockPanel LastChildFill="True">
-        <!-- 1. 批次控制区（顶部，次要） -->
+        <!-- 1. 测试控制区（顶部，次要）- 阶段 3 C1.1：文案改为「本次测试」「当前订单」 -->
         <Grid DockPanel.Dock="Top" Margin="5">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
             
-            <!-- 批次控制区 -->
+            <!-- 测试控制区（Phase 2.5：ProjectId + OrderId 输入 + 本次测试标识只读展示） -->
             <Border Grid.Column="0" BorderBrush="#CCCCCC" BorderThickness="1" Padding="10" Background="#F5F5F5">
                 <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="批次号：" Style="{StaticResource BatchHeaderStyle}"/>
-                    <TextBox x:Name="BatchIdTextBox" MinWidth="200" Height="28" Margin="5,0" VerticalAlignment="Center"
-                             Text="{Binding BatchNameInput, UpdateSourceTrigger=PropertyChanged}">
+                    <TextBlock Text="项目名：" Style="{StaticResource BatchHeaderStyle}"/>
+                    <TextBox x:Name="ProjectIdTextBox" MinWidth="120" Height="28" Margin="5,0" VerticalAlignment="Center"
+                             Text="{Binding ProjectIdInput, UpdateSourceTrigger=PropertyChanged}">
                         <TextBox.Style>
                             <Style TargetType="TextBox">
                                 <Setter Property="IsEnabled" Value="True"/>
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsBatchActive}" Value="True">
+                                    <DataTrigger Binding="{Binding IsSessionActive}" Value="True">
                                         <Setter Property="IsEnabled" Value="False"/>
                                         <Setter Property="Background" Value="#E0E0E0"/>
                                     </DataTrigger>
@@ -108,26 +105,56 @@
                             </Style>
                         </TextBox.Style>
                     </TextBox>
-                    <Button x:Name="StartBatchButton" Content="开始批次" Width="100" Height="28" Margin="5,0"
+                    <TextBlock Text="订单号：" Style="{StaticResource BatchHeaderStyle}" Margin="10,0,0,0"/>
+                    <TextBox x:Name="OrderIdTextBox" MinWidth="120" Height="28" Margin="5,0" VerticalAlignment="Center"
+                             Text="{Binding OrderIdInput, UpdateSourceTrigger=PropertyChanged}">
+                        <TextBox.Style>
+                            <Style TargetType="TextBox">
+                                <Setter Property="IsEnabled" Value="True"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsSessionActive}" Value="True">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                        <Setter Property="Background" Value="#E0E0E0"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBox.Style>
+                    </TextBox>
+                    <TextBlock Text="本次测试：" Style="{StaticResource BatchHeaderStyle}" Margin="10,0,0,0"/>
+                    <TextBlock x:Name="CurrentTestIdentifierText" MinWidth="150" Height="28" Margin="5,0" VerticalAlignment="Center"
+                               Text="{Binding CurrentTestIdentifier}" FontSize="12" Foreground="#666666"
+                               Background="#F0F0F0" Padding="5,0">
+                        <TextBlock.Style>
+                            <Style TargetType="TextBlock">
+                                <Setter Property="Text" Value="--"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding CurrentTestIdentifier}" Value="">
+                                        <Setter Property="Text" Value="--"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </TextBlock.Style>
+                    </TextBlock>
+                    <Button x:Name="StartBatchButton" Content="开始测试" Width="100" Height="28" Margin="5,0"
                             Command="{Binding StartBatchCommand}">
                         <Button.Style>
                             <Style TargetType="Button">
                                 <Setter Property="IsEnabled" Value="True"/>
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsBatchActive}" Value="True">
+                                    <DataTrigger Binding="{Binding IsSessionActive}" Value="True">
                                         <Setter Property="IsEnabled" Value="False"/>
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </Button.Style>
                     </Button>
-                    <Button x:Name="EndBatchButton" Content="结束批次" Width="100" Height="28" Margin="5,0"
+                    <Button x:Name="EndBatchButton" Content="结束测试" Width="100" Height="28" Margin="5,0"
                             Command="{Binding EndBatchCommand}">
                         <Button.Style>
                             <Style TargetType="Button">
                                 <Setter Property="IsEnabled" Value="False"/>
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsBatchActive}" Value="True">
+                                    <DataTrigger Binding="{Binding IsSessionActive}" Value="True">
                                         <Setter Property="IsEnabled" Value="True"/>
                                     </DataTrigger>
                                 </Style.Triggers>
@@ -140,23 +167,21 @@
                             <Style TargetType="Button">
                                 <Setter Property="IsEnabled" Value="False"/>
                                 <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsBatchActive}" Value="False">
+                                    <DataTrigger Binding="{Binding IsSessionActive}" Value="False">
                                         <Setter Property="IsEnabled" Value="True"/>
                                     </DataTrigger>
                                 </Style.Triggers>
                             </Style>
                         </Button.Style>
                     </Button>
-                    <TextBlock x:Name="BatchStatusText" Margin="15,0,5,0" VerticalAlignment="Center" FontSize="12"
-                               Text="{Binding IsBatchActive, StringFormat='状态: {0}'}"/>
                 </StackPanel>
             </Border>
         </Grid>
 
-        <!-- 6. 全局状态栏（窗口最底部，固定显示） -->
+        <!-- 6. 全局状态栏（窗口最底部，固定显示）- Phase 2.5：绑定 CurrentOrderId（来自 SessionSnapshot.OrderId） -->
         <StatusBar DockPanel.Dock="Bottom" Height="28" Background="#F0F0F0">
             <StatusBarItem>
-                <TextBlock Text="{Binding CurrentBatchId, StringFormat='批次: {0}'}" FontSize="12"/>
+                <TextBlock Text="{Binding CurrentOrderId, StringFormat='当前订单: {0}'}" FontSize="12"/>
             </StatusBarItem>
             <Separator/>
             <StatusBarItem>
@@ -165,6 +190,10 @@
             <Separator/>
             <StatusBarItem>
                 <TextBlock Text="{Binding StatusText, StringFormat='最近结果: {0}'}" FontSize="12"/>
+            </StatusBarItem>
+            <Separator/>
+            <StatusBarItem>
+                <TextBlock Text="{Binding StatusBarMessage}" FontSize="12" Foreground="#666666"/>
             </StatusBarItem>
         </StatusBar>
 
@@ -359,10 +388,10 @@
                                      BorderThickness="1">
                                 <TextBox.Style>
                                     <Style TargetType="TextBox">
-                                        <Setter Property="IsEnabled" Value="True"/>
+                                        <Setter Property="IsEnabled" Value="{Binding IsScanInputEnabled}"/>
+                                        <Setter Property="Background" Value="White"/>
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsProcessing}" Value="True">
-                                                <Setter Property="IsEnabled" Value="False"/>
+                                            <DataTrigger Binding="{Binding IsScanInputEnabled}" Value="False">
                                                 <Setter Property="Background" Value="#E0E0E0"/>
                                             </DataTrigger>
                                         </Style.Triggers>
@@ -461,7 +490,6 @@
             <StackPanel Grid.Column="1" Margin="15,0,0,0" VerticalAlignment="Top">
                 <Button x:Name="StartVerifyButton" Content="人工检验" Width="120" Height="45" Margin="0,5"
                         Command="{Binding StartVerifyCommand}"
-                        IsEnabled="{Binding IsProcessing, Converter={StaticResource InverseBooleanConverter}}"
                         Click="StartVerifyButton_Click"
                         FontSize="14" FontWeight="Bold"/>
                 <Button x:Name="SelfCheckButton" Content="自检" Width="120" Height="45" Margin="0,5"

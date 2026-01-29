@@ -10,13 +10,16 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Windows.Input;
+using SnVerify.Domain.Models;
 using SnVerify.Domain.State;
+using SnVerify.Domain.Validation;
 using SnVerify.Services.Adb;
-using SnVerify.Services.Batch;
 using SnVerify.Services.Coordination;
 using SnVerify.Services.Logging;
 using SnVerify.Services.MES;
+using SnVerify.Services.Session;
 using SnVerify.Services.Storage;
+using SnVerify.Services.Ui;
 using SnVerify.Properties;
 
 namespace SnVerify.ViewModels
@@ -37,44 +40,72 @@ namespace SnVerify.ViewModels
     /// </summary>
     public class MainViewModel : INotifyPropertyChanged
     {
-        private readonly IBatchManager _batchManager;
+        private readonly ISessionLifecycleService _sessionLifecycleService;
         private readonly IVerificationFlowServiceFactory _flowServiceFactory;
         private readonly ILoggingService _loggingService;
         private readonly IMESInterface _mesInterface;
         private readonly IStorageService _storageService;
         private readonly IAdbAccessService _adbAccessService;
+        private readonly IExportAggregationService _exportAggregationService;
+        private readonly IOrderNameValidator _orderNameValidator;
+        private readonly IUserDialogService _dialogService;
         private readonly string _logDirectory;
+        private readonly SynchronizationContext _uiContext;
 
         private IVerificationFlowService _verificationFlowService;
-        private BatchSnapshot _batchSnapshot;
+        private IVerificationFlowService _mesEventSource; // 当前订阅 MES 事件的流程服务实例（避免重复订阅）
+        private SessionSnapshot _sessionSnapshot;
         private VerificationSnapshot _verificationSnapshot;
         private LoggingSnapshot _loggingSnapshot;
         private MESSnapshot _mesSnapshot;
         private string _scanInputText;
-        private string _batchNameInput;
-        private string _lastEndedBatchId;
+        private string _projectIdInput;
+        private string _orderIdInput;
+        private string _lastEndedSessionId;
         private bool _isSelfChecking;
         private Timer _snapshotUpdateTimer;
         private string _lastExportFolder; // 上次选择的导出文件夹路径
+        private string _statusBarMessage; // 状态栏消息（无效操作/MES 预留提示）
+        private string _lastFailReason; // 上次失败原因（用于 C1.6：重复「设备SN已存在」UI只一条）
 
         /// <summary>
-        /// 批次状态快照
+        /// Session 状态快照（Phase 2.5：替代 BatchSnapshot）
         /// </summary>
-        public BatchSnapshot BatchSnapshot
+        public SessionSnapshot SessionSnapshot
         {
-            get => _batchSnapshot;
+            get => _sessionSnapshot;
             internal set
             {
-                if (_batchSnapshot != value)
+                if (_sessionSnapshot != value)
                 {
-                    _batchSnapshot = value;
+                    _sessionSnapshot = value;
                     OnPropertyChanged();
+                    OnPropertyChanged(nameof(CurrentOrderId));
+                    OnPropertyChanged(nameof(CurrentTestIdentifier));
+                    OnPropertyChanged(nameof(IsSessionActive));
+                    // 向后兼容：保留 BatchSnapshot 别名
+                    OnPropertyChanged(nameof(BatchSnapshot));
                     OnPropertyChanged(nameof(CurrentBatchId));
                     OnPropertyChanged(nameof(IsBatchActive));
                     StartBatchCommand?.RaiseCanExecuteChanged();
                     EndBatchCommand?.RaiseCanExecuteChanged();
                     ExportCommand?.RaiseCanExecuteChanged();
                 }
+            }
+        }
+
+        /// <summary>
+        /// 向后兼容：BatchSnapshot 作为 SessionSnapshot 的别名（Phase 2.5 过渡期）
+        /// </summary>
+        [Obsolete("Use SessionSnapshot instead. This property is kept for backward compatibility during Phase 2.5 transition.")]
+        public BatchSnapshot BatchSnapshot
+        {
+            get
+            {
+                if (_sessionSnapshot == null) return BatchSnapshot.Idle();
+                if (_sessionSnapshot.IsActive)
+                    return BatchSnapshot.Active(_sessionSnapshot.SessionId ?? "", _sessionSnapshot.OrderId ?? "", _sessionSnapshot.StartTime ?? DateTime.Now);
+                return BatchSnapshot.Idle();
             }
         }
 
@@ -93,12 +124,16 @@ namespace SnVerify.ViewModels
                     OnPropertyChanged(nameof(CurrentSn));
                     OnPropertyChanged(nameof(DeviceSN));
                     OnPropertyChanged(nameof(IsProcessing));
+                    OnPropertyChanged(nameof(IsScanInputEnabled));
                     OnPropertyChanged(nameof(LastResult));
                     OnPropertyChanged(nameof(FailReason));
                     OnPropertyChanged(nameof(StatusText));
                     OnPropertyChanged(nameof(ShowFailReason));
                     OnPropertyChanged(nameof(UiState));
                     StartVerifyCommand?.RaiseCanExecuteChanged();
+                    StartBatchCommand?.RaiseCanExecuteChanged();
+                    EndBatchCommand?.RaiseCanExecuteChanged();
+                    ExportCommand?.RaiseCanExecuteChanged();
                 }
             }
         }
@@ -162,30 +197,100 @@ namespace SnVerify.ViewModels
         }
 
         /// <summary>
-        /// 当前批次 ID（用于显示）
+        /// 当前订单 ID（用于显示）- Phase 2.5：从 SessionSnapshot.OrderId 获取
         /// </summary>
-        public string CurrentBatchId => BatchSnapshot?.BatchId ?? "未开始";
+        public string CurrentOrderId => SessionSnapshot?.OrderId ?? "未开始";
 
         /// <summary>
-        /// 批次号输入：默认显示可编辑的批次名，开始批次后用于创建；有活动批次时禁用，结束后重置为新的默认名。
+        /// 向后兼容：CurrentBatchId 作为 CurrentOrderId 的别名
         /// </summary>
-        public string BatchNameInput
+        [Obsolete("Use CurrentOrderId instead. This property is kept for backward compatibility during Phase 2.5 transition.")]
+        public string CurrentBatchId => CurrentOrderId;
+
+        /// <summary>
+        /// 本次测试标识（只读，从 SessionId 提取时间段，如 yyyyMMdd_HHmmss，不显示 Session 字样）
+        /// </summary>
+        public string CurrentTestIdentifier
         {
-            get => _batchNameInput;
-            set
+            get
             {
-                if (_batchNameInput != value)
+                var sessionId = SessionSnapshot?.SessionId;
+                if (string.IsNullOrWhiteSpace(sessionId))
+                    return "";
+                // SessionId 格式：OrderId_yyyyMMdd_HHmmss，提取后半部分
+                var parts = sessionId.Split('_');
+                if (parts.Length >= 3)
                 {
-                    _batchNameInput = value;
+                    // 返回 yyyyMMdd_HHmmss 部分
+                    return parts[parts.Length - 2] + "_" + parts[parts.Length - 1];
+                }
+                return "";
+            }
+        }
+
+        /// <summary>
+        /// 状态栏消息（阶段 3 C1.4：无效操作/MES 上报失败预留提示）
+        /// </summary>
+        public string StatusBarMessage
+        {
+            get => _statusBarMessage ?? "";
+            private set
+            {
+                if (_statusBarMessage != value)
+                {
+                    _statusBarMessage = value;
                     OnPropertyChanged();
                 }
             }
         }
 
         /// <summary>
-        /// 是否批次活动（用于按钮状态）
+        /// 项目 ID 输入（Phase 2.5：开始测试时输入）
         /// </summary>
-        public bool IsBatchActive => BatchSnapshot?.IsActive ?? false;
+        public string ProjectIdInput
+        {
+            get => _projectIdInput;
+            set
+            {
+                if (_projectIdInput != value)
+                {
+                    _projectIdInput = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        /// <summary>
+        /// 订单 ID 输入（Phase 2.5：开始测试时输入，必填）
+        /// </summary>
+        public string OrderIdInput
+        {
+            get => _orderIdInput;
+            set
+            {
+                if (_orderIdInput != value)
+                {
+                    _orderIdInput = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        /// <summary>
+        /// 是否 Session 活动（用于按钮状态）
+        /// </summary>
+        public bool IsSessionActive => SessionSnapshot?.IsActive ?? false;
+
+        /// <summary>
+        /// 向后兼容：IsBatchActive 作为 IsSessionActive 的别名
+        /// </summary>
+        [Obsolete("Use IsSessionActive instead. This property is kept for backward compatibility during Phase 2.5 transition.")]
+        public bool IsBatchActive => IsSessionActive;
+
+        /// <summary>
+        /// 扫码输入框是否可用（自检规则 8：自检期间禁用扫码）
+        /// </summary>
+        public bool IsScanInputEnabled => !IsProcessing && !IsSelfChecking;
 
         /// <summary>
         /// 当前 SN（用于显示）
@@ -213,8 +318,13 @@ namespace SnVerify.ViewModels
                 if (_isSelfChecking != value)
                 {
                     _isSelfChecking = value;
-                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(IsSelfChecking));
+                    OnPropertyChanged(nameof(IsScanInputEnabled));
                     SelfCheckCommand?.RaiseCanExecuteChanged();
+                    StartVerifyCommand?.RaiseCanExecuteChanged(); // 规则 8：自检期间禁用人工检验
+                    StartBatchCommand?.RaiseCanExecuteChanged();
+                    EndBatchCommand?.RaiseCanExecuteChanged();
+                    ExportCommand?.RaiseCanExecuteChanged();
                 }
             }
         }
@@ -230,7 +340,7 @@ namespace SnVerify.ViewModels
         private string _batchError;
 
         /// <summary>
-        /// 失败原因（用于显示）
+        /// 失败原因（用于显示）- 阶段 3 C1.6：重复「设备SN已存在」UI只一条
         /// </summary>
         public string FailReason
         {
@@ -239,7 +349,12 @@ namespace SnVerify.ViewModels
                 // 优先显示批次错误（如批次未激活）
                 if (!string.IsNullOrEmpty(_batchError))
                     return _batchError;
-                return VerificationSnapshot?.FailReason ?? "";
+                var currentFailReason = VerificationSnapshot?.FailReason ?? "";
+                // C1.6：重复「设备SN已存在」UI只一条（若与上次相同则不重复显示）
+                if (currentFailReason == "设备SN已存在" && currentFailReason == _lastFailReason)
+                    return ""; // 不重复显示
+                _lastFailReason = currentFailReason;
+                return currentFailReason;
             }
         }
 
@@ -336,30 +451,36 @@ namespace SnVerify.ViewModels
         /// 初始化主窗口 ViewModel
         /// </summary>
         public MainViewModel(
-            IBatchManager batchManager,
+            ISessionLifecycleService sessionLifecycleService,
             IVerificationFlowServiceFactory flowServiceFactory,
             ILoggingService loggingService,
             IMESInterface mesInterface,
             IStorageService storageService,
             IAdbAccessService adbAccessService,
+            IExportAggregationService exportAggregationService,
+            IOrderNameValidator orderNameValidator,
+            IUserDialogService dialogService,
             string logDirectory)
         {
-            _batchManager = batchManager ?? throw new ArgumentNullException(nameof(batchManager));
+            _sessionLifecycleService = sessionLifecycleService ?? throw new ArgumentNullException(nameof(sessionLifecycleService));
             _flowServiceFactory = flowServiceFactory ?? throw new ArgumentNullException(nameof(flowServiceFactory));
             _loggingService = loggingService ?? throw new ArgumentNullException(nameof(loggingService));
             _mesInterface = mesInterface ?? throw new ArgumentNullException(nameof(mesInterface));
             _storageService = storageService ?? throw new ArgumentNullException(nameof(storageService));
             _adbAccessService = adbAccessService ?? throw new ArgumentNullException(nameof(adbAccessService));
+            _exportAggregationService = exportAggregationService ?? throw new ArgumentNullException(nameof(exportAggregationService));
+            _orderNameValidator = orderNameValidator ?? throw new ArgumentNullException(nameof(orderNameValidator));
+            _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
             _logDirectory = logDirectory ?? throw new ArgumentNullException(nameof(logDirectory));
+            _uiContext = SynchronizationContext.Current ?? new SynchronizationContext();
 
-            _verificationFlowService = _flowServiceFactory.Create("batch_idle");
+            _verificationFlowService = _flowServiceFactory.Create("session_idle", null);
+            AttachMesEventHandlers(_verificationFlowService);
 
-            BatchSnapshot = _batchManager.Snapshot;
+            SessionSnapshot = _sessionLifecycleService.Snapshot;
             VerificationSnapshot = _verificationFlowService.Snapshot;
             LoggingSnapshot = _loggingService.Snapshot;
             MESSnapshot = _mesInterface.Snapshot;
-
-            _batchNameInput = "batch_" + DateTime.Now.ToString("yyyyMMdd_HHmmss");
 
             // 从设置中读取上次选择的导出文件夹路径
             _lastExportFolder = Settings.Default.LastExportFolder;
@@ -369,10 +490,12 @@ namespace SnVerify.ViewModels
                 _lastExportFolder = null;
             }
 
-            StartBatchCommand = new RelayCommand(async () => await StartBatchAsync(), () => !IsBatchActive);
-            EndBatchCommand = new RelayCommand(async () => await EndBatchAsync(), () => IsBatchActive);
-            ExportCommand = new RelayCommand(async () => await ExportAsync(), () => !IsBatchActive && !string.IsNullOrEmpty(_lastEndedBatchId));
-            StartVerifyCommand = new RelayCommand(async () => await StartVerifyAsync(), () => !IsProcessing);
+            // 规则 3/5/8：自检期间禁用 Start/End/导出；检验中也禁用 Start/End/导出（防止重复点击/并发操作）。
+            StartBatchCommand = new RelayCommand(async () => await StartBatchAsync(), () => !IsSessionActive && !IsSelfChecking && !IsProcessing);
+            EndBatchCommand = new RelayCommand(async () => await EndBatchAsync(), () => IsSessionActive && !IsSelfChecking && !IsProcessing);
+            ExportCommand = new RelayCommand(async () => await ExportAsync(), () => !IsSessionActive && !IsSelfChecking && !IsProcessing && !string.IsNullOrEmpty(_lastEndedSessionId));
+            // 规则 8：自检期间禁用人工检验
+            StartVerifyCommand = new RelayCommand(async () => await StartVerifyAsync(), () => !IsProcessing && !IsSelfChecking);
             SelfCheckCommand = new RelayCommand(async () => await SelfCheckAsync(), () => !IsSelfChecking);
 
             _snapshotUpdateTimer = new Timer(UpdateSnapshots, null, TimeSpan.Zero, TimeSpan.FromMilliseconds(500));
@@ -383,21 +506,9 @@ namespace SnVerify.ViewModels
         /// </summary>
         private void UpdateSnapshots(object state)
         {
-            // 确保在 UI 线程上更新属性（WPF 数据绑定要求）
-            var dispatcher = System.Windows.Application.Current?.Dispatcher;
-            if (dispatcher != null && !dispatcher.CheckAccess())
-            {
-                // 不在 UI 线程，封送到 UI 线程
-                dispatcher.BeginInvoke(new System.Action(() =>
-                {
-                    UpdateSnapshotsInternal();
-                }), System.Windows.Threading.DispatcherPriority.Normal);
-            }
-            else
-            {
-                // 已在 UI 线程，直接更新
-                UpdateSnapshotsInternal();
-            }
+            // 规则 12：禁止 Application.Current/Dispatcher。
+            // Timer 回调线程通过 SynchronizationContext 封送回 UI 线程（不引入 WPF 类型依赖）。
+            _uiContext.Post(_ => UpdateSnapshotsInternal(), null);
         }
 
         /// <summary>
@@ -419,35 +530,54 @@ namespace SnVerify.ViewModels
                 VerificationSnapshot = newVerificationSnapshot;
             }
 
-            var newBatchSnapshot = _batchManager.Snapshot;
-            if (newBatchSnapshot != _batchSnapshot)
+            var newSessionSnapshot = _sessionLifecycleService.Snapshot;
+            if (newSessionSnapshot != _sessionSnapshot)
             {
-                BatchSnapshot = newBatchSnapshot;
+                SessionSnapshot = newSessionSnapshot;
             }
         }
 
         /// <summary>
-        /// 开始批次：创建批次、按 batchId 创建校验流程服务、启动批次与日志；清零 _lastEndedBatchId。
+        /// 开始测试（Session）：Phase 2.5 - 校验 ProjectId/OrderId，创建 Session、按 sessionId 创建校验流程服务、启动日志。
         /// </summary>
         private async System.Threading.Tasks.Task StartBatchAsync()
         {
             try
             {
-                var nameToUse = string.IsNullOrWhiteSpace(BatchNameInput) ? null : BatchNameInput.Trim();
-                var batch = await System.Threading.Tasks.Task.Run(() =>
+                var projectId = string.IsNullOrWhiteSpace(ProjectIdInput) ? null : ProjectIdInput.Trim();
+                var orderId = string.IsNullOrWhiteSpace(OrderIdInput) ? null : OrderIdInput.Trim();
+
+                // 项目/订单均为必填，且订单需要通过命名校验（与项目挂钩）
+                if (string.IsNullOrWhiteSpace(projectId) || string.IsNullOrWhiteSpace(orderId))
                 {
-                    var b = _batchManager.CreateBatch(nameToUse);
-                    _batchManager.StartBatch(b.BatchId);
-                    _loggingService.StartBatch(b.BatchId);
-                    return b;
+                    _dialogService.ShowWarning("项目 ID 和订单 ID 都不能为空", "校验失败");
+                    return;
+                }
+
+                // Phase 2.5：校验弹窗挂接 - 开始测试时一次性校验命名
+                if (!_orderNameValidator.Validate(orderId, out var validationMessage))
+                {
+                    // 校验不通过，提示，不创建 Session
+                    _dialogService.ShowWarning($"命名校验不通过：{validationMessage}", "校验失败");
+                    return;
+                }
+
+                // 创建并开始 Session
+                var sessionId = await System.Threading.Tasks.Task.Run(() =>
+                {
+                    var sid = _sessionLifecycleService.CreateAndStartSession(orderId, orderId, projectId);
+                    _loggingService.StartBatch(sid); // 最小改动方案：保留接口名，但传入 sessionId
+                    return sid;
                 });
-                _verificationFlowService = _flowServiceFactory.Create(batch.BatchId);
-                BatchNameInput = batch.BatchId;
-                BatchSnapshot = _batchManager.Snapshot;
+
+                _verificationFlowService = _flowServiceFactory.Create(sessionId, orderId);
+                AttachMesEventHandlers(_verificationFlowService);
+
+                SessionSnapshot = _sessionLifecycleService.Snapshot;
                 VerificationSnapshot = _verificationFlowService.Snapshot;
                 LoggingSnapshot = _loggingService.Snapshot;
-                
-                // 清除批次错误提示（批次已开始）
+
+                // 清除错误提示（Session 已开始）
                 ClearBatchError();
             }
             catch (Exception)
@@ -457,19 +587,35 @@ namespace SnVerify.ViewModels
         }
 
         /// <summary>
-        /// 结束批次：记录 _lastEndedBatchId 供导出，结束批次与日志，重置批次名默认值。
+        /// 结束测试（Session）：Phase 2.5 - 记录 _lastEndedSessionId 供导出，结束 Session 与日志。
         /// </summary>
+        /// <remarks>规则 3：End 前检查当前 Session 是否有 TestRecord；无则状态栏提示「本次操作无效/已忽略」且不执行 End。</remarks>
         private async System.Threading.Tasks.Task EndBatchAsync()
         {
             try
             {
-                _lastEndedBatchId = BatchSnapshot?.BatchId;
-                _batchManager.EndBatch();
+                var sessionId = SessionSnapshot?.SessionId;
+                if (string.IsNullOrWhiteSpace(sessionId))
+                    return;
+
+                // 规则 3：End 前检查当前 Session 是否有 TestRecord；无则状态栏提示并忽略本次操作。
+                var records = await _storageService.GetTestRecordsBySessionAsync(sessionId);
+                if (records == null || records.Count == 0)
+                {
+                    StatusBarMessage = "本次操作无效/已忽略";
+                    _loggingService.LogInfo("结束测试被忽略：本次测试未产生任何记录");
+                    LoggingSnapshot = _loggingService.Snapshot;
+                    return;
+                }
+
+                _lastEndedSessionId = sessionId;
+                _sessionLifecycleService.EndSession();
                 _loggingService.EndBatch();
-                BatchNameInput = "batch_" + DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                BatchSnapshot = _batchManager.Snapshot;
+                
+                SessionSnapshot = _sessionLifecycleService.Snapshot;
                 LoggingSnapshot = _loggingService.Snapshot;
                 ExportCommand?.RaiseCanExecuteChanged();
+                StatusBarMessage = "";
             }
             catch (Exception)
             {
@@ -478,88 +624,110 @@ namespace SnVerify.ViewModels
         }
 
         /// <summary>
-        /// 导出：导出 _lastEndedBatchId 的校验结果与对应日志到用户选择的文件夹，并在日志区提示。
+        /// 导出：阶段 3 C1.2 - 「选维度 → 选对象 → 执行」+ 覆盖确认弹窗。
         /// </summary>
         private async System.Threading.Tasks.Task ExportAsync()
         {
-            if (string.IsNullOrEmpty(_lastEndedBatchId)) return;
-            
-            // 让用户选择导出文件夹
-            string selectedFolder = null;
-            System.Windows.Application.Current.Dispatcher.Invoke(() =>
+            // Step 1: 选择导出维度（按项目 / 按订单）
+            var exportDimension = _dialogService.ChooseExportDimension();
+            if (exportDimension == null)
             {
-                using (var dialog = new System.Windows.Forms.FolderBrowserDialog())
+                _loggingService.LogInfo("导出已取消");
+                LoggingSnapshot = _loggingService.Snapshot;
+                return;
+            }
+
+            // Step 2: 选择具体项目或订单
+            string selectedId = null;
+            if (exportDimension == ExportDimension.ByProject)
+            {
+                var projectIds = await _storageService.GetAllProjectIdsAsync();
+                if (projectIds.Count == 0)
                 {
-                    dialog.Description = "请选择导出文件夹";
-                    dialog.ShowNewFolderButton = true;
-                    
-                    // 优先使用上次选择的路径，否则使用默认路径
-                    if (!string.IsNullOrEmpty(_lastExportFolder) && Directory.Exists(_lastExportFolder))
-                    {
-                        dialog.SelectedPath = _lastExportFolder;
-                    }
-                    else
-                    {
-                        // 设置默认路径为日志目录下的 Export 子目录
-                        var defaultPath = Path.Combine(_logDirectory, "Export", _lastEndedBatchId);
-                        if (Directory.Exists(defaultPath))
-                        {
-                            dialog.SelectedPath = defaultPath;
-                        }
-                        else if (Directory.Exists(_logDirectory))
-                        {
-                            dialog.SelectedPath = _logDirectory;
-                        }
-                    }
-                    
-                    if (dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK)
-                    {
-                        selectedFolder = dialog.SelectedPath;
-                        // 保存用户选择的路径，供下次使用
-                        _lastExportFolder = selectedFolder;
-                        // 持久化到设置
-                        Settings.Default.LastExportFolder = selectedFolder;
-                        Settings.Default.Save();
-                    }
+                    _dialogService.ShowInfo("当前没有项目数据，无法导出");
+                    return;
                 }
-            });
-            
-            // 用户取消了文件夹选择，不执行导出
+                selectedId = _dialogService.ChooseProjectId(projectIds);
+            }
+            else // Order
+            {
+                var orders = await _storageService.GetAllOrdersAsync();
+                if (orders.Count == 0)
+                {
+                    _dialogService.ShowInfo("当前没有订单数据，无法导出");
+                    return;
+                }
+                var selectedOrder = _dialogService.ChooseOrder(orders);
+                selectedId = selectedOrder?.OrderName;
+            }
+
+            if (string.IsNullOrEmpty(selectedId))
+            {
+                _loggingService.LogInfo("导出已取消");
+                LoggingSnapshot = _loggingService.Snapshot;
+                return;
+            }
+
+            // Step 3: 选择导出文件夹
+            var initialFolder = (!string.IsNullOrEmpty(_lastExportFolder) && Directory.Exists(_lastExportFolder))
+                ? _lastExportFolder
+                : (Directory.Exists(_logDirectory) ? _logDirectory : null);
+            var selectedFolder = _dialogService.ChooseFolder("请选择导出文件夹", initialFolder);
+
             if (string.IsNullOrEmpty(selectedFolder))
             {
                 _loggingService.LogInfo("导出已取消");
                 LoggingSnapshot = _loggingService.Snapshot;
                 return;
             }
+
+            _lastExportFolder = selectedFolder;
+            Settings.Default.LastExportFolder = selectedFolder;
+            Settings.Default.Save();
+
+            // Step 4: 检查目标文件是否存在，弹窗确认覆盖
+            var sessions = exportDimension == ExportDimension.ByProject
+                ? await _storageService.GetSessionsByProjectIdAsync(selectedId)
+                : await _storageService.GetSessionsByOrderIdAsync(selectedId);
             
+            if (sessions.Count == 0)
+            {
+                _dialogService.ShowInfo($"所选{(exportDimension == ExportDimension.ByProject ? "项目" : "订单")}下没有测试会话，无法导出");
+                return;
+            }
+
+            // 检查是否有已存在的导出文件（与 ExportBySessionAsync 一致，按 Session 内部 Id 命名）
+            bool hasExistingFiles = false;
+            foreach (var s in sessions)
+            {
+                var xlsxPath = Path.Combine(selectedFolder, $"{s.Id}.xlsx");
+                var txtPath = Path.Combine(selectedFolder, $"{s.Id}.txt");
+                if (File.Exists(xlsxPath) || File.Exists(txtPath))
+                {
+                    hasExistingFiles = true;
+                    break;
+                }
+            }
+
+            if (hasExistingFiles)
+            {
+                if (!_dialogService.ConfirmOverwrite("目标文件夹中已存在同名文件，是否覆盖？\n\n是 = 覆盖\n否 = 取消导出"))
+                {
+                    _loggingService.LogInfo("导出已取消（用户选择不覆盖）");
+                    LoggingSnapshot = _loggingService.Snapshot;
+                    return;
+                }
+            }
+
+            // Step 5: 执行导出
             try
             {
-                // 创建导出目录（如果不存在）
                 Directory.CreateDirectory(selectedFolder);
-                
-                // 复制日志文件到导出目录
-                if (Directory.Exists(_logDirectory))
-                {
-                    foreach (var f in Directory.GetFiles(_logDirectory, "log_*"))
-                    {
-                        var name = Path.GetFileName(f);
-                        if (name.StartsWith("log_" + _lastEndedBatchId + "_", StringComparison.OrdinalIgnoreCase))
-                        {
-                            try 
-                            { 
-                                File.Copy(f, Path.Combine(selectedFolder, name), true); 
-                            } 
-                            catch 
-                            { 
-                                // 忽略复制失败
-                            }
-                        }
-                    }
-                }
-                
-                // 导出批次结果 Excel 文件
-                await _storageService.ExportBatchResultAsync(_lastEndedBatchId, selectedFolder);
-                _loggingService.LogInfo("导出成功: " + selectedFolder);
+                if (exportDimension == ExportDimension.ByProject)
+                    await _exportAggregationService.ExportByProjectIdAsync(selectedId, selectedFolder);
+                else
+                    await _exportAggregationService.ExportByOrderIdAsync(selectedId, selectedFolder);
+                _loggingService.LogInfo($"导出成功: {(exportDimension == ExportDimension.ByProject ? "项目" : "订单")}={selectedId}, 目录={selectedFolder}");
                 LoggingSnapshot = _loggingService.Snapshot;
             }
             catch (Exception ex)
@@ -567,6 +735,37 @@ namespace SnVerify.ViewModels
                 _loggingService.LogError("导出失败: " + ex.Message, ex);
                 LoggingSnapshot = _loggingService.Snapshot;
             }
+        }
+
+        /// <summary>
+        /// 绑定流程服务的 MES 事件，用于状态栏弱提示（不影响 PASS/FAIL）。
+        /// </summary>
+        private void AttachMesEventHandlers(IVerificationFlowService flowService)
+        {
+            if (flowService == null) return;
+            if (ReferenceEquals(_mesEventSource, flowService)) return;
+
+            // 先解绑旧订阅（避免内存泄漏/重复提示）
+            if (_mesEventSource != null)
+            {
+                _mesEventSource.MesEventOccurred -= OnMesEventOccurred;
+            }
+
+            _mesEventSource = flowService;
+            _mesEventSource.MesEventOccurred += OnMesEventOccurred;
+        }
+
+        private void OnMesEventOccurred(object sender, SnVerify.Services.Mes.Gate.MesEventArgs e)
+        {
+            // 规则 12：禁止 Dispatcher。通过 ViewModel 捕获的 SynchronizationContext 回到 UI 线程。
+            _uiContext.Post(_ =>
+            {
+                if (e == null) return;
+                if (!string.IsNullOrWhiteSpace(e.Message))
+                {
+                    StatusBarMessage = e.Message;
+                }
+            }, null);
         }
 
         /// <summary>
@@ -608,26 +807,26 @@ namespace SnVerify.ViewModels
                     // 多设备检测（可能调用同步阻塞的 GetAwaiter().GetResult()）
                     if (_adbAccessService.CheckMultipleDevices(out var deviceIds) && deviceIds != null && deviceIds.Count > 1)
                     {
-                        // 回到 UI 线程更新日志
-                        System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                        // 回到 UI 线程更新日志（规则 12：不使用 Dispatcher）
+                        _uiContext.Post(_ =>
                         {
                             _loggingService.LogWarning("自检: 检测到多台 ADB 设备: " + string.Join(", ", deviceIds));
                             LoggingSnapshot = _loggingService.Snapshot;
-                        });
+                        }, null);
                     }
 
                     // ADB SN 读取（耗时操作）
                     var adbResult = await _adbAccessService.ReadDeviceSnAsync().ConfigureAwait(false);
 
-                    // 回到 UI 线程更新日志
-                    System.Windows.Application.Current.Dispatcher.Invoke(() =>
+                    // 回到 UI 线程更新日志（规则 12：不使用 Dispatcher）
+                    _uiContext.Post(_ =>
                     {
                         if (adbResult.IsSuccess)
                             _loggingService.LogInfo("自检: ADB 设备 SN 读取正常");
                         else
                             _loggingService.LogWarning("自检: ADB 无法读取 SN: " + (adbResult.ErrorReason ?? "未知"));
                         LoggingSnapshot = _loggingService.Snapshot;
-                    });
+                    }, null);
                 }).ConfigureAwait(true);
 
                 // 回到 UI 线程后继续
@@ -670,17 +869,21 @@ namespace SnVerify.ViewModels
             if (string.IsNullOrWhiteSpace(sn))
                 return;
 
+            // 规则 8：自检期间不允许扫描 SN
+            if (IsSelfChecking)
+                return;
+
             if (IsProcessing)
             {
                 // 正在处理中，忽略新的扫码输入
                 return;
             }
 
-            // 防御逻辑：批次未激活时，拒绝扫码（需要先开始批次）
-            if (!IsBatchActive)
+            // 防御逻辑：Session 未激活时，拒绝扫码（需要先开始测试）
+            if (!IsSessionActive)
             {
-                // 可以在这里显示提示，或自动开始批次
-                // 当前选择：拒绝扫码，要求先开始批次
+                // 可以在这里显示提示，或自动开始测试
+                // 当前选择：拒绝扫码，要求先开始测试
                 return;
             }
 
@@ -737,11 +940,13 @@ namespace SnVerify.ViewModels
     {
         private readonly Func<System.Threading.Tasks.Task> _execute;
         private readonly Func<bool> _canExecute;
+        private readonly SynchronizationContext _context;
 
         public RelayCommand(Func<System.Threading.Tasks.Task> execute, Func<bool> canExecute = null)
         {
             _execute = execute ?? throw new ArgumentNullException(nameof(execute));
             _canExecute = canExecute;
+            _context = SynchronizationContext.Current;
         }
 
         public event EventHandler CanExecuteChanged;
@@ -758,21 +963,13 @@ namespace SnVerify.ViewModels
 
         public void RaiseCanExecuteChanged()
         {
-            // 确保在 UI 线程上触发事件
-            var dispatcher = System.Windows.Application.Current?.Dispatcher;
-            if (dispatcher != null && !dispatcher.CheckAccess())
+            // 规则 12：禁止 Application.Current/Dispatcher。使用构造时捕获的 SynchronizationContext 封送。
+            if (_context != null)
             {
-                // 不在 UI 线程，封送到 UI 线程
-                dispatcher.BeginInvoke(new System.Action(() =>
-                {
-                    CanExecuteChanged?.Invoke(this, EventArgs.Empty);
-                }), System.Windows.Threading.DispatcherPriority.Normal);
+                _context.Post(_ => CanExecuteChanged?.Invoke(this, EventArgs.Empty), null);
+                return;
             }
-            else
-            {
-                // 已在 UI 线程，直接调用
-                CanExecuteChanged?.Invoke(this, EventArgs.Empty);
-            }
+            CanExecuteChanged?.Invoke(this, EventArgs.Empty);
         }
     }
 }

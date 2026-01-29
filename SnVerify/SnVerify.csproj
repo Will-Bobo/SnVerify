@@ -96,11 +96,19 @@
     </Compile>
     <Compile Include="Domain\Models\AdbSnReadResult.cs" />
     <Compile Include="Domain\Models\BatchInfo.cs" />
+    <Compile Include="Domain\Models\Order.cs" />
+    <Compile Include="Domain\Models\Product.cs" />
+    <Compile Include="Domain\Models\TestSession.cs" />
+    <Compile Include="Domain\Models\TestRecord.cs" />
     <Compile Include="Domain\Models\SnCapturedEventArgs.cs" />
     <Compile Include="Domain\Models\SnVerifyResult.cs" />
+    <Compile Include="Domain\Validation\SessionIdGenerator.cs" />
+    <Compile Include="Domain\Validation\IOrderNameValidator.cs" />
+    <Compile Include="Domain\Validation\OrderNameValidator.cs" />
     <Compile Include="Domain\State\AdbSnapshot.cs" />
     <Compile Include="Domain\State\BatchSnapshot.cs" />
     <Compile Include="Domain\State\LoggingSnapshot.cs" />
+    <Compile Include="Domain\State\SessionSnapshot.cs" />
     <Compile Include="Domain\State\MESSnapshot.cs" />
     <Compile Include="Domain\State\ScanSnapshot.cs" />
     <Compile Include="Domain\State\StorageSnapshot.cs" />
@@ -109,15 +117,14 @@
       <DependentUpon>MainWindow.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
-    <Compile Include="Converters\InverseBooleanConverter.cs" />
     <Compile Include="Infrastructure\ServiceFactory.cs" />
     <Compile Include="Infrastructure\VerificationFlowServiceFactory.cs" />
     <Compile Include="Services\Adb\AdbAccessService.cs" />
     <Compile Include="Services\Adb\IAdbAccessService.cs" />
     <Compile Include="Services\Adb\IProcessRunner.cs" />
     <Compile Include="Services\Adb\ProcessRunner.cs" />
-    <Compile Include="Services\Batch\BatchManager.cs" />
-    <Compile Include="Services\Batch\IBatchManager.cs" />
+    <Compile Include="Services\Session\ISessionLifecycleService.cs" />
+    <Compile Include="Services\Session\SessionLifecycleService.cs" />
     <Compile Include="Services\Coordination\IProcessCoordinator.cs" />
     <Compile Include="Services\Coordination\IVerificationFlowService.cs" />
     <Compile Include="Services\Coordination\IVerificationFlowServiceFactory.cs" />
@@ -129,10 +136,24 @@
     <Compile Include="Services\Logging\ILoggingService.cs" />
     <Compile Include="Services\Logging\LoggingService.cs" />
     <Compile Include="Services\Logging\NullFileLogger.cs" />
+    <Compile Include="Services\Mes\Gate\MesMode.cs" />
+    <Compile Include="Services\Mes\Gate\MesPreCheckDecision.cs" />
+    <Compile Include="Services\Mes\Gate\MesContext.cs" />
+    <Compile Include="Services\Mes\Gate\TestResultContext.cs" />
+    <Compile Include="Services\Mes\Gate\MesPreCheckResult.cs" />
+    <Compile Include="Services\Mes\Gate\MesCapabilities.cs" />
+    <Compile Include="Services\Mes\Gate\MesEventType.cs" />
+    <Compile Include="Services\Mes\Gate\MesEventArgs.cs" />
+    <Compile Include="Services\Mes\Gate\IMesPreCheck.cs" />
+    <Compile Include="Services\Mes\Gate\IMesResultReporter.cs" />
     <Compile Include="Services\MES\IMESInterface.cs" />
     <Compile Include="Services\MES\MESInterface.cs" />
     <Compile Include="Services\Storage\IStorageService.cs" />
     <Compile Include="Services\Storage\StorageService.cs" />
+    <Compile Include="Services\Storage\IExportAggregationService.cs" />
+    <Compile Include="Services\Storage\ExportAggregationService.cs" />
+    <Compile Include="Services\Ui\IUserDialogService.cs" />
+    <Compile Include="Ui\WpfUserDialogService.cs" />
     <Compile Include="ViewModels\MainViewModel.cs" />
   </ItemGroup>
   <ItemGroup>

@@ -6,6 +6,7 @@ using System;
 using System.Threading.Tasks;
 using SnVerify.Domain.State;
 using SnVerify.Services.Logging;
+using SnVerify.Services.Mes.Gate;
 
 namespace SnVerify.Services.Coordination
 {
@@ -16,6 +17,9 @@ namespace SnVerify.Services.Coordination
     {
         private readonly IProcessCoordinator _processCoordinator;
         private readonly IFileLogger _logger;
+
+        /// <inheritdoc />
+        public event EventHandler<MesEventArgs> MesEventOccurred;
 
         /// <summary>
         /// 当前流程状态快照（只读）
@@ -33,6 +37,9 @@ namespace SnVerify.Services.Coordination
         {
             _processCoordinator = processCoordinator ?? throw new ArgumentNullException(nameof(processCoordinator));
             _logger = logger ?? new NullFileLogger();
+
+            // 事件桥接：ProcessCoordinator 的 MES 通知 → VerificationFlowService → ViewModel
+            _processCoordinator.MesEventOccurred += (s, e) => MesEventOccurred?.Invoke(this, e);
         }
 
         /// <summary>
