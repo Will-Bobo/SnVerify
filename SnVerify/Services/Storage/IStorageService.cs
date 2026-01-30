@@ -41,12 +41,11 @@ namespace SnVerify.Services.Storage
         Task<bool> IsDeviceSnInPassHistoryAsync(string deviceSN);
 
         /// <summary>
-        /// 检查绑定关系（StickerSN <-> DeviceSN）是否存在于历史 PASS 绑定中（跨批次查询）
+        /// 检查给定 SN 是否在历史 PASS 绑定中（跨批次查询）。PASS 时 StickerSN = DeviceSN，故仅需传入一个 SN；上层在两者相等时才调用。
         /// </summary>
-        /// <param name="stickerSN">贴纸 SN</param>
-        /// <param name="deviceSN">设备 SN</param>
-        /// <returns>绑定关系是否存在</returns>
-        Task<bool> IsBindingInPassHistoryAsync(string stickerSN, string deviceSN);
+        /// <param name="sn">贴纸/设备 SN（StickerSN 与 DeviceSN 相等时的统一值）</param>
+        /// <returns>是否存在该 SN 的 PASS 记录</returns>
+        Task<bool> IsBindingInPassHistoryAsync(string sn);
 
         // ---------- Phase 2.5 Step 6：Product / Order / TestSession / TestRecord ----------
 

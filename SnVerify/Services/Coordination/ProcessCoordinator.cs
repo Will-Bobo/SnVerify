@@ -170,8 +170,8 @@ namespace SnVerify.Services.Coordination
                 // 规则 1：绑定一致，且无历史 PASS 绑定 → PASS
                 if (stickerSN == deviceSNNormalized)
                 {
-                    // 优先检查绑定关系（规则2优先于规则1）
-                    var bindingExists = await _storageService.IsBindingInPassHistoryAsync(stickerSN, deviceSNNormalized);
+                    // 优先检查绑定关系（规则2优先于规则1）；PASS 时 StickerSN=DeviceSN，仅传一个 SN 即可
+                    var bindingExists = await _storageService.IsBindingInPassHistoryAsync(stickerSN);
                     if (bindingExists)
                     {
                         // 规则 2：绑定一致，但存在历史 PASS 绑定 → FAIL（已出站）

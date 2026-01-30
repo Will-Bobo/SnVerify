@@ -169,10 +169,10 @@ CREATE INDEX IF NOT EXISTS idx_testrecord_sessionid ON TestRecord(SessionId);";
 
             // 可选索引：StickerSN / DeviceSN
             var createTestRecordStickerIdx = @"
-CREATE INDEX IF NOT EXISTS idx_testrecord_stickersn ON TestRecord(StickerSN);";
+CREATE INDEX IF NOT EXISTS idx_testrecord_stickersn_result ON TestRecord(StickerSN, Result);";
 
             var createTestRecordDeviceIdx = @"
-CREATE INDEX IF NOT EXISTS idx_testrecord_devicesn ON TestRecord(DeviceSN);";
+CREATE INDEX IF NOT EXISTS idx_testrecord_devicesn_result ON TestRecord(DeviceSN, Result);";
 
             // 建表顺序：先表后索引，保证外键依赖顺序
             await ExecuteNonQueryAsync(createProductTable);
@@ -329,24 +329,21 @@ CREATE INDEX IF NOT EXISTS idx_testrecord_devicesn ON TestRecord(DeviceSN);";
         }
 
         /// <summary>
-        /// 检查绑定关系（StickerSN <-> DeviceSN）是否存在于历史 PASS 绑定中（跨批次查询，基于 TestRecord）
+        /// 检查给定 SN 是否在历史 PASS 绑定中（跨批次查询）。PASS 时 StickerSN = DeviceSN，故仅按 SN 查一次即可。
         /// </summary>
-        public async Task<bool> IsBindingInPassHistoryAsync(string stickerSN, string deviceSN)
+        public async Task<bool> IsBindingInPassHistoryAsync(string sn)
         {
-            if (string.IsNullOrWhiteSpace(stickerSN))
-                throw new ArgumentException("StickerSN 不能为空", nameof(stickerSN));
-            if (string.IsNullOrWhiteSpace(deviceSN))
-                throw new ArgumentException("DeviceSN 不能为空", nameof(deviceSN));
+            if (string.IsNullOrWhiteSpace(sn))
+                throw new ArgumentException("SN 不能为空", nameof(sn));
 
             EnsureConnectionInitialized();
 
             try
             {
                 const string sql = @"
-                    SELECT COUNT(1) FROM TestRecord 
-                    WHERE Result = 'PASS' 
-                    AND StickerSN = @StickerSN 
-                    AND DeviceSN = @DeviceSN";
+                    SELECT 1 FROM TestRecord
+                    WHERE StickerSN = @SN AND Result = 'PASS'
+                    LIMIT 1";
 
                 var exists = await Task.Run(() =>
                 {
@@ -359,10 +356,9 @@ CREATE INDEX IF NOT EXISTS idx_testrecord_devicesn ON TestRecord(DeviceSN);";
 
                         using (var command = new SQLiteCommand(sql, _connection))
                         {
-                            command.Parameters.AddWithValue("@StickerSN", stickerSN);
-                            command.Parameters.AddWithValue("@DeviceSN", deviceSN);
-                            var count = command.ExecuteScalar();
-                            return Convert.ToInt32(count) > 0;
+                            command.Parameters.AddWithValue("@SN", sn);
+                            var hasRow = command.ExecuteScalar();
+                            return hasRow != null && hasRow != DBNull.Value;
                         }
                     }
                 });
@@ -371,7 +367,7 @@ CREATE INDEX IF NOT EXISTS idx_testrecord_devicesn ON TestRecord(DeviceSN);";
             }
             catch (Exception ex)
             {
-                _logger?.LogError($"检查绑定关系历史 PASS 记录失败: {ex.Message}", ex);
+                _logger?.LogError($"检查历史 PASS 记录失败: {ex.Message}", ex);
                 throw;
             }
         }
