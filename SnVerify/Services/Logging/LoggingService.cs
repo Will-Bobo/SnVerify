@@ -166,8 +166,8 @@ namespace SnVerify.Services.Logging
                     _currentWriter.Dispose();
                     _currentWriter = null;
 
-                    // 可选：压缩日志文件（不删除原始 .log，便于按 SessionName 直接导出）
-                    CompressLogFile(_currentLogFilePath);
+                    // 可选：压缩日志文件（不删除原始 .log，便于按 SessionName 直接导出）— 暂时屏蔽
+                    // CompressLogFile(_currentLogFilePath);
 
                     _currentLogFilePath = null;
                     _currentBatchId = null;

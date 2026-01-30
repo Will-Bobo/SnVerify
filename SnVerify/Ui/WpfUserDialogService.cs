@@ -9,26 +9,24 @@ using System.Linq;
 using System.Windows;
 using SnVerify.Domain.Models;
 using SnVerify.Services.Ui;
+using SnVerify.Views.Dialogs;
 
 namespace SnVerify.Ui
 {
     /// <summary>
-    /// WPF 交互实现：MessageBox + 简单选择窗体（WinForms）。
+    /// WPF 交互实现：导出维度 / 列表选择等均使用 WPF 对话框。
     /// </summary>
     public class WpfUserDialogService : IUserDialogService
     {
         /// <inheritdoc />
         public ExportDimension? ChooseExportDimension()
         {
-            var result = MessageBox.Show(
-                "请选择导出维度：\n\n是 = 按项目导出\n否 = 按订单导出\n取消 = 取消导出",
-                "导出维度选择",
-                MessageBoxButton.YesNoCancel,
-                MessageBoxImage.Question);
-
-            if (result == MessageBoxResult.Yes) return ExportDimension.ByProject;
-            if (result == MessageBoxResult.No) return ExportDimension.ByOrder;
-            return null;
+            var dialog = new ExportDimensionDialog();
+            if (Application.Current?.MainWindow != null)
+                dialog.Owner = Application.Current.MainWindow;
+            if (dialog.ShowDialog() != true)
+                return null;
+            return dialog.SelectedDimension;
         }
 
         /// <inheritdoc />
@@ -91,41 +89,12 @@ namespace SnVerify.Ui
         private static string ChooseFromList(string title, string[] items)
         {
             if (items == null || items.Length == 0) return null;
-
-            using (var dialog = new System.Windows.Forms.Form
-            {
-                Text = title ?? "选择",
-                Width = 420,
-                Height = 420,
-                FormBorderStyle = System.Windows.Forms.FormBorderStyle.FixedDialog,
-                MaximizeBox = false,
-                MinimizeBox = false,
-                StartPosition = System.Windows.Forms.FormStartPosition.CenterParent
-            })
-            {
-                string selected = null;
-                var listBox = new System.Windows.Forms.ListBox
-                {
-                    Dock = System.Windows.Forms.DockStyle.Fill
-                };
-                listBox.Items.AddRange(items);
-
-                var btnOk = new System.Windows.Forms.Button { Text = "确定", Dock = System.Windows.Forms.DockStyle.Bottom, Height = 30 };
-                var btnCancel = new System.Windows.Forms.Button { Text = "取消", Dock = System.Windows.Forms.DockStyle.Bottom, Height = 30 };
-
-                btnOk.Click += (s, e) =>
-                {
-                    selected = listBox.SelectedItem?.ToString();
-                    dialog.DialogResult = System.Windows.Forms.DialogResult.OK;
-                };
-                btnCancel.Click += (s, e) => dialog.DialogResult = System.Windows.Forms.DialogResult.Cancel;
-
-                dialog.Controls.Add(listBox);
-                dialog.Controls.Add(btnOk);
-                dialog.Controls.Add(btnCancel);
-
-                return dialog.ShowDialog() == System.Windows.Forms.DialogResult.OK ? selected : null;
-            }
+            var dialog = new ChooseFromListDialog(title ?? "选择", items);
+            if (Application.Current?.MainWindow != null)
+                dialog.Owner = Application.Current.MainWindow;
+            if (dialog.ShowDialog() != true)
+                return null;
+            return dialog.SelectedItem;
         }
     }
 }

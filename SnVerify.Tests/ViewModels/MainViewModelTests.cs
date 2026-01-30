@@ -81,6 +81,22 @@ namespace SnVerify.Tests.ViewModels
         }
 
         [Test]
+        public void Constructor_WhenLogDirectoryIsNull_ThrowsArgumentNullException()
+        {
+            Assert.Throws<ArgumentNullException>(() =>
+                new MainViewModel(
+                    _sessionLifecycleServiceMock.Object,
+                    _flowServiceFactoryMock.Object,
+                    _loggingServiceMock.Object,
+                    _storageServiceMock.Object,
+                    _adbAccessServiceMock.Object,
+                    _exportAggregationServiceMock.Object,
+                    _orderNameValidatorMock.Object,
+                    _dialogServiceMock.Object,
+                    null));
+        }
+
+        [Test]
         public async Task EndBatchCommand_WhenNoTestRecordGenerated_ShouldStillEndSession_AndLogIgnoredMessage()
         {
             // Arrange：无记录时仍会结束 Session/日志，仅状态栏短暂提示并写「结束测试被忽略」日志

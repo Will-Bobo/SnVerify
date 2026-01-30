@@ -39,8 +39,8 @@ namespace SnVerify.Infrastructure
             // 导致 ViewModel 捕获的 SynchronizationContext 不是 UI 上下文，引发跨线程异常。
             await storageService.InitializeAsync();
 
-            // 创建日志服务（使用临时目录，最近 3000 条用于 UI 显示）
-            var logDirectory = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "SnVerify_Logs");
+            // 创建日志服务（使用程序安装目录下的 logs 文件夹，避免被系统清理工具清除；最近 3000 条用于 UI 显示）
+            var logDirectory = System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "logs");
             var loggingService = new LoggingService(logDirectory, maxRecentMessages: 3000);
 
             // 创建 Session 生命周期服务（Phase 2.5：替代 BatchManager）

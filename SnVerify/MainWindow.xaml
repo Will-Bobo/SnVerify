@@ -132,20 +132,23 @@
                         </TextBox.Style>
                     </TextBox>
                     <TextBlock Grid.Column="4" Text="本次测试：" Style="{StaticResource BatchHeaderStyle}" Margin="10,0,0,0" VerticalAlignment="Center" Padding="5,2"/>
-                    <TextBlock Grid.Column="5" x:Name="CurrentTestIdentifierText" MinWidth="150" Height="28" Margin="5,0" VerticalAlignment="Center"
-                               Text="{Binding CurrentTestIdentifier}" FontSize="12" Foreground="#666666"
-                               Background="#F0F0F0" Padding="5,2">
-                        <TextBlock.Style>
-                            <Style TargetType="TextBlock">
-                                <Setter Property="Text" Value="--"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding CurrentTestIdentifier}" Value="">
-                                        <Setter Property="Text" Value="--"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TextBlock.Style>
-                    </TextBlock>
+                    <Border Grid.Column="5" MinWidth="150" Height="28" Margin="5,0" VerticalAlignment="Center" HorizontalAlignment="Center"
+                            Background="#F0F0F0" Padding="5,0">
+                        <TextBlock x:Name="CurrentTestIdentifierText"
+                               VerticalAlignment="Center" HorizontalAlignment="Center" TextAlignment="Center"
+                               Text="{Binding CurrentTestIdentifier}" FontSize="12" Foreground="#666666">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Text" Value="--"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding CurrentTestIdentifier}" Value="">
+                                            <Setter Property="Text" Value="--"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </Border>
                     <Button Grid.Column="6" x:Name="StartBatchButton" Content="开始测试" Width="100" Height="28" Margin="5,0" VerticalAlignment="Center"
                             Command="{Binding StartBatchCommand}">
                         <Button.Style>
