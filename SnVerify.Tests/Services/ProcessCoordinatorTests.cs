@@ -81,7 +81,7 @@ namespace SnVerify.Tests.Services
                 .Setup(x => x.IsDeviceSnInPassHistoryAsync(TestSnAdb))
                 .ReturnsAsync(false);
             _storageServiceMock
-                .Setup(x => x.IsBindingInPassHistoryAsync(TestSnScan, TestSnAdb))
+                .Setup(x => x.IsBindingInPassHistoryAsync(TestSnScan)) 
                 .ReturnsAsync(false);
 
             // Act
@@ -150,7 +150,7 @@ namespace SnVerify.Tests.Services
                 .ReturnsAsync(false);
             // 绑定关系已存在 → AlreadyPassed
             _storageServiceMock
-                .Setup(x => x.IsBindingInPassHistoryAsync(TestSnScan, TestSnAdb))
+                .Setup(x => x.IsBindingInPassHistoryAsync(TestSnScan))
                 .ReturnsAsync(true);
 
             // Act
@@ -225,7 +225,7 @@ namespace SnVerify.Tests.Services
                 .Setup(x => x.IsDeviceSnInPassHistoryAsync(TestSnAdb))
                 .ReturnsAsync(false);
             _storageServiceMock
-                .Setup(x => x.IsBindingInPassHistoryAsync(TestSnScan, TestSnAdb))
+                .Setup(x => x.IsBindingInPassHistoryAsync(TestSnScan))
                 .ReturnsAsync(false);
 
             _adbAccessServiceMock
@@ -267,7 +267,7 @@ namespace SnVerify.Tests.Services
                 .Setup(x => x.IsDeviceSnInPassHistoryAsync(TestSnAdb))
                 .ReturnsAsync(false);
             _storageServiceMock
-                .Setup(x => x.IsBindingInPassHistoryAsync(TestSnScan, TestSnAdb))
+                .Setup(x => x.IsBindingInPassHistoryAsync(TestSnScan))
                 .ReturnsAsync(false);
 
             // Act - 先启动一个流程
@@ -297,7 +297,7 @@ namespace SnVerify.Tests.Services
                 .Setup(x => x.IsDeviceSnInPassHistoryAsync(TestSnAdb))
                 .ReturnsAsync(false);
             _storageServiceMock
-                .Setup(x => x.IsBindingInPassHistoryAsync(TestSnScan, TestSnAdb))
+                .Setup(x => x.IsBindingInPassHistoryAsync(TestSnScan))
                 .ReturnsAsync(false);
 
             _adbAccessServiceMock

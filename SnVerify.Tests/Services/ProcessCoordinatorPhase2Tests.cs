@@ -67,7 +67,7 @@ namespace SnVerify.Tests.Services
                 .ReturnsAsync(AdbSnReadResult.Success(TestSnAdb));
             _storageServiceMock.Setup(x => x.IsStickerSnInPassHistoryAsync(TestSnScan)).ReturnsAsync(false);
             _storageServiceMock.Setup(x => x.IsDeviceSnInPassHistoryAsync(TestSnAdb)).ReturnsAsync(false);
-            _storageServiceMock.Setup(x => x.IsBindingInPassHistoryAsync(TestSnScan, TestSnAdb)).ReturnsAsync(false);
+            _storageServiceMock.Setup(x => x.IsBindingInPassHistoryAsync(TestSnScan)).ReturnsAsync(false);
 
             // Act
             await _processCoordinator.StartVerificationAsync(TestSnScan);
@@ -86,7 +86,7 @@ namespace SnVerify.Tests.Services
             _adbAccessServiceMock.Setup(x => x.ReadDeviceSnAsync(It.IsAny<CancellationToken>())).Returns(tcs.Task);
             _storageServiceMock.Setup(x => x.IsStickerSnInPassHistoryAsync(TestSnScan)).ReturnsAsync(false);
             _storageServiceMock.Setup(x => x.IsDeviceSnInPassHistoryAsync(TestSnAdb)).ReturnsAsync(false);
-            _storageServiceMock.Setup(x => x.IsBindingInPassHistoryAsync(TestSnScan, TestSnAdb)).ReturnsAsync(false);
+            _storageServiceMock.Setup(x => x.IsBindingInPassHistoryAsync(TestSnScan)).ReturnsAsync(false);
 
             // Act
             var task = _processCoordinator.StartVerificationAsync(TestSnScan);
@@ -109,7 +109,7 @@ namespace SnVerify.Tests.Services
             _adbAccessServiceMock.Setup(x => x.ReadDeviceSnAsync(It.IsAny<CancellationToken>())).ReturnsAsync(AdbSnReadResult.Success(TestSnAdb));
             _storageServiceMock.Setup(x => x.IsStickerSnInPassHistoryAsync(TestSnScan)).ReturnsAsync(false);
             _storageServiceMock.Setup(x => x.IsDeviceSnInPassHistoryAsync(TestSnAdb)).ReturnsAsync(false);
-            _storageServiceMock.Setup(x => x.IsBindingInPassHistoryAsync(TestSnScan, TestSnAdb)).ReturnsAsync(false);
+            _storageServiceMock.Setup(x => x.IsBindingInPassHistoryAsync(TestSnScan)).ReturnsAsync(false);
 
             // Act
             await _processCoordinator.StartVerificationAsync(TestSnScan);
@@ -129,7 +129,7 @@ namespace SnVerify.Tests.Services
             _adbAccessServiceMock.Setup(x => x.ReadDeviceSnAsync(It.IsAny<CancellationToken>())).ReturnsAsync(AdbSnReadResult.Success(TestSnAdb));
             _storageServiceMock.Setup(x => x.IsStickerSnInPassHistoryAsync(TestSnScan)).ReturnsAsync(false);
             _storageServiceMock.Setup(x => x.IsDeviceSnInPassHistoryAsync(TestSnAdb)).ReturnsAsync(false);
-            _storageServiceMock.Setup(x => x.IsBindingInPassHistoryAsync(TestSnScan, TestSnAdb)).ReturnsAsync(true);
+            _storageServiceMock.Setup(x => x.IsBindingInPassHistoryAsync(TestSnScan)).ReturnsAsync(true);
 
             // Act
             await _processCoordinator.StartVerificationAsync(TestSnScan);
@@ -149,7 +149,7 @@ namespace SnVerify.Tests.Services
             _adbAccessServiceMock.Setup(x => x.ReadDeviceSnAsync(It.IsAny<CancellationToken>())).ReturnsAsync(AdbSnReadResult.Success(TestSnAdb));
             _storageServiceMock.Setup(x => x.IsStickerSnInPassHistoryAsync(TestSnScan)).ReturnsAsync(false);
             _storageServiceMock.Setup(x => x.IsDeviceSnInPassHistoryAsync(TestSnAdb)).ReturnsAsync(false);
-            _storageServiceMock.Setup(x => x.IsBindingInPassHistoryAsync(TestSnScan, TestSnAdb)).ReturnsAsync(false);
+            _storageServiceMock.Setup(x => x.IsBindingInPassHistoryAsync(TestSnScan)).ReturnsAsync(false);
 
             // Act
             var task = _processCoordinator.StartVerificationAsync(TestSnScan);
@@ -170,7 +170,7 @@ namespace SnVerify.Tests.Services
             _adbAccessServiceMock.Setup(x => x.ReadDeviceSnAsync(It.IsAny<CancellationToken>())).ReturnsAsync(AdbSnReadResult.Success(TestSnAdb));
             _storageServiceMock.Setup(x => x.IsStickerSnInPassHistoryAsync(It.IsAny<string>())).ReturnsAsync(false);
             _storageServiceMock.Setup(x => x.IsDeviceSnInPassHistoryAsync(It.IsAny<string>())).ReturnsAsync(false);
-            _storageServiceMock.Setup(x => x.IsBindingInPassHistoryAsync(It.IsAny<string>(), It.IsAny<string>())).ReturnsAsync(false);
+            _storageServiceMock.Setup(x => x.IsBindingInPassHistoryAsync(It.IsAny<string>())).ReturnsAsync(false);
 
             // Act
             await _processCoordinator.StartVerificationAsync("SN001");

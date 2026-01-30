@@ -68,7 +68,7 @@ namespace SnVerify.Tests.Services
                 .Setup(x => x.IsDeviceSnInPassHistoryAsync(deviceSN))
                 .ReturnsAsync(false);
             _storageServiceMock
-                .Setup(x => x.IsBindingInPassHistoryAsync(stickerSN, deviceSN))
+                .Setup(x => x.IsBindingInPassHistoryAsync(stickerSN))
                 .ReturnsAsync(false);
 
             _adbAccessServiceMock
@@ -104,7 +104,7 @@ namespace SnVerify.Tests.Services
                 .Setup(x => x.IsStickerSnInPassHistoryAsync(stickerSN))
                 .ReturnsAsync(true); // StickerSN 在历史 PASS 中
             _storageServiceMock
-                .Setup(x => x.IsBindingInPassHistoryAsync(stickerSN, deviceSN))
+                .Setup(x => x.IsBindingInPassHistoryAsync(stickerSN))
                 .ReturnsAsync(true); // 绑定关系在历史 PASS 中
 
             _adbAccessServiceMock
@@ -297,7 +297,7 @@ namespace SnVerify.Tests.Services
                 .Setup(x => x.IsStickerSnInPassHistoryAsync(stickerSN))
                 .ReturnsAsync(true);
             _storageServiceMock
-                .Setup(x => x.IsBindingInPassHistoryAsync(stickerSN, deviceSN))
+                .Setup(x => x.IsBindingInPassHistoryAsync(stickerSN))
                 .ReturnsAsync(true);
 
             _adbAccessServiceMock

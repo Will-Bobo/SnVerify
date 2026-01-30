@@ -498,7 +498,7 @@ namespace SnVerify.ViewModels
                 // 项目/订单均为必填，且订单需要通过命名校验（与项目挂钩）
                 if (string.IsNullOrWhiteSpace(projectId) || string.IsNullOrWhiteSpace(orderId))
                 {
-                    _dialogService.ShowWarning("项目 ID 和订单 ID 都不能为空", "校验失败");
+                    _dialogService.ShowWarning("项目名 和订单名 都不能为空", "校验失败");
                     return;
                 }
 

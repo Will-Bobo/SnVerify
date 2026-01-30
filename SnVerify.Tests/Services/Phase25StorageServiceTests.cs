@@ -322,11 +322,12 @@ namespace SnVerify.Tests.Services
                 VerifyTime = DateTime.Now
             });
 
-            var existsPassBinding = await _storage.IsBindingInPassHistoryAsync("S-BIND", "D-BIND");
-            var notExistsBinding = await _storage.IsBindingInPassHistoryAsync("S-BIND", "D-OTHER");
+            // PASS 时 StickerSN=DeviceSN，仅传一个 SN 查询即可
+            var existsPassBinding = await _storage.IsBindingInPassHistoryAsync("S-BIND");
+            var notExistsBinding = await _storage.IsBindingInPassHistoryAsync("S-NEVER");
 
             Assert.That(existsPassBinding, Is.True, "存在 PASS 绑定时应返回 true");
-            Assert.That(notExistsBinding, Is.False, "不存在完全匹配的 PASS 绑定时应返回 false");
+            Assert.That(notExistsBinding, Is.False, "该 SN 无 PASS 记录时应返回 false");
         }
 
         [Test]

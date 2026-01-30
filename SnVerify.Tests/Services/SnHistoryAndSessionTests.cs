@@ -98,7 +98,7 @@ namespace SnVerify.Tests.Services
             // Act & Assert: 仅 PASS 记录参与历史 PASS 查询
             Assert.That(await _storageService.IsStickerSnInPassHistoryAsync("S_PASS"), Is.True);
             Assert.That(await _storageService.IsDeviceSnInPassHistoryAsync("D_PASS"), Is.True);
-            Assert.That(await _storageService.IsBindingInPassHistoryAsync("S_PASS", "D_PASS"), Is.True);
+            Assert.That(await _storageService.IsBindingInPassHistoryAsync("S_PASS"), Is.True);
 
             Assert.That(await _storageService.IsStickerSnInPassHistoryAsync("S_FAIL"), Is.False);
             Assert.That(await _storageService.IsDeviceSnInPassHistoryAsync("D_FAIL"), Is.False);
@@ -164,7 +164,7 @@ namespace SnVerify.Tests.Services
             // 历史 PASS 查询仍然认为 SN001 / DeviceSN 在 PASS 历史中存在
             Assert.That(await _storageService.IsStickerSnInPassHistoryAsync("SN001"), Is.True);
             Assert.That(await _storageService.IsDeviceSnInPassHistoryAsync("SN001"), Is.True);
-            Assert.That(await _storageService.IsBindingInPassHistoryAsync("SN001", "SN001"), Is.True);
+            Assert.That(await _storageService.IsBindingInPassHistoryAsync("SN001"), Is.True);
         }
 
         /// <summary>
@@ -221,7 +221,7 @@ namespace SnVerify.Tests.Services
             // 历史 PASS 查询仍然认为 SN001 存在于 PASS 历史中
             Assert.That(await _storageService.IsStickerSnInPassHistoryAsync("SN001"), Is.True);
             Assert.That(await _storageService.IsDeviceSnInPassHistoryAsync("SN001"), Is.True);
-            Assert.That(await _storageService.IsBindingInPassHistoryAsync("SN001", "SN001"), Is.True);
+            Assert.That(await _storageService.IsBindingInPassHistoryAsync("SN001"), Is.True);
         }
     }
 }
