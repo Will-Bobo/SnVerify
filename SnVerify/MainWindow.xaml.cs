@@ -1,4 +1,4 @@
-/// <author>
+﻿/// <author>
 /// AI Assistant
 /// </author>
 
@@ -46,7 +46,7 @@ namespace SnVerify
                 _previousIsProcessing = _viewModel.IsProcessing;
                 _previousIsSelfChecking = _viewModel.IsSelfChecking;
 
-                // 订阅 ViewModel 属性变化：开始测试后聚焦并清空扫码框；检验完成后焦点回扫码框
+                // 订阅 ViewModel 属性变化：开始测试后聚焦并清空扫码框；检验完成后焦点回扫码框；调试日志更新时滚动到底部
                 _viewModel.PropertyChanged += ViewModel_PropertyChanged;
             }
             catch (Exception ex)
@@ -62,6 +62,12 @@ namespace SnVerify
         private void ViewModel_PropertyChanged(object sender, PropertyChangedEventArgs e)
         {
             if (_viewModel == null) return;
+
+            if (e.PropertyName == nameof(MainViewModel.UiLogs))
+            {
+                ScrollDebugLogToBottom();
+                return;
+            }
 
             if (e.PropertyName == nameof(MainViewModel.IsSessionActive))
             {
@@ -113,6 +119,28 @@ namespace SnVerify
             textBox.Focus();
             Keyboard.Focus(textBox);
             textBox.SelectAll();
+        }
+
+        /// <summary>
+        /// 调试日志更新时，将滚动条移到底部以显示最新日志
+        /// </summary>
+        private void ScrollDebugLogToBottom()
+        {
+            var listBox = DebugLogListBox;
+            if (listBox?.Items == null || listBox.Items.Count == 0) return;
+            var lastItem = listBox.Items[listBox.Items.Count - 1];
+            Dispatcher.BeginInvoke(new Action(() =>
+            {
+                listBox.ScrollIntoView(lastItem);
+            }), System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+
+        /// <summary>
+        /// 打开调试日志区域时，滚动到底部以显示最新日志
+        /// </summary>
+        private void DebugLogExpander_Expanded(object sender, RoutedEventArgs e)
+        {
+            Dispatcher.BeginInvoke(new Action(ScrollDebugLogToBottom), System.Windows.Threading.DispatcherPriority.Loaded);
         }
 
         /// <summary>
@@ -174,7 +202,7 @@ namespace SnVerify
                     if (!_viewModel.IsSessionActive)
                     {
                         // Session 未开始，在错误详情面板显示提示
-                        _viewModel.SetBatchError("请确认当前测试已经开始");
+                        _viewModel.SetBatchError("请确认当前检验已经开始");
                         return;
                     }
 

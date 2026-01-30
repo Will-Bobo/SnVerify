@@ -1,4 +1,4 @@
-/// <author>AI Assistant</author>
+ /// <author>AI Assistant</author>
 /// <remarks>
 /// Phase 2.5 阶段 2：MES 预留。契约见 MES_Plugin_Gate_Design_Freeze.md §5。
 /// 上报失败不得影响本站结果，仅日志与 UI 提示。

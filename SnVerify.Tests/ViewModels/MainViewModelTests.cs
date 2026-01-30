@@ -81,9 +81,9 @@ namespace SnVerify.Tests.ViewModels
         }
 
         [Test]
-        public async Task EndBatchCommand_ShouldBeIgnored_WhenNoTestRecordGenerated_AndShowStatusBarMessage()
+        public async Task EndBatchCommand_WhenNoTestRecordGenerated_ShouldStillEndSession_AndLogIgnoredMessage()
         {
-            // Arrange
+            // Arrange：无记录时仍会结束 Session/日志，仅状态栏短暂提示并写「结束测试被忽略」日志
             var sessionId = "ORDER001_20250126_143000";
             var orderId = "ORDER001";
             var activeSessionSnapshot = SessionSnapshot.Active(sessionId, orderId, DateTime.Now);
@@ -97,11 +97,12 @@ namespace SnVerify.Tests.ViewModels
 
             // Act
             _viewModel.EndBatchCommand.Execute(null);
-            await WaitUntilAsync(() => _viewModel.StatusBarMessage == "本次操作无效/已忽略");
+            await WaitUntilAsync(() => _viewModel.StatusBarMessage == "", timeoutMs: 2000);
 
-            // Assert
-            _sessionLifecycleServiceMock.Verify(m => m.EndSession(), Times.Never);
-            _loggingServiceMock.Verify(m => m.EndBatch(), Times.Never);
+            // Assert：无记录也执行结束流程，并记录「结束测试被忽略」日志
+            _sessionLifecycleServiceMock.Verify(m => m.EndSession(), Times.Once);
+            _loggingServiceMock.Verify(m => m.EndBatch(), Times.Once);
+            _loggingServiceMock.Verify(m => m.LogInfo(It.Is<string>(s => s != null && s.Contains("结束测试被忽略"))), Times.Once);
         }
 
         [Test]

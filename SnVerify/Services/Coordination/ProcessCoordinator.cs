@@ -142,7 +142,9 @@ namespace SnVerify.Services.Coordination
                 if (!adbResult.IsSuccess)
                 {
                     var result = adbResult.IsTimeout ? "TIMEOUT" : "FAIL";
-                    var failReason = adbResult.IsTimeout ? "ADB读取设备超时" : adbResult.ErrorReason;
+                    var failReason = adbResult.IsTimeout
+                        ? "ADB读取设备超时"
+                        : $"请检查设备连接，{adbResult.ErrorReason}";
                     await SaveOrUpdateFailResultAsync(sn, result, failReason, null);
                     _loggingService?.LogInfo($"检验结果 [{result}] , [扫码枪SN: {sn}, 设备SN: N/A] , 错误结果: {failReason}");
                     _loggingService?.LogInfo("检验结束");

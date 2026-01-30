@@ -214,9 +214,10 @@
                   Header="调试日志（Debug）"
                   IsExpanded="False"
                   Margin="5"
-                  MaxHeight="260">
+                  MaxHeight="260"
+                  Expanded="DebugLogExpander_Expanded">
             <Border BorderBrush="#CCCCCC" BorderThickness="1" Padding="5" Background="White">
-                <ListBox ItemsSource="{Binding UiLogs}" 
+                <ListBox x:Name="DebugLogListBox" ItemsSource="{Binding UiLogs}" 
                          FontFamily="Consolas" 
                          FontSize="12" 
                          MinHeight="150"

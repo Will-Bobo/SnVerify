@@ -119,7 +119,7 @@ namespace SnVerify.Services.Adb
                                         var errorMessage = $"ADB 口令失败: {ylzeroResult.ErrorMessage}";
                                         if (!string.IsNullOrEmpty(ylzeroResult.StandardError))
                                         {
-                                            errorMessage += $"\nStandardError: {ylzeroResult.StandardError}";
+                                            errorMessage += $"\nError: {ylzeroResult.StandardError}";
                                         }
                                         return AdbSnReadResult.Failure(errorMessage);
                                     }
@@ -178,7 +178,7 @@ namespace SnVerify.Services.Adb
                                 var errorMessage = $"设备SN 读取失败: {snResult.ErrorMessage}";
                                 if (!string.IsNullOrEmpty(snResult.StandardError))
                                 {
-                                    errorMessage += $"\nStandardError: {snResult.StandardError}";
+                                    errorMessage += $"\nError: {snResult.StandardError}";
                                 }
                                 return AdbSnReadResult.Failure(errorMessage);
                             }

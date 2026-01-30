@@ -187,7 +187,8 @@ namespace SnVerify.Tests.Services
 
             var zipPath = Path.Combine(_outDir, $"{safeProductName}.zip");
             Assert.That(File.Exists(zipPath), Is.True, "ZIP 文件名应使用已清洗的 ProductName");
-            Assert.That(zipPath.IndexOfAny(invalidChars), Is.LessThan(0), "ZIP 文件名中不应包含非法字符");
+            // 仅检查文件名部分（完整路径在 Windows 上含 ':' 如 C:\，属于合法路径字符）
+            Assert.That(Path.GetFileName(zipPath).IndexOfAny(invalidChars), Is.LessThan(0), "ZIP 文件名中不应包含非法字符");
 
             using (var archive = ZipFile.OpenRead(zipPath))
             {
@@ -196,9 +197,15 @@ namespace SnVerify.Tests.Services
                 // 目录结构与命名均应使用清洗后的名称（.log）
                 Assert.That(entryNames, Does.Contain($"{safeProductName}/{safeOrderName}/{safeSessionName}.log"));
 
+                // ZIP 条目名使用 '/' 作为路径分隔符，合法；仅校验每个路径段（目录名/文件名）不含非法字符
                 foreach (var name in entryNames)
                 {
-                    Assert.That(name.IndexOfAny(invalidChars), Is.LessThan(0), "ZIP 内部任何条目名称均不应包含非法字符");
+                    foreach (var segment in name.Split('/'))
+                    {
+                        if (string.IsNullOrEmpty(segment)) continue;
+                        Assert.That(segment.IndexOfAny(invalidChars), Is.LessThan(0),
+                            "ZIP 内部每个路径段均不应包含非法字符: " + segment);
+                    }
                 }
             }
         }

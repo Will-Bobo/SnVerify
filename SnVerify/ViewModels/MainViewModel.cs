@@ -83,6 +83,7 @@ namespace SnVerify.ViewModels
                     StartBatchCommand?.RaiseCanExecuteChanged();
                     EndBatchCommand?.RaiseCanExecuteChanged();
                     ExportCommand?.RaiseCanExecuteChanged();
+                    StartVerifyCommand?.RaiseCanExecuteChanged();
                 }
             }
         }
@@ -441,8 +442,8 @@ namespace SnVerify.ViewModels
             EndBatchCommand = new RelayCommand(async () => await EndBatchAsync(), () => IsSessionActive && !IsSelfChecking && !IsProcessing);
             // 导出：仅在进行中的测试时段（开始测试→结束测试）不可用，其余时间均可点击
             ExportCommand = new RelayCommand(async () => await ExportAsync(), () => !IsSessionActive);
-            // 规则 8：自检期间禁用人工检验
-            StartVerifyCommand = new RelayCommand(async () => await StartVerifyAsync(), () => !IsProcessing && !IsSelfChecking);
+            // 规则 8：自检期间禁用人工检验；未点击「开始测试」时人工检验置灰
+            StartVerifyCommand = new RelayCommand(async () => await StartVerifyAsync(), () => IsSessionActive && !IsProcessing && !IsSelfChecking);
             SelfCheckCommand = new RelayCommand(async () => await SelfCheckAsync(), () => !IsSelfChecking);
 
             _snapshotUpdateTimer = new Timer(UpdateSnapshots, null, TimeSpan.Zero, TimeSpan.FromMilliseconds(500));
