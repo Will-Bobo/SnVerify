@@ -62,6 +62,28 @@ namespace SnVerify.Services.Adb
         }
 
         /// <summary>
+        /// ADB shell 通道预热，避免冷启动下首次 shell 命令 protocol fault / connection reset。
+        /// 失败不阻断后续流程，仅记录日志。
+        /// </summary>
+        private async Task EnsureAdbShellWarmedUpAsync(CancellationToken token)
+        {
+            try
+            {
+                Debug.WriteLine("[AdbAccessService] adb shell warm-up executed");
+                await _processRunner.RunAsync(
+                    _adbPath,
+                    "shell exit",
+                    2000, // 单独的 warm-up 超时（短）
+                    token);
+            }
+            catch (Exception ex)
+            {
+                Debug.WriteLine($"[AdbAccessService] adb shell warm-up failed: {ex.Message}");
+                // warm-up 失败不阻断后续流程
+            }
+        }
+
+        /// <summary>
         /// 读取设备 SN
         /// </summary>
         public async Task<AdbSnReadResult> ReadDeviceSnAsync(CancellationToken cancellationToken = default)
@@ -78,6 +100,9 @@ namespace SnVerify.Services.Adb
                     {
                         try
                         {
+                            // Step 0: ADB shell warm-up（冷启动下避免首次 shell 命令失败）
+                            await EnsureAdbShellWarmedUpAsync(timeoutCts.Token);
+
                             // Step 1: 执行 ylzero 命令（可选步骤，某些机器可能报错但不影响 SN 读取）
                             // 完整命令: adb shell ylzero
                             // 注意：ylzero 失败（非超时）可以继续，但超时或异常需要返回错误
