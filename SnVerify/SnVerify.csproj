@@ -150,6 +150,8 @@
     <Compile Include="Services\Mes\Gate\MesEventArgs.cs" />
     <Compile Include="Services\Mes\Gate\IMesPreCheck.cs" />
     <Compile Include="Services\Mes\Gate\IMesResultReporter.cs" />
+    <Compile Include="Services\Mes\Gate\IMesPlugin.cs" />
+    <Compile Include="Services\Mes\JekeMesPlugin.cs" />
     <Compile Include="Services\Storage\IStorageService.cs" />
     <Compile Include="Services\Storage\StorageService.cs" />
     <Compile Include="Services\Storage\IExportAggregationService.cs" />

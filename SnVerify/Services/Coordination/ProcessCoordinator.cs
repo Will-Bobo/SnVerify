@@ -1,6 +1,10 @@
 /// <author>
 /// AI Assistant
 /// </author>
+/// <remarks>
+/// Phase 2.5 冻结：核心检验链路 Scan SN → Read Device SN → Verify → Result 不可侵入；MES 仅通过 Pre-Gate / Post-Report 挂载。
+/// Phase 3 挂载：每条 SN 前 Pre-Gate（MesMode Enabled 时 Reject 不阻断、仅弱提示；Strict 时 Reject 阻断）；结果落库后 Post-Report 异步上报，失败不反写结果。
+/// </remarks>
 
 using System;
 using System.Threading;
@@ -118,16 +122,42 @@ namespace SnVerify.Services.Coordination
                 return;
             }
 
-            // MES Pre-Gate（Phase 2.5 预留）：MesMode≠Disabled 且 PreCheck 非 null 时调用
+            // MES Pre-Gate（Phase 2.5 冻结 / Phase 3 挂载）：MesMode≠Disabled 且 PreCheck 非 null 时，每条 SN 前调用一次
             if (_mesMode != MesMode.Disabled && _mesPreCheck != null)
             {
                 var preCtx = new MesContext { SessionId = _sessionId, OrderId = _orderId, StickerSN = sn?.Trim(), At = DateTime.Now };
-                var preResult = await _mesPreCheck.CheckAsync(preCtx).ConfigureAwait(false);
-                if (preResult != null && preResult.Decision == MesPreCheckDecision.Reject)
+                MesPreCheckResult preResult = null;
+                try
                 {
-                    _loggingService?.LogInfo($"MES Pre-Gate 拒绝: {preResult.Reason ?? "Reject"}");
-                    UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", preResult.Reason ?? "MES拒绝", _sessionId, null));
-                    return;
+                    preResult = await _mesPreCheck.CheckAsync(preCtx).ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    _loggingService?.LogInfo($"MES Pre-Gate 异常: {ex.Message}");
+                    if (_mesMode == MesMode.Strict)
+                    {
+                        UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", "MES Pre-Gate 异常", _sessionId, null));
+                        return;
+                    }
+                    MesEventOccurred?.Invoke(this, new MesEventArgs(MesEventType.PreGateFailed, "MES Pre-Gate 异常（降级继续）", _sessionId, _orderId));
+                }
+
+                if (preResult != null)
+                {
+                    if (preResult.Decision == MesPreCheckDecision.Reject)
+                    {
+                        _loggingService?.LogInfo($"MES Pre-Gate 拒绝: {preResult.Reason ?? "Reject"}");
+                        if (_mesMode == MesMode.Strict)
+                        {
+                            UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", preResult.Reason ?? "MES拒绝", _sessionId, null));
+                            return;
+                        }
+                        MesEventOccurred?.Invoke(this, new MesEventArgs(MesEventType.PreGateFailed, preResult.Reason ?? "MES拒绝（不阻断）", _sessionId, _orderId));
+                    }
+                    else if (preResult.Decision == MesPreCheckDecision.DegradedAllow)
+                    {
+                        MesEventOccurred?.Invoke(this, new MesEventArgs(MesEventType.PreGateFailed, preResult.Reason ?? "MES降级放行", _sessionId, _orderId));
+                    }
                 }
             }
 

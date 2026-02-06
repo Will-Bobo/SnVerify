@@ -1,0 +1,3 @@
+adb shell ylzero // 解密设备
+adb shell getprop sys.skyroam.osi.sn // 读取SN
+adb shell getprop ro.build.display.id // 读取版本号

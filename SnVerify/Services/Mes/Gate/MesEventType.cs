@@ -19,7 +19,12 @@ namespace SnVerify.Services.Mes.Gate
         /// <summary>
         /// MES 连接丢失（可选）。不影响本站结果。
         /// </summary>
-        ConnectionLost = 1
+        ConnectionLost = 1,
+
+        /// <summary>
+        /// Pre-Gate 拒绝或降级（Enabled 模式下不阻断，仅弱提示）。Phase 3 与 Strict 预留。
+        /// </summary>
+        PreGateFailed = 2,
     }
 }
 

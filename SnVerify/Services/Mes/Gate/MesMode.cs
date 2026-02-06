@@ -16,5 +16,8 @@ namespace SnVerify.Services.Mes.Gate
 
         /// <summary>启用 MES，失败不阻断；Post-Report 失败仅日志与 UI 提示</summary>
         Enabled = 1,
+
+        /// <summary>Phase 3 预留：MES FAIL 阻断流程；PreCheck Reject 或 MES 异常时本条检验不继续</summary>
+        Strict = 2,
     }
 }

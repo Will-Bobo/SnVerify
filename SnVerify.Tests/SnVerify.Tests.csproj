@@ -34,5 +34,10 @@
     <Compile Remove="Services\StorageServicePhase2Tests.cs" />
     <Compile Remove="Services\MESInterfaceTests.cs" />
   </ItemGroup>
+  <!-- UI 测试依赖 WPF 程序集与对话框 API，暂排除以通过单元测试项目编译 -->
+  <ItemGroup>
+    <Compile Remove="Ui\ChooseFromListDialogTests.cs" />
+    <Compile Remove="Ui\ExportDimensionDialogTests.cs" />
+  </ItemGroup>
 
 </Project>
