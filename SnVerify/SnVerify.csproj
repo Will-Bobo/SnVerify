@@ -14,6 +14,7 @@
     <WarningLevel>4</WarningLevel>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <Deterministic>true</Deterministic>
+    <LangVersion>8.0</LangVersion>
     <NuGetPackageImportStamp>
     </NuGetPackageImportStamp>
   </PropertyGroup>
@@ -92,6 +93,9 @@
     <Compile Include="Views\Dialogs\ChooseFromListDialog.xaml.cs">
       <DependentUpon>ChooseFromListDialog.xaml</DependentUpon>
     </Compile>
+    <Compile Include="Views\Dialogs\ExportRecordFilterDialog.xaml.cs">
+      <DependentUpon>ExportRecordFilterDialog.xaml</DependentUpon>
+    </Compile>
     <Page Include="MainWindow.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
@@ -112,6 +116,8 @@
     <Compile Include="Domain\Validation\SessionIdGenerator.cs" />
     <Compile Include="Domain\Validation\IOrderNameValidator.cs" />
     <Compile Include="Domain\Validation\OrderNameValidator.cs" />
+    <Compile Include="Domain\Export\ExportRecordFilter.cs" />
+    <Compile Include="Domain\Export\ExportRecordFilterDefaults.cs" />
     <Compile Include="Domain\State\AdbSnapshot.cs" />
     <Compile Include="Domain\State\LoggingSnapshot.cs" />
     <Compile Include="Domain\State\SessionSnapshot.cs" />
@@ -168,6 +174,10 @@
       <SubType>Designer</SubType>
     </Page>
     <Page Include="Views\Dialogs\ChooseFromListDialog.xaml">
+      <Generator>MSBuild:Compile</Generator>
+      <SubType>Designer</SubType>
+    </Page>
+    <Page Include="Views\Dialogs\ExportRecordFilterDialog.xaml">
       <Generator>MSBuild:Compile</Generator>
       <SubType>Designer</SubType>
     </Page>

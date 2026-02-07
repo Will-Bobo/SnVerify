@@ -3,10 +3,13 @@
 /// WPF/WinForms 具体 UI 交互实现（阶段 3）。
 /// 约束：ViewModel 不直接调用 MessageBox/FolderDialog；统一经由 IUserDialogService。
 /// </remarks>
+#pragma warning disable CS8632
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Windows;
+using SnVerify.Domain.Enums;
+using SnVerify.Domain.Export;
 using SnVerify.Domain.Models;
 using SnVerify.Services.Ui;
 using SnVerify.Views.Dialogs;
@@ -18,6 +21,19 @@ namespace SnVerify.Ui
     /// </summary>
     public class WpfUserDialogService : IUserDialogService
     {
+        /// <inheritdoc />
+        public ExportRecordFilter? ChooseExportRecordFilter(IReadOnlyList<VerificationType> defaultTypes = null)
+        {
+            var dialog = new ExportRecordFilterDialog();
+            if (defaultTypes != null && defaultTypes.Count > 0)
+                dialog.InitializeDefaultTypes(defaultTypes);
+            if (Application.Current?.MainWindow != null)
+                dialog.Owner = Application.Current.MainWindow;
+            if (dialog.ShowDialog() != true)
+                return null;
+            return dialog.SelectedFilter;
+        }
+
         /// <inheritdoc />
         public ExportDimension? ChooseExportDimension()
         {

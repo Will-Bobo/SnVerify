@@ -12,6 +12,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using OfficeOpenXml;
+using SnVerify.Domain.Export;
 using SnVerify.Domain.Models;
 using SnVerify.Domain.State;
 using SnVerify.Services.Logging;
@@ -122,9 +123,10 @@ CREATE TABLE IF NOT EXISTS Product (
             var createOrderTable = @"
 CREATE TABLE IF NOT EXISTS ""Order"" (
     Id        INTEGER PRIMARY KEY AUTOINCREMENT,
-    OrderName TEXT    NOT NULL UNIQUE,
+    OrderName TEXT    NOT NULL,
     ProductId INTEGER NOT NULL,
     CreatedAt DATETIME,
+    UNIQUE(OrderName, ProductId),
     FOREIGN KEY (ProductId) REFERENCES Product(Id)
 );";
 
@@ -141,19 +143,21 @@ CREATE TABLE IF NOT EXISTS TestSession (
 
             var createTestRecordTable = @"
 CREATE TABLE IF NOT EXISTS TestRecord (
-    Id         INTEGER PRIMARY KEY AUTOINCREMENT,
-    SessionId  INTEGER NOT NULL,
-    StickerSN  TEXT    NOT NULL,
-    DeviceSN   TEXT,
-    Result     TEXT    NOT NULL,
-    FailReason TEXT,
-    VerifyTime DATETIME NOT NULL,
+    Id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    SessionId       INTEGER NOT NULL,
+    StickerSN       TEXT    NOT NULL,
+    DeviceSN        TEXT,
+    Result          TEXT    NOT NULL,
+    FailReason      TEXT,
+    VerifyTime      DATETIME NOT NULL,
+    ExpectedVersion TEXT,
+    ActualVersion   TEXT,
     FOREIGN KEY (SessionId) REFERENCES TestSession(Id)
 );";
 
             // 索引（全部 IF NOT EXISTS，保持可重复执行）
-            var createOrderNameUnique = @"
-CREATE UNIQUE INDEX IF NOT EXISTS idx_order_ordername ON ""Order""(OrderName);";
+            var createOrderNameProductUnique = @"
+CREATE UNIQUE INDEX IF NOT EXISTS idx_order_ordername_productid ON ""Order""(OrderName, ProductId);";
 
             var createOrderProductIdx = @"
 CREATE INDEX IF NOT EXISTS idx_order_productid ON ""Order""(ProductId);";
@@ -180,13 +184,92 @@ CREATE INDEX IF NOT EXISTS idx_testrecord_devicesn_result ON TestRecord(DeviceSN
             await ExecuteNonQueryAsync(createTestSessionTable);
             await ExecuteNonQueryAsync(createTestRecordTable);
 
-            await ExecuteNonQueryAsync(createOrderNameUnique);
+            await ExecuteNonQueryAsync(createOrderNameProductUnique);
             await ExecuteNonQueryAsync(createOrderProductIdx);
             await ExecuteNonQueryAsync(createSessionNameUnique);
             await ExecuteNonQueryAsync(createSessionOrderIdx);
             await ExecuteNonQueryAsync(createTestRecordSessionIdx);
             await ExecuteNonQueryAsync(createTestRecordStickerIdx);
             await ExecuteNonQueryAsync(createTestRecordDeviceIdx);
+
+            await MigrateOrderToOrderNameProductIdUniqueAsync();
+            await MigrateTestRecordAddVersionColumnsAsync();
+        }
+
+        /// <summary>
+        /// 迁移：将 Order 表从 OrderName 唯一改为 (OrderName, ProductId) 唯一。
+        /// </summary>
+        private async Task MigrateOrderToOrderNameProductIdUniqueAsync()
+        {
+            var needsMigration = await Task.Run(() =>
+            {
+                lock (_lockObject)
+                {
+                    if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        return false;
+                    using (var cmd = new SQLiteCommand("PRAGMA index_list(\"Order\")", _connection))
+                    using (var r = cmd.ExecuteReader())
+                    {
+                        while (r.Read())
+                        {
+                            var name = r.GetString(1);
+                            if (name == "idx_order_ordername")
+                                return true;
+                        }
+                    }
+                    return false;
+                }
+            });
+            if (!needsMigration)
+                return;
+
+            await Task.Run(() =>
+            {
+                lock (_lockObject)
+                {
+                    if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        return;
+                    using (var cmd = new SQLiteCommand("PRAGMA foreign_keys = OFF", _connection))
+                        cmd.ExecuteNonQuery();
+
+                    const string createNew = @"
+CREATE TABLE ""Order_new"" (
+    Id        INTEGER PRIMARY KEY AUTOINCREMENT,
+    OrderName TEXT    NOT NULL,
+    ProductId INTEGER NOT NULL,
+    CreatedAt DATETIME,
+    UNIQUE(OrderName, ProductId),
+    FOREIGN KEY (ProductId) REFERENCES Product(Id)
+);";
+                    using (var c1 = new SQLiteCommand(createNew, _connection))
+                        c1.ExecuteNonQuery();
+
+                    using (var c2 = new SQLiteCommand(@"INSERT INTO ""Order_new"" (Id, OrderName, ProductId, CreatedAt) SELECT Id, OrderName, ProductId, CreatedAt FROM ""Order""", _connection))
+                        c2.ExecuteNonQuery();
+
+                    using (var c3 = new SQLiteCommand(@"DROP TABLE ""Order""", _connection))
+                        c3.ExecuteNonQuery();
+
+                    using (var c4 = new SQLiteCommand(@"ALTER TABLE ""Order_new"" RENAME TO ""Order""", _connection))
+                        c4.ExecuteNonQuery();
+
+                    using (var c5 = new SQLiteCommand("PRAGMA foreign_keys = ON", _connection))
+                        c5.ExecuteNonQuery();
+                }
+            });
+        }
+
+        /// <summary>
+        /// 迁移：为已有 TestRecord 表添加 ExpectedVersion、ActualVersion 列（若不存在）。
+        /// </summary>
+        private async Task MigrateTestRecordAddVersionColumnsAsync()
+        {
+            foreach (var col in new[] { "ExpectedVersion", "ActualVersion" })
+            {
+                if (await ColumnExistsAsync("TestRecord", col))
+                    continue;
+                await ExecuteNonQueryAsync($"ALTER TABLE TestRecord ADD COLUMN {col} TEXT");
+            }
         }
 
         /// <summary>
@@ -757,8 +840,8 @@ CREATE INDEX IF NOT EXISTS idx_testrecord_devicesn_result ON TestRecord(DeviceSN
             EnsureConnectionInitialized();
 
             var sql = @"
-                INSERT INTO TestRecord (SessionId, StickerSN, DeviceSN, Result, FailReason, VerifyTime)
-                VALUES (@SessionId, @StickerSN, @DeviceSN, @Result, @FailReason, @VerifyTime)";
+                INSERT INTO TestRecord (SessionId, StickerSN, DeviceSN, Result, FailReason, VerifyTime, ExpectedVersion, ActualVersion)
+                VALUES (@SessionId, @StickerSN, @DeviceSN, @Result, @FailReason, @VerifyTime, @ExpectedVersion, @ActualVersion)";
 
             await Task.Run(() =>
             {
@@ -774,6 +857,8 @@ CREATE INDEX IF NOT EXISTS idx_testrecord_devicesn_result ON TestRecord(DeviceSN
                         cmd.Parameters.AddWithValue("@Result", record.Result);
                         cmd.Parameters.AddWithValue("@FailReason", (object)record.FailReason ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@VerifyTime", record.VerifyTime);
+                        cmd.Parameters.AddWithValue("@ExpectedVersion", (object)record.ExpectedVersion ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@ActualVersion", (object)record.ActualVersion ?? DBNull.Value);
                         cmd.ExecuteNonQuery();
                         using (var getId = new SQLiteCommand("SELECT last_insert_rowid()", _connection))
                         {
@@ -792,7 +877,7 @@ CREATE INDEX IF NOT EXISTS idx_testrecord_devicesn_result ON TestRecord(DeviceSN
             EnsureConnectionInitialized();
 
             var sql = @"
-                SELECT Id, SessionId, StickerSN, DeviceSN, Result, FailReason, VerifyTime
+                SELECT Id, SessionId, StickerSN, DeviceSN, Result, FailReason, VerifyTime, ExpectedVersion, ActualVersion
                 FROM TestRecord WHERE SessionId = @SessionId ORDER BY VerifyTime ASC";
 
             var list = await Task.Run(() =>
@@ -817,7 +902,9 @@ CREATE INDEX IF NOT EXISTS idx_testrecord_devicesn_result ON TestRecord(DeviceSN
                                     DeviceSN = r.IsDBNull(3) ? null : r.GetString(3),
                                     Result = r.GetString(4),
                                     FailReason = r.IsDBNull(5) ? null : r.GetString(5),
-                                    VerifyTime = r.GetDateTime(6)
+                                    VerifyTime = r.GetDateTime(6),
+                                    ExpectedVersion = r.IsDBNull(7) ? null : r.GetString(7),
+                                    ActualVersion = r.IsDBNull(8) ? null : r.GetString(8)
                                 });
                             }
                         }
@@ -1163,6 +1250,31 @@ CREATE INDEX IF NOT EXISTS idx_testrecord_devicesn_result ON TestRecord(DeviceSN
             return result;
         }
 
+        /// <inheritdoc />
+        public async Task<bool> OrderExistsByOrderNameAndProductAsync(string orderName, int productId)
+        {
+            if (string.IsNullOrWhiteSpace(orderName))
+                throw new ArgumentException("OrderName 不能为空", nameof(orderName));
+
+            EnsureConnectionInitialized();
+            var sql = @"SELECT COUNT(1) FROM ""Order"" WHERE OrderName = @OrderName AND ProductId = @ProductId";
+            var count = await Task.Run(() =>
+            {
+                lock (_lockObject)
+                {
+                    if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        throw new InvalidOperationException("数据库连接未初始化或已关闭");
+                    using (var cmd = new SQLiteCommand(sql, _connection))
+                    {
+                        cmd.Parameters.AddWithValue("@OrderName", orderName);
+                        cmd.Parameters.AddWithValue("@ProductId", productId);
+                        return Convert.ToInt32(cmd.ExecuteScalar());
+                    }
+                }
+            });
+            return count > 0;
+        }
+
         /// <summary>
         /// 判断给定订单是否已存在（兼容旧接口名，语义等同于按订单名称检查）。
         /// </summary>
@@ -1193,62 +1305,112 @@ CREATE INDEX IF NOT EXISTS idx_testrecord_devicesn_result ON TestRecord(DeviceSN
         /// <summary>
         /// 按 Session 导出：单 Session → xlsx 双 Sheet（PASS 原样、FAIL 按 (StickerSN, DeviceSN) 去重保留第一条）+ txt（Phase 2.5）
         /// </summary>
-        public async Task ExportBySessionAsync(int sessionId, string outputDirectory)
+        public Task ExportBySessionAsync(int sessionId, string outputDirectory)
+        {
+            return ExportBySessionAsync(sessionId, outputDirectory, ExportRecordFilter.All);
+        }
+
+        /// <inheritdoc />
+        /// <remarks>
+        /// 1) 调用 GetTestRecordsBySessionAsync 获取所有 TestRecord
+        /// 2) 使用 FilterRecordsByVerificationType 按 ExportRecordFilter 过滤
+        /// 3) 过滤后为空 → 不生成任何文件，记录跳过日志后直接返回
+        /// 4) 过滤后非空 → 生成 XLSX（PASS/FAIL 双 Sheet）和 TXT，仅此时写入“导出成功”日志
+        /// 5) 异常统一捕获并记录，不抛出到调用方
+        /// </remarks>
+        public async Task ExportBySessionAsync(int sessionId, string outputDirectory, ExportRecordFilter filter)
         {
             if (string.IsNullOrWhiteSpace(outputDirectory))
                 throw new ArgumentException("输出目录不能为空", nameof(outputDirectory));
 
-            EnsureConnectionInitialized();
+            filter = filter ?? ExportRecordFilter.All;
 
-            var records = await GetTestRecordsBySessionAsync(sessionId);
-            if (!Directory.Exists(outputDirectory))
-                Directory.CreateDirectory(outputDirectory);
-
-            var passRecords = records.Where(r => r.Result == "PASS").ToList();
-            var failRecordsRaw = records.Where(r => r.Result == "FAIL" || r.Result == "TIMEOUT").ToList();
-            var seen = new HashSet<(string, string)>(new ValueTupleOrdinalComparer());
-            var failRecordsDeduped = new List<TestRecord>();
-            foreach (var r in failRecordsRaw)
+            try
             {
-                var key = (r.StickerSN ?? "", r.DeviceSN ?? "");
-                if (seen.Add(key))
-                    failRecordsDeduped.Add(r);
+                EnsureConnectionInitialized();
+
+                var records = await GetTestRecordsBySessionAsync(sessionId);
+                var filtered = FilterRecordsByVerificationType(records, filter).ToList();
+
+                // 过滤后为空不导出：Session 无记录，或过滤后无符合条件记录
+                if (filtered.Count == 0)
+                {
+                    _logger?.LogInfo($"Session={sessionId} 在当前过滤条件下无记录，跳过导出");
+                    return;
+                }
+
+                var passRecords = filtered.Where(r => r.Result == "PASS").ToList();
+                var failRecordsRaw = filtered.Where(r => r.Result == "FAIL" || r.Result == "TIMEOUT").ToList();
+                var seen = new HashSet<(string, string)>(new ValueTupleOrdinalComparer());
+                var failRecordsDeduped = new List<TestRecord>();
+                foreach (var r in failRecordsRaw)
+                {
+                    var key = (r.StickerSN ?? "", r.DeviceSN ?? "");
+                    if (seen.Add(key))
+                        failRecordsDeduped.Add(r);
+                }
+
+                if (!Directory.Exists(outputDirectory))
+                    Directory.CreateDirectory(outputDirectory);
+
+                var xlsxPath = Path.Combine(outputDirectory, $"{sessionId}.xlsx");
+                await Task.Run(() =>
+                {
+                    using (var package = new ExcelPackage())
+                    {
+                        var passSheet = package.Workbook.Worksheets.Add("PASS");
+                        WriteTestRecordSheetHeader(passSheet);
+                        WriteTestRecordSheetData(passSheet, passRecords, startRow: 2);
+
+                        var failSheet = package.Workbook.Worksheets.Add("FAIL");
+                        WriteTestRecordSheetHeader(failSheet);
+                        WriteTestRecordSheetData(failSheet, failRecordsDeduped, startRow: 2);
+
+                        package.SaveAs(new FileInfo(xlsxPath));
+                    }
+                });
+
+                var txtPath = Path.Combine(outputDirectory, $"{sessionId}.txt");
+                await Task.Run(() =>
+                {
+                    using (var writer = new StreamWriter(txtPath, false, System.Text.Encoding.UTF8))
+                    {
+                        writer.WriteLine($"SessionId: {sessionId}");
+                        writer.WriteLine($"PASS: {passRecords.Count}, FAIL(去重后): {failRecordsDeduped.Count}");
+                        foreach (var r in passRecords)
+                            writer.WriteLine($"PASS\t{r.StickerSN}\t{r.DeviceSN}\t{r.VerifyTime:yyyy年M月d日 HH:mm:ss}");
+                        foreach (var r in failRecordsDeduped)
+                            writer.WriteLine($"FAIL\t{r.StickerSN}\t{r.DeviceSN}\t{r.Result}\t{r.FailReason}\t{r.VerifyTime:yyyy年M月d日 HH:mm:ss}");
+                    }
+                });
+
+                _logger?.LogInfo($"按 Session 导出成功: SessionId={sessionId}, xlsx={xlsxPath}, txt={txtPath}");
             }
-
-            var xlsxPath = Path.Combine(outputDirectory, $"{sessionId}.xlsx");
-            await Task.Run(() =>
+            catch (Exception ex)
             {
-                using (var package = new ExcelPackage())
-                {
-                    var passSheet = package.Workbook.Worksheets.Add("PASS");
-                    WriteTestRecordSheetHeader(passSheet);
-                    WriteTestRecordSheetData(passSheet, passRecords, startRow: 2);
-
-                    var failSheet = package.Workbook.Worksheets.Add("FAIL");
-                    WriteTestRecordSheetHeader(failSheet);
-                    WriteTestRecordSheetData(failSheet, failRecordsDeduped, startRow: 2);
-
-                    package.SaveAs(new FileInfo(xlsxPath));
-                }
-            });
-
-            var txtPath = Path.Combine(outputDirectory, $"{sessionId}.txt");
-            await Task.Run(() =>
-            {
-                using (var writer = new StreamWriter(txtPath, false, System.Text.Encoding.UTF8))
-                {
-                    writer.WriteLine($"SessionId: {sessionId}");
-                    writer.WriteLine($"PASS: {passRecords.Count}, FAIL(去重后): {failRecordsDeduped.Count}");
-                    foreach (var r in passRecords)
-                        writer.WriteLine($"PASS\t{r.StickerSN}\t{r.DeviceSN}\t{r.VerifyTime:yyyy年M月d日 HH:mm:ss}");
-                    foreach (var r in failRecordsDeduped)
-                        writer.WriteLine($"FAIL\t{r.StickerSN}\t{r.DeviceSN}\t{r.Result}\t{r.FailReason}\t{r.VerifyTime:yyyy年M月d日 HH:mm:ss}");
-                }
-            });
-
-            _logger?.LogInfo($"按 Session 导出成功: SessionId={sessionId}, xlsx={xlsxPath}, txt={txtPath}");
+                _logger?.LogError($"按 Session 导出失败: SessionId={sessionId}, {ex.Message}", ex);
+            }
         }
 
+        /// <summary>
+        /// 按 ExportRecordFilter 过滤记录。约定：StickerSN=="-" 为 VersionMatch，否则为 SnMatch。
+        /// </summary>
+        private static IEnumerable<TestRecord> FilterRecordsByVerificationType(IReadOnlyList<TestRecord> records, ExportRecordFilter filter)
+        {
+            if (records == null) return Enumerable.Empty<TestRecord>();
+            return records.Where(r =>
+            {
+                var isVersionMatch = r.StickerSN == "-";
+                if (isVersionMatch)
+                    return filter.IncludeVersionMatch;
+                return filter.IncludeSnMatch;
+            });
+        }
+
+        /// <summary>
+        /// 写入 TestRecord 表头。列顺序：Id, 条形码SN, 设备SN, Result, FailReason, VerifyTime, 目标版本号, 设备版本号。
+        /// VersionMatch 类型（StickerSN=="-"）使用第 7、8 列；SnMatch 类型两列保持空。
+        /// </summary>
         private static void WriteTestRecordSheetHeader(ExcelWorksheet sheet)
         {
             sheet.Cells[1, 1].Value = "Id";
@@ -1257,7 +1419,9 @@ CREATE INDEX IF NOT EXISTS idx_testrecord_devicesn_result ON TestRecord(DeviceSN
             sheet.Cells[1, 4].Value = "Result";
             sheet.Cells[1, 5].Value = "FailReason";
             sheet.Cells[1, 6].Value = "VerifyTime";
-            using (var range = sheet.Cells[1, 1, 1, 6])
+            sheet.Cells[1, 7].Value = "目标版本号";
+            sheet.Cells[1, 8].Value = "设备版本号";
+            using (var range = sheet.Cells[1, 1, 1, 8])
             {
                 range.Style.Font.Bold = true;
                 range.Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
@@ -1265,6 +1429,9 @@ CREATE INDEX IF NOT EXISTS idx_testrecord_devicesn_result ON TestRecord(DeviceSN
             }
         }
 
+        /// <summary>
+        /// 写入 TestRecord 数据。VersionMatch（StickerSN=="-"）填充 ExpectedVersion、ActualVersion；SnMatch 两列保持空。
+        /// </summary>
         private static void WriteTestRecordSheetData(ExcelWorksheet sheet, IList<TestRecord> records, int startRow)
         {
             for (int i = 0; i < records.Count; i++)
@@ -1277,13 +1444,17 @@ CREATE INDEX IF NOT EXISTS idx_testrecord_devicesn_result ON TestRecord(DeviceSN
                 sheet.Cells[row, 4].Value = r.Result;
                 sheet.Cells[row, 5].Value = r.FailReason ?? string.Empty;
                 sheet.Cells[row, 6].Value = r.VerifyTime.ToString("yyyy年M月d日 HH:mm:ss");
+                // VersionMatch（StickerSN=="-"）才填充版本列；SnMatch 保持空
+                var isVersionMatch = r.StickerSN == "-";
+                sheet.Cells[row, 7].Value = isVersionMatch ? (r.ExpectedVersion ?? string.Empty) : string.Empty;
+                sheet.Cells[row, 8].Value = isVersionMatch ? (r.ActualVersion ?? string.Empty) : string.Empty;
             }
             if (records.Count > 0 && sheet.Dimension != null)
                 sheet.Cells[sheet.Dimension.Address].AutoFitColumns();
         }
 
         /// <summary>
-        /// 写入 Sheet 表头
+        /// 写入 Sheet 表头（与 WriteTestRecordSheetHeader 列一致，含目标版本号、设备版本号）
         /// </summary>
         private void WriteSheetHeader(ExcelWorksheet sheet)
         {
@@ -1293,9 +1464,10 @@ CREATE INDEX IF NOT EXISTS idx_testrecord_devicesn_result ON TestRecord(DeviceSN
             sheet.Cells[1, 4].Value = "Result";
             sheet.Cells[1, 5].Value = "FailReason";
             sheet.Cells[1, 6].Value = "VerifyTime";
+            sheet.Cells[1, 7].Value = "目标版本号";
+            sheet.Cells[1, 8].Value = "设备版本号";
 
-            // 设置表头样式
-            using (var range = sheet.Cells[1, 1, 1, 6])
+            using (var range = sheet.Cells[1, 1, 1, 8])
             {
                 range.Style.Font.Bold = true;
                 range.Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;

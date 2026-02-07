@@ -512,6 +512,9 @@ namespace SnVerify.Tests.ViewModels
                 _dialogServiceMock.Setup(d => d.ChooseExportDimension())
                     .Returns(ExportDimension.ByOrder);
 
+                _dialogServiceMock.Setup(d => d.ChooseExportRecordFilter(It.IsAny<IReadOnlyList<VerificationType>>()))
+                    .Returns(SnVerify.Domain.Export.ExportRecordFilter.All);
+
                 _storageServiceMock.Setup(s => s.GetAllOrdersAsync())
                     .ReturnsAsync(new[] { order });
 
@@ -523,7 +526,7 @@ namespace SnVerify.Tests.ViewModels
 
                 var tcs = new TaskCompletionSource<bool>();
                 _exportAggregationServiceMock
-                    .Setup(s => s.ExportByOrderIdAsync("OrderX", exportRoot))
+                    .Setup(s => s.ExportByOrderIdAsync("OrderX", exportRoot, It.IsAny<SnVerify.Domain.Export.ExportRecordFilter>()))
                     .Returns(() =>
                     {
                         tcs.TrySetResult(true);
@@ -536,7 +539,7 @@ namespace SnVerify.Tests.ViewModels
 
                 // Assert
                 _dialogServiceMock.Verify(d => d.ConfirmOverwrite(It.IsAny<string>()), Times.Never);
-                _exportAggregationServiceMock.Verify(s => s.ExportByOrderIdAsync("OrderX", exportRoot), Times.Once);
+                _exportAggregationServiceMock.Verify(s => s.ExportByOrderIdAsync("OrderX", exportRoot, It.IsAny<SnVerify.Domain.Export.ExportRecordFilter>()), Times.Once);
             }
             finally
             {
@@ -563,6 +566,9 @@ namespace SnVerify.Tests.ViewModels
                 _dialogServiceMock.Setup(d => d.ChooseExportDimension())
                     .Returns(ExportDimension.ByOrder);
 
+                _dialogServiceMock.Setup(d => d.ChooseExportRecordFilter(It.IsAny<IReadOnlyList<VerificationType>>()))
+                    .Returns(SnVerify.Domain.Export.ExportRecordFilter.All);
+
                 _storageServiceMock.Setup(s => s.GetAllOrdersAsync())
                     .ReturnsAsync(new[] { order });
 
@@ -581,7 +587,7 @@ namespace SnVerify.Tests.ViewModels
                 await Task.Delay(100);
 
                 // Assert
-                _exportAggregationServiceMock.Verify(s => s.ExportByOrderIdAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+                _exportAggregationServiceMock.Verify(s => s.ExportByOrderIdAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<SnVerify.Domain.Export.ExportRecordFilter>()), Times.Never);
                 _loggingServiceMock.Verify(l => l.LogInfo(It.Is<string>(m => m.Contains("导出已取消"))), Times.AtLeastOnce);
                 Assert.That(File.Exists(zipPath), Is.True, "当用户取消覆盖时，原 ZIP 文件应保持不变");
             }
@@ -930,6 +936,8 @@ namespace SnVerify.Tests.ViewModels
             _sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Active(sessionId, orderId, DateTime.Now));
             _sessionLifecycleServiceMock.Setup(m => m.GetCurrentSessionId()).Returns(sessionId);
             _viewModel.SessionSnapshot = SessionSnapshot.Active(sessionId, orderId, DateTime.Now);
+            _viewModel.CurrentVerificationType = VerificationType.VersionMatch;
+            _viewModel.TargetVersionInput = expectedVersion;
             _storageServiceMock.Setup(s => s.GetSessionBySessionNameAsync(sessionId)).ReturnsAsync(session);
 
             var passRecord = new TestRecord
@@ -978,6 +986,8 @@ namespace SnVerify.Tests.ViewModels
             _sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Active(sessionId, orderId, DateTime.Now));
             _sessionLifecycleServiceMock.Setup(m => m.GetCurrentSessionId()).Returns(sessionId);
             _viewModel.SessionSnapshot = SessionSnapshot.Active(sessionId, orderId, DateTime.Now);
+            _viewModel.CurrentVerificationType = VerificationType.VersionMatch;
+            _viewModel.TargetVersionInput = expectedVersion;
             _storageServiceMock.Setup(s => s.GetSessionBySessionNameAsync(sessionId)).ReturnsAsync(session);
 
             var failRecord = new TestRecord
@@ -1097,6 +1107,9 @@ namespace SnVerify.Tests.ViewModels
                 _dialogServiceMock.Setup(d => d.ChooseExportDimension())
                     .Returns(ExportDimension.ByOrder);
 
+                _dialogServiceMock.Setup(d => d.ChooseExportRecordFilter(It.IsAny<IReadOnlyList<VerificationType>>()))
+                    .Returns(SnVerify.Domain.Export.ExportRecordFilter.All);
+
                 _storageServiceMock.Setup(s => s.GetAllOrdersAsync())
                     .ReturnsAsync(new[] { order });
 
@@ -1111,7 +1124,7 @@ namespace SnVerify.Tests.ViewModels
 
                 var tcs = new TaskCompletionSource<bool>();
                 _exportAggregationServiceMock
-                    .Setup(s => s.ExportByOrderIdAsync("OrderZ", exportRoot))
+                    .Setup(s => s.ExportByOrderIdAsync("OrderZ", exportRoot, It.IsAny<SnVerify.Domain.Export.ExportRecordFilter>()))
                     .Callback(() =>
                     {
                         // 在调用导出服务之前，ZIP 应已被删除
@@ -1129,7 +1142,7 @@ namespace SnVerify.Tests.ViewModels
 
                 // Assert
                 _dialogServiceMock.Verify(d => d.ConfirmOverwrite(It.IsAny<string>()), Times.Once);
-                _exportAggregationServiceMock.Verify(s => s.ExportByOrderIdAsync("OrderZ", exportRoot), Times.Once);
+                _exportAggregationServiceMock.Verify(s => s.ExportByOrderIdAsync("OrderZ", exportRoot, It.IsAny<SnVerify.Domain.Export.ExportRecordFilter>()), Times.Once);
             }
             finally
             {

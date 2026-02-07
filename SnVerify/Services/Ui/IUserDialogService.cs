@@ -3,7 +3,10 @@
 /// UI 交互抽象（阶段 3）：用于在 ViewModel 中避免直接调用 MessageBox/WinForms/Dispatcher。
 /// 该接口不引用任何 WPF 类型，便于单元测试替身实现。
 /// </remarks>
+#pragma warning disable CS8632 // 可为 null 的引用类型在未启用 #nullable 时会有此警告
 using System.Collections.Generic;
+using SnVerify.Domain.Enums;
+using SnVerify.Domain.Export;
 using SnVerify.Domain.Models;
 
 namespace SnVerify.Services.Ui
@@ -28,6 +31,12 @@ namespace SnVerify.Services.Ui
         /// 选择导出维度；返回 null 表示用户取消。
         /// </summary>
         ExportDimension? ChooseExportDimension();
+
+        /// <summary>
+        /// 选择导出记录过滤（SN / 版本 / 全部）；返回 null 表示用户取消。
+        /// </summary>
+        /// <param name="defaultTypes">可选，Session/记录的 VerificationType 列表，用于设置默认勾选</param>
+        ExportRecordFilter? ChooseExportRecordFilter(IReadOnlyList<VerificationType> defaultTypes = null);
 
         /// <summary>
         /// 选择项目 ID；返回 null 表示用户取消。

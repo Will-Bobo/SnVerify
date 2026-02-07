@@ -60,6 +60,7 @@ namespace SnVerify.Tests.Services
             Assert.That(record.FailReason, Is.Null);
             Assert.That(record.ExpectedVersion, Is.EqualTo("1.0.0"));
             Assert.That(record.ActualVersion, Is.EqualTo("1.0.0"));
+            Assert.That(record.DeviceSN, Is.EqualTo("SN001"), "成功时应收存 ADB 读取的设备 SN");
             Assert.That(record.SessionId, Is.EqualTo(session.Id));
         }
 
@@ -77,6 +78,7 @@ namespace SnVerify.Tests.Services
             Assert.That(record.FailReason, Is.EqualTo("Version mismatch: expected 1.0.0, actual 1.0.1"));
             Assert.That(record.ExpectedVersion, Is.EqualTo("1.0.0"));
             Assert.That(record.ActualVersion, Is.EqualTo("1.0.1"));
+            Assert.That(record.DeviceSN, Is.EqualTo("SN001"), "成功读取时应收存设备 SN");
         }
 
         [Test]
@@ -91,6 +93,7 @@ namespace SnVerify.Tests.Services
 
             Assert.That(record.Result, Is.EqualTo("TIMEOUT"));
             Assert.That(record.FailReason, Is.Not.Null.And.Contains("ADB"));
+            Assert.That(record.DeviceSN, Is.EqualTo("-"), "ADB 失败时 DeviceSN 为占位符");
         }
 
         [Test]
@@ -134,6 +137,7 @@ namespace SnVerify.Tests.Services
                     r.SessionId == session.Id &&
                     r.ExpectedVersion == "1.0.0" &&
                     r.ActualVersion == "1.0.0" &&
+                    r.DeviceSN == "SN001" &&
                     r.Result == "PASS")),
                 Times.Once);
         }
@@ -156,6 +160,7 @@ namespace SnVerify.Tests.Services
 
             Assert.That(record.Result, Is.EqualTo("TIMEOUT"));
             Assert.That(record.FailReason, Is.Not.Null.And.Contains("not responding"));
+            Assert.That(record.DeviceSN, Is.EqualTo("-"), "异常时 DeviceSN 为占位符");
         }
 
         [Test]
@@ -172,6 +177,7 @@ namespace SnVerify.Tests.Services
             Assert.That(record.Result, Is.EqualTo("PASS"));
             Assert.That(record.ExpectedVersion, Is.EqualTo(""));
             Assert.That(record.ActualVersion, Is.EqualTo(""));
+            Assert.That(record.DeviceSN, Is.EqualTo("SN001"), "成功时应收存设备 SN");
         }
     }
 }

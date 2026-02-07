@@ -9,6 +9,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Linq;
 using System.Threading.Tasks;
+using SnVerify.Domain.Export;
 using SnVerify.Domain.Models;
 using SnVerify.Services.Logging;
 
@@ -37,8 +38,9 @@ namespace SnVerify.Services.Storage
         }
 
         /// <inheritdoc />
-        public async Task ExportByOrderIdAsync(string orderId, string outputDirectory)
+        public async Task ExportByOrderIdAsync(string orderId, string outputDirectory, ExportRecordFilter filter = null)
         {
+            filter = filter ?? ExportRecordFilter.All;
             if (string.IsNullOrWhiteSpace(orderId))
                 throw new ArgumentException("OrderId 不能为空", nameof(orderId));
             if (string.IsNullOrWhiteSpace(outputDirectory))
@@ -72,26 +74,28 @@ namespace SnVerify.Services.Storage
                     foreach (var s in sessions)
                     {
                         var safeSessionName = ToSafeFileName(s.SessionName);
+                        bool sessionHadRecords = false;
 
                         // 1) 先为当前 Session 生成结果表格（基于 StorageService / TestRecord）
                         try
                         {
-                            await _storage.ExportBySessionAsync(s.Id, tempDir);
+                            await _storage.ExportBySessionAsync(s.Id, tempDir, filter);
                             var excelPath = Path.Combine(tempDir, $"{s.Id}.xlsx");
                             if (File.Exists(excelPath))
                             {
+                                sessionHadRecords = true;
                                 var excelEntryName = $"{safeOrderName}/{safeSessionName}.xlsx";
                                 archive.CreateEntryFromFile(excelPath, excelEntryName);
                             }
                         }
                         catch (Exception ex)
                         {
-                            // 表格导出失败不影响日志导出，记录错误后继续
+                            // 表格导出失败不影响其他 Session，记录错误后继续
                             _logger?.LogError($"按订单导出 Session={s.SessionName} 表格失败：{ex.Message}", ex);
                         }
 
-                        // 2) 保持原有日志文件导出逻辑不变
-                        if (_loggingService == null)
+                        // 2) 空 Session 不导出日志：仅当有记录（生成了 Excel）时才导出日志
+                        if (!sessionHadRecords || _loggingService == null)
                             continue;
 
                         var sessionLogPath = _loggingService.GetLogFilePath(s.SessionName);
@@ -112,8 +116,9 @@ namespace SnVerify.Services.Storage
         }
 
         /// <inheritdoc />
-        public async Task ExportByProjectIdAsync(string projectId, string outputDirectory)
+        public async Task ExportByProjectIdAsync(string projectId, string outputDirectory, ExportRecordFilter filter = null)
         {
+            filter = filter ?? ExportRecordFilter.All;
             if (string.IsNullOrWhiteSpace(projectId))
                 throw new ArgumentException("ProjectId 不能为空", nameof(projectId));
             if (string.IsNullOrWhiteSpace(outputDirectory))
@@ -158,14 +163,16 @@ namespace SnVerify.Services.Storage
 
                         var safeOrderName = ToSafeFileName(orderName);
                         var safeSessionName = ToSafeFileName(s.SessionName);
+                        bool sessionHadRecords = false;
 
                         // 1) 先为当前 Session 生成结果表格（基于 StorageService / TestRecord）
                         try
                         {
-                            await _storage.ExportBySessionAsync(s.Id, tempDir);
+                            await _storage.ExportBySessionAsync(s.Id, tempDir, filter);
                             var excelPath = Path.Combine(tempDir, $"{s.Id}.xlsx");
                             if (File.Exists(excelPath))
                             {
+                                sessionHadRecords = true;
                                 var excelEntryName = $"{safeProductName}/{safeOrderName}/{safeSessionName}.xlsx";
                                 archive.CreateEntryFromFile(excelPath, excelEntryName);
                             }
@@ -175,8 +182,8 @@ namespace SnVerify.Services.Storage
                             _logger?.LogError($"按项目导出 Session={s.SessionName} 表格失败：{ex.Message}", ex);
                         }
 
-                        // 2) 保持原有日志文件导出逻辑不变
-                        if (_loggingService == null)
+                        // 2) 空 Session 不导出日志：仅当有记录（生成了 Excel）时才导出日志
+                        if (!sessionHadRecords || _loggingService == null)
                             continue;
 
                         var sessionLogPath = _loggingService.GetLogFilePath(s.SessionName);

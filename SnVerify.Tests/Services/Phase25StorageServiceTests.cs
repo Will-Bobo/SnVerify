@@ -177,8 +177,11 @@ namespace SnVerify.Tests.Services
             Assert.That(list.Count, Is.EqualTo(0));
         }
 
+        /// <summary>
+        /// 根据 Export_Semantics：Session 无记录时不生成任何文件
+        /// </summary>
         [Test]
-        public async Task ExportBySessionAsync_WhenSessionHasNoRecords_StillCreatesXlsxAndTxt()
+        public async Task ExportBySessionAsync_WhenSessionHasNoRecords_DoesNotCreateAnyFiles()
         {
             await _storage.InitializeAsync();
 
@@ -195,17 +198,8 @@ namespace SnVerify.Tests.Services
 
             var xlsxPath = Path.Combine(_outDir, $"{sessionId}.xlsx");
             var txtPath = Path.Combine(_outDir, $"{sessionId}.txt");
-            Assert.That(File.Exists(xlsxPath), Is.True);
-            Assert.That(File.Exists(txtPath), Is.True);
-            using (var package = new ExcelPackage(new FileInfo(xlsxPath)))
-            {
-                var passSheet = package.Workbook.Worksheets["PASS"];
-                var failSheet = package.Workbook.Worksheets["FAIL"];
-                Assert.That(passSheet, Is.Not.Null);
-                Assert.That(failSheet, Is.Not.Null);
-                Assert.That(passSheet.Dimension?.Rows ?? 1, Is.EqualTo(1), "PASS 仅表头");
-                Assert.That(failSheet.Dimension?.Rows ?? 1, Is.EqualTo(1), "FAIL 仅表头");
-            }
+            Assert.That(File.Exists(xlsxPath), Is.False, "Session 无记录不应生成 XLSX");
+            Assert.That(File.Exists(txtPath), Is.False, "Session 无记录不应生成 TXT");
         }
 
         [Test]
@@ -407,6 +401,45 @@ namespace SnVerify.Tests.Services
             {
                 await _storage.SetOrderProductIdAsync("", 1);
             });
+        }
+
+        [Test]
+        public async Task OrderExistsByOrderNameAndProductAsync_ReturnsTrueWhenOrderExistsWithMatchingProduct()
+        {
+            await _storage.InitializeAsync();
+
+            var productId = await _storage.CreateProductAsync(new Product { ProductName = "P1", CreatedAt = DateTime.Now });
+            await _storage.CreateOrderAsync(new Order { OrderName = "O1", ProductId = productId, CreatedAt = DateTime.Now });
+
+            var exists = await _storage.OrderExistsByOrderNameAndProductAsync("O1", productId);
+            Assert.That(exists, Is.True);
+        }
+
+        [Test]
+        public async Task OrderExistsByOrderNameAndProductAsync_ReturnsFalseWhenOrderNameExistsButDifferentProduct()
+        {
+            await _storage.InitializeAsync();
+
+            var p1 = await _storage.CreateProductAsync(new Product { ProductName = "P1", CreatedAt = DateTime.Now });
+            var p2 = await _storage.CreateProductAsync(new Product { ProductName = "P2", CreatedAt = DateTime.Now });
+            await _storage.CreateOrderAsync(new Order { OrderName = "O1", ProductId = p1, CreatedAt = DateTime.Now });
+
+            var exists = await _storage.OrderExistsByOrderNameAndProductAsync("O1", p2);
+            Assert.That(exists, Is.False);
+        }
+
+        [Test]
+        public async Task OrderExistsByOrderNameAndProductAsync_ReturnsTrueWhenSameOrderNameInDifferentProducts()
+        {
+            await _storage.InitializeAsync();
+
+            var p1 = await _storage.CreateProductAsync(new Product { ProductName = "P1", CreatedAt = DateTime.Now });
+            var p2 = await _storage.CreateProductAsync(new Product { ProductName = "P2", CreatedAt = DateTime.Now });
+            await _storage.CreateOrderAsync(new Order { OrderName = "O1", ProductId = p1, CreatedAt = DateTime.Now });
+            await _storage.CreateOrderAsync(new Order { OrderName = "O1", ProductId = p2, CreatedAt = DateTime.Now });
+
+            Assert.That(await _storage.OrderExistsByOrderNameAndProductAsync("O1", p1), Is.True);
+            Assert.That(await _storage.OrderExistsByOrderNameAndProductAsync("O1", p2), Is.True);
         }
     }
 }

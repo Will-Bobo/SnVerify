@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using NUnit.Framework;
 using OfficeOpenXml;
+using SnVerify.Domain.Export;
 using SnVerify.Domain.Models;
 using SnVerify.Services.Logging;
 using SnVerify.Services.Storage;
@@ -65,6 +66,9 @@ namespace SnVerify.Tests.Services
             var sessionId1 = await _storage.CreateSessionAsync(new TestSession { OrderId = orderId, SessionName = sessionName1, StartTime = DateTime.Now });
             var sessionId2 = await _storage.CreateSessionAsync(new TestSession { OrderId = orderId, SessionName = sessionName2, StartTime = DateTime.Now.AddMinutes(10) });
 
+            await _storage.SaveTestRecordAsync(new TestRecord { SessionId = sessionId1, StickerSN = "S1", DeviceSN = "D1", Result = "PASS", VerifyTime = DateTime.Now });
+            await _storage.SaveTestRecordAsync(new TestRecord { SessionId = sessionId2, StickerSN = "S2", DeviceSN = "D2", Result = "PASS", VerifyTime = DateTime.Now });
+
             // 为每个 Session 创建对应的日志文件
             _loggingService.StartSession(sessionName1);
             _loggingService.LogInfo($"LOG for {sessionName1}");
@@ -117,6 +121,8 @@ namespace SnVerify.Tests.Services
             var sessionName = "Order-002_20260126_120000";
             var sessionId = await _storage.CreateSessionAsync(new TestSession { OrderId = orderId, SessionName = sessionName, StartTime = DateTime.Now });
 
+            await _storage.SaveTestRecordAsync(new TestRecord { SessionId = sessionId, StickerSN = "S1", DeviceSN = "D1", Result = "PASS", VerifyTime = DateTime.Now });
+
             _loggingService.StartSession(sessionName);
             _loggingService.LogInfo($"LOG for {sessionName}");
             _loggingService.EndBatch();
@@ -159,6 +165,8 @@ namespace SnVerify.Tests.Services
             var orderId = await _storage.CreateOrderAsync(new Order { ProductId = productId, OrderName = rawOrderName, CreatedAt = DateTime.Now });
 
             var sessionId = await _storage.CreateSessionAsync(new TestSession { OrderId = orderId, SessionName = rawSessionName, StartTime = DateTime.Now });
+
+            await _storage.SaveTestRecordAsync(new TestRecord { SessionId = sessionId, StickerSN = "S1", DeviceSN = "D1", Result = "PASS", VerifyTime = DateTime.Now });
 
             _loggingService.StartSession(rawSessionName);
             _loggingService.LogInfo("INVALID NAME LOG");
@@ -357,6 +365,135 @@ namespace SnVerify.Tests.Services
                     Assert.That(result, Is.EqualTo("PASS"));
                 }
             }
+        }
+
+        /// <summary>
+        /// 空 Session：无 TestRecord 或过滤后为空 → 不生成 Excel/TXT，不导出日志到 ZIP
+        /// </summary>
+        [Test]
+        public async Task ExportByOrderId_EmptySession_DoesNotAddExcelOrLogToZip()
+        {
+            await _storage.InitializeAsync();
+
+            var productId = await _storage.CreateProductAsync(new Product { ProductName = "ProdEmpty" });
+            var orderId = await _storage.CreateOrderAsync(new Order { ProductId = productId, OrderName = "Order-Empty", CreatedAt = DateTime.Now });
+
+            var sessionName = "Order-Empty_20260126_100000";
+            var sessionId = await _storage.CreateSessionAsync(new TestSession { OrderId = orderId, SessionName = sessionName, StartTime = DateTime.Now });
+            // 无 TestRecord
+
+            _loggingService.StartSession(sessionName);
+            _loggingService.LogInfo("LOG for empty session");
+            _loggingService.EndBatch();
+
+            await _exportAggregationService.ExportByOrderIdAsync("Order-Empty", _outDir);
+
+            var zipPath = Path.Combine(_outDir, "Order-Empty.zip");
+            Assert.That(File.Exists(zipPath), Is.True, "ZIP 文件仍会创建（可能为空）");
+
+            using (var archive = ZipFile.OpenRead(zipPath))
+            {
+                var entries = archive.Entries.ToDictionary(e => e.FullName, e => e);
+                var excelEntry = $"{ToSafe("Order-Empty")}/{sessionName}.xlsx";
+                var logEntry = $"{ToSafe("Order-Empty")}/{sessionName}.log";
+
+                Assert.That(entries.ContainsKey(excelEntry), Is.False, "空 Session 不应包含 Excel");
+                Assert.That(entries.ContainsKey(logEntry), Is.False, "空 Session 不应包含日志");
+            }
+        }
+
+        /// <summary>
+        /// 混合 Session：ZIP 中仅包含非空 Session 的 Excel 和日志
+        /// </summary>
+        [Test]
+        public async Task ExportByOrderId_MixedSessions_ZipContainsOnlyNonEmptySessions()
+        {
+            await _storage.InitializeAsync();
+
+            var productId = await _storage.CreateProductAsync(new Product { ProductName = "ProdMixed" });
+            var orderId = await _storage.CreateOrderAsync(new Order { ProductId = productId, OrderName = "Order-Mixed", CreatedAt = DateTime.Now });
+
+            var sessionNameEmpty = "Order-Mixed_20260126_100000";
+            var sessionNameNonEmpty = "Order-Mixed_20260126_110000";
+
+            var sessionIdEmpty = await _storage.CreateSessionAsync(new TestSession { OrderId = orderId, SessionName = sessionNameEmpty, StartTime = DateTime.Now });
+            var sessionIdNonEmpty = await _storage.CreateSessionAsync(new TestSession { OrderId = orderId, SessionName = sessionNameNonEmpty, StartTime = DateTime.Now.AddMinutes(10) });
+
+            // 仅非空 Session 有记录
+            await _storage.SaveTestRecordAsync(new TestRecord { SessionId = sessionIdNonEmpty, StickerSN = "S1", DeviceSN = "D1", Result = "PASS", VerifyTime = DateTime.Now });
+
+            _loggingService.StartSession(sessionNameEmpty);
+            _loggingService.LogInfo("LOG empty");
+            _loggingService.EndBatch();
+
+            _loggingService.StartSession(sessionNameNonEmpty);
+            _loggingService.LogInfo("LOG non-empty");
+            _loggingService.EndBatch();
+
+            await _exportAggregationService.ExportByOrderIdAsync("Order-Mixed", _outDir);
+
+            var zipPath = Path.Combine(_outDir, "Order-Mixed.zip");
+            Assert.That(File.Exists(zipPath), Is.True);
+
+            using (var archive = ZipFile.OpenRead(zipPath))
+            {
+                var entries = archive.Entries.ToDictionary(e => e.FullName, e => e);
+                var orderPrefix = ToSafe("Order-Mixed");
+
+                Assert.That(entries.ContainsKey($"{orderPrefix}/{sessionNameEmpty}.xlsx"), Is.False, "空 Session 不应有 Excel");
+                Assert.That(entries.ContainsKey($"{orderPrefix}/{sessionNameEmpty}.log"), Is.False, "空 Session 不应有日志");
+                Assert.That(entries.ContainsKey($"{orderPrefix}/{sessionNameNonEmpty}.xlsx"), Is.True, "非空 Session 应有 Excel");
+                Assert.That(entries.ContainsKey($"{orderPrefix}/{sessionNameNonEmpty}.log"), Is.True, "非空 Session 应有日志");
+            }
+        }
+
+        /// <summary>
+        /// Filter SnOnly：仅导出 SnMatch 记录，VersionOnly Session 视为空
+        /// </summary>
+        [Test]
+        public async Task ExportByOrderId_WithFilterSnOnly_ExportsOnlySnMatchSessions()
+        {
+            await _storage.InitializeAsync();
+
+            var productId = await _storage.CreateProductAsync(new Product { ProductName = "ProdFilter" });
+            var orderId = await _storage.CreateOrderAsync(new Order { ProductId = productId, OrderName = "Order-Filter", CreatedAt = DateTime.Now });
+
+            var sessionSn = "Order-Filter_20260126_100000";
+            var sessionVer = "Order-Filter_20260126_110000";
+
+            var sessionIdSn = await _storage.CreateSessionAsync(new TestSession { OrderId = orderId, SessionName = sessionSn, StartTime = DateTime.Now });
+            var sessionIdVer = await _storage.CreateSessionAsync(new TestSession { OrderId = orderId, SessionName = sessionVer, StartTime = DateTime.Now.AddMinutes(10) });
+
+            await _storage.SaveTestRecordAsync(new TestRecord { SessionId = sessionIdSn, StickerSN = "SN1", DeviceSN = "D1", Result = "PASS", VerifyTime = DateTime.Now });
+            await _storage.SaveTestRecordAsync(new TestRecord { SessionId = sessionIdVer, StickerSN = "-", DeviceSN = "-", Result = "PASS", VerifyTime = DateTime.Now });
+
+            _loggingService.StartSession(sessionSn);
+            _loggingService.LogInfo("LOG Sn");
+            _loggingService.EndBatch();
+            _loggingService.StartSession(sessionVer);
+            _loggingService.LogInfo("LOG Ver");
+            _loggingService.EndBatch();
+
+            await _exportAggregationService.ExportByOrderIdAsync("Order-Filter", _outDir, ExportRecordFilter.SnOnly);
+
+            using (var archive = ZipFile.OpenRead(Path.Combine(_outDir, "Order-Filter.zip")))
+            {
+                var entries = archive.Entries.ToDictionary(e => e.FullName, e => e);
+                var prefix = ToSafe("Order-Filter");
+
+                Assert.That(entries.ContainsKey($"{prefix}/{sessionSn}.xlsx"), Is.True, "SnMatch Session 应有 Excel");
+                Assert.That(entries.ContainsKey($"{prefix}/{sessionVer}.xlsx"), Is.False, "VersionMatch Session 在 SnOnly 下为空");
+            }
+        }
+
+        private static string ToSafe(string name)
+        {
+            if (string.IsNullOrWhiteSpace(name)) return "_";
+            var invalidChars = Path.GetInvalidFileNameChars();
+            var chars = name.ToCharArray();
+            for (var i = 0; i < chars.Length; i++)
+                if (invalidChars.Contains(chars[i])) chars[i] = '_';
+            return new string(chars);
         }
     }
 }

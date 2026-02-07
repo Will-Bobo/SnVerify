@@ -63,7 +63,7 @@ namespace SnVerify.Services.Coordination
 
                 if (!adbResult.IsSuccess)
                 {
-                    var record = BuildRecord(session.Id, expectedVersion, null, "TIMEOUT", adbResult.ErrorMessage ?? "ADB read failed", verifyTime);
+                    var record = BuildRecord(session.Id, expectedVersion, null, "TIMEOUT", adbResult.ErrorMessage ?? "ADB read failed", verifyTime, adbResult.DeviceSn);
                     await _storageService.SaveTestRecordAsync(record);
                     _snapshot = VerificationSnapshot.Completed("--", record.Result, record.FailReason, sessionId, record.ActualVersion);
                     return record;
@@ -72,29 +72,29 @@ namespace SnVerify.Services.Coordination
                 var actualVersion = adbResult.DeviceVersion ?? string.Empty;
                 var (result, failReason) = string.Equals(expectedVersion.Trim(), actualVersion.Trim(), StringComparison.OrdinalIgnoreCase)
                     ? ("PASS", (string)null)
-                    : ("FAIL", $"Version mismatch: expected {expectedVersion}, actual {actualVersion}");
+                    : ("FAIL", $"版本号不匹配: 目标 {expectedVersion}, 实际 {actualVersion}");
 
-                var finalRecord = BuildRecord(session.Id, expectedVersion, actualVersion, result, failReason, verifyTime);
+                var finalRecord = BuildRecord(session.Id, expectedVersion, actualVersion, result, failReason, verifyTime, adbResult.DeviceSn);
                 await _storageService.SaveTestRecordAsync(finalRecord);
                 _snapshot = VerificationSnapshot.Completed("--", finalRecord.Result, finalRecord.FailReason, sessionId, finalRecord.ActualVersion);
                 return finalRecord;
             }
             catch (Exception ex)
             {
-                var record = BuildRecord(session.Id, expectedVersion, null, "TIMEOUT", ex.Message, verifyTime);
+                var record = BuildRecord(session.Id, expectedVersion, null, "TIMEOUT", ex.Message, verifyTime, deviceSn: null);
                 await _storageService.SaveTestRecordAsync(record);
                 _snapshot = VerificationSnapshot.Completed("--", record.Result, record.FailReason, sessionId, record.ActualVersion);
                 return record;
             }
         }
 
-        private static TestRecord BuildRecord(int sessionId, string expectedVersion, string actualVersion, string result, string failReason, DateTime verifyTime)
+        private static TestRecord BuildRecord(int sessionId, string expectedVersion, string actualVersion, string result, string failReason, DateTime verifyTime, string deviceSn = null)
         {
             return new TestRecord
             {
                 SessionId = sessionId,
                 StickerSN = "-",
-                DeviceSN = "-",
+                DeviceSN = deviceSn ?? "-",
                 ExpectedVersion = expectedVersion,
                 ActualVersion = actualVersion,
                 Result = result,

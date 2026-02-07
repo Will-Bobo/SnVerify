@@ -6,6 +6,7 @@
 
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using SnVerify.Domain.Export;
 using SnVerify.Domain.Models;
 using SnVerify.Domain.State;
 
@@ -86,6 +87,11 @@ namespace SnVerify.Services.Storage
         /// 判断给定订单名称是否已存在（全局唯一）。
         /// </summary>
         Task<bool> OrderNameExistsAsync(string orderName);
+
+        /// <summary>
+        /// 按订单名称与项目（ProductId）联合判断该项目下是否已存在该订单（OrderName + ProductId 唯一）。
+        /// </summary>
+        Task<bool> OrderExistsByOrderNameAndProductAsync(string orderName, int productId);
 
         /// <summary>
         /// 获取所有订单列表。
@@ -170,6 +176,14 @@ namespace SnVerify.Services.Storage
         /// 按 Session 导出：单 Session → xlsx 双 Sheet（PASS 原样、FAIL 按 (StickerSN, DeviceSN) 去重保留第一条）+ txt。
         /// </summary>
         Task ExportBySessionAsync(int sessionId, string outputDirectory);
+
+        /// <summary>
+        /// 按 Session 导出（带过滤）：根据 ExportRecordFilter 过滤 TestRecord 后导出。
+        /// </summary>
+        /// <param name="sessionId">会话内部 Id</param>
+        /// <param name="outputDirectory">输出目录</param>
+        /// <param name="filter">记录过滤（SnOnly/VersionOnly/All），null 等价于 All</param>
+        Task ExportBySessionAsync(int sessionId, string outputDirectory, ExportRecordFilter filter);
 
         void Dispose();
     }

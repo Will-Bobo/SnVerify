@@ -113,7 +113,8 @@ namespace SnVerify.Services.Session
                     }
                 }
 
-                var orderExists = _storage.OrderExistsAsync(orderId).GetAwaiter().GetResult();
+                // 按订单名称 + 项目（ProductId）联合判断：该项目下该订单是否已存在；不存在则创建（OrderName + ProductId 唯一）
+                var orderExists = _storage.OrderExistsByOrderNameAndProductAsync(displayOrderName, productId).GetAwaiter().GetResult();
                 if (!orderExists)
                 {
                     var order = new Order
@@ -125,17 +126,12 @@ namespace SnVerify.Services.Session
                     _storage.CreateOrderAsync(order).GetAwaiter().GetResult();
                 }
 
-                // 从当前订单列表中根据名称找到对应的内部 Id，供 TestSession 使用。
+                // 从当前订单列表中根据 OrderName + ProductId 找到对应的内部 Id，供 TestSession 使用。
                 var allOrders = _storage.GetAllOrdersAsync().GetAwaiter().GetResult();
-                var orderEntity = allOrders.FirstOrDefault(o => o.OrderName == displayOrderName);
+                var orderEntity = allOrders.FirstOrDefault(o => o.OrderName == displayOrderName && o.ProductId == productId);
                 if (orderEntity == null)
                 {
-                    throw new InvalidOperationException($"未能找到订单记录: {displayOrderName}");
-                }
-                // 若订单此前 ProductId 为 0 且本次有项目，则修正关联
-                if (orderEntity.ProductId == 0 && productId != 0)
-                {
-                    _storage.SetOrderProductIdAsync(displayOrderName, productId).GetAwaiter().GetResult();
+                    throw new InvalidOperationException($"未能找到订单记录: {displayOrderName} (项目Id={productId})");
                 }
 
                 var session = new TestSession

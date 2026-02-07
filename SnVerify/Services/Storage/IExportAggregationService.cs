@@ -4,6 +4,7 @@
 /// </remarks>
 
 using System.Threading.Tasks;
+using SnVerify.Domain.Export;
 
 namespace SnVerify.Services.Storage
 {
@@ -17,13 +18,15 @@ namespace SnVerify.Services.Storage
         /// </summary>
         /// <param name="orderId">订单 ID</param>
         /// <param name="outputDirectory">输出目录</param>
-        Task ExportByOrderIdAsync(string orderId, string outputDirectory);
+        /// <param name="filter">导出记录过滤（可选，默认 All）</param>
+        Task ExportByOrderIdAsync(string orderId, string outputDirectory, ExportRecordFilter filter = null);
 
         /// <summary>
         /// 按项目导出：查该项目下所有 Session，逐 Session 调用 ExportBySessionAsync。
         /// </summary>
         /// <param name="projectId">项目 ID</param>
         /// <param name="outputDirectory">输出目录</param>
-        Task ExportByProjectIdAsync(string projectId, string outputDirectory);
+        /// <param name="filter">导出记录过滤（可选，默认 All）</param>
+        Task ExportByProjectIdAsync(string projectId, string outputDirectory, ExportRecordFilter filter = null);
     }
 }

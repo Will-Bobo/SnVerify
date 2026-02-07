@@ -753,7 +753,16 @@ namespace SnVerify.ViewModels
                 return;
             }
 
-            // Step 2: 选择具体项目或订单
+            // Step 2: 选择导出内容类型（SN 检验 / 版本检验 / 全部），默认根据当前 VerificationType 勾选
+            var exportFilter = _dialogService.ChooseExportRecordFilter(new[] { CurrentVerificationType });
+            if (exportFilter == null)
+            {
+                _loggingService.LogInfo("导出已取消");
+                LoggingSnapshot = _loggingService.Snapshot;
+                return;
+            }
+
+            // Step 3: 选择具体项目或订单
             string selectedId = null;
             if (exportDimension == ExportDimension.ByProject)
             {
@@ -784,7 +793,7 @@ namespace SnVerify.ViewModels
                 return;
             }
 
-            // Step 3: 选择导出文件夹（不在 ViewModel 中访问文件系统，仅传递上次路径或日志目录字符串）
+            // Step 4: 选择导出文件夹（不在 ViewModel 中访问文件系统，仅传递上次路径或日志目录字符串）
             var initialFolder = !string.IsNullOrEmpty(_lastExportFolder)
                 ? _lastExportFolder
                 : _logDirectory;
@@ -801,7 +810,7 @@ namespace SnVerify.ViewModels
             Settings.Default.LastExportFolder = selectedFolder;
             Settings.Default.Save();
 
-            // Step 4: 检查 ZIP 是否已存在，必要时弹出覆盖确认对话框
+            // Step 5: 检查 ZIP 是否已存在，必要时弹出覆盖确认对话框
             var safeName = ToSafeFileName(selectedId);
             var zipPath = Path.Combine(selectedFolder, safeName + ".zip");
 
@@ -828,13 +837,13 @@ namespace SnVerify.ViewModels
                 }
             }
 
-            // Step 5: 执行导出（所有路径/ZIP/文件系统逻辑均在 Service 层实现）
+            // Step 6: 执行导出（所有路径/ZIP/文件系统逻辑均在 Service 层实现，filter 透传至 Storage）
             try
             {
                 if (exportDimension == ExportDimension.ByProject)
-                    await _exportAggregationService.ExportByProjectIdAsync(selectedId, selectedFolder);
+                    await _exportAggregationService.ExportByProjectIdAsync(selectedId, selectedFolder, exportFilter);
                 else
-                    await _exportAggregationService.ExportByOrderIdAsync(selectedId, selectedFolder);
+                    await _exportAggregationService.ExportByOrderIdAsync(selectedId, selectedFolder, exportFilter);
                 _loggingService.LogInfo($"导出成功: {(exportDimension == ExportDimension.ByProject ? "项目" : "订单")}={selectedId}, 目录={selectedFolder}");
                 LoggingSnapshot = _loggingService.Snapshot;
             }

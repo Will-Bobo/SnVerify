@@ -5,6 +5,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using Moq;
 using NUnit.Framework;
+using OfficeOpenXml;
+using SnVerify.Domain.Export;
 using SnVerify.Domain.Models;
 using SnVerify.Services.Logging;
 using SnVerify.Services.Storage;
@@ -19,6 +21,7 @@ namespace SnVerify.Tests.Services
         [SetUp]
         public void SetUp()
         {
+            ExcelPackage.LicenseContext = LicenseContext.NonCommercial;
             _outputDir = Path.Combine(Path.GetTempPath(), $"SnVerify_ExportAggregation_{Guid.NewGuid():N}");
             Directory.CreateDirectory(_outputDir);
         }
@@ -50,6 +53,19 @@ namespace SnVerify.Tests.Services
             storageMock
                 .Setup(s => s.GetSessionsByOrderIdAsync(orderName))
                 .ReturnsAsync(sessions);
+
+            // 空 Session 优化：仅当 ExportBySessionAsync 生成 Excel 时才导出日志；Mock 需创建 Excel 文件
+            storageMock
+                .Setup(s => s.ExportBySessionAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<ExportRecordFilter>()))
+                .Callback<int, string, ExportRecordFilter>((id, dir, _) =>
+                {
+                    using (var pkg = new ExcelPackage())
+                    {
+                        pkg.Workbook.Worksheets.Add("PASS");
+                        pkg.SaveAs(new FileInfo(Path.Combine(dir, $"{id}.xlsx")));
+                    }
+                })
+                .Returns(Task.CompletedTask);
 
             // 为每个 Session 创建对应的日志文件，并通过 ILoggingService 暴露路径
             foreach (var s in sessions)
@@ -126,6 +142,18 @@ namespace SnVerify.Tests.Services
                 .Setup(s => s.GetAllOrdersAsync())
                 .ReturnsAsync(new[] { order1, order2 });
 
+            storageMock
+                .Setup(s => s.ExportBySessionAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<ExportRecordFilter>()))
+                .Callback<int, string, ExportRecordFilter>((id, dir, _) =>
+                {
+                    using (var pkg = new ExcelPackage())
+                    {
+                        pkg.Workbook.Worksheets.Add("PASS");
+                        pkg.SaveAs(new FileInfo(Path.Combine(dir, $"{id}.xlsx")));
+                    }
+                })
+                .Returns(Task.CompletedTask);
+
             // 为每个 Session 创建对应的日志文件，并通过 ILoggingService 暴露路径
             foreach (var s in sessions)
             {
@@ -199,6 +227,18 @@ namespace SnVerify.Tests.Services
                 .Setup(s => s.GetAllOrdersAsync())
                 .ReturnsAsync(new[] { order });
 
+            storageMock
+                .Setup(s => s.ExportBySessionAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<ExportRecordFilter>()))
+                .Callback<int, string, ExportRecordFilter>((id, dir, _) =>
+                {
+                    using (var pkg = new ExcelPackage())
+                    {
+                        pkg.Workbook.Worksheets.Add("PASS");
+                        pkg.SaveAs(new FileInfo(Path.Combine(dir, $"{id}.xlsx")));
+                    }
+                })
+                .Returns(Task.CompletedTask);
+
             // 为单个 Session 写入多行日志，验证导出内容逐字一致
             var logPath = Path.Combine(_outputDir, $"session_{sessionName}.log");
             var originalLines = new[]
@@ -237,6 +277,59 @@ namespace SnVerify.Tests.Services
 
             storageMock.VerifyAll();
             logServiceMock.VerifyAll();
+        }
+
+        /// <summary>
+        /// 异常场景：单个 Session 导出异常，其他 Session 正常导出，异常被记录不抛出
+        /// </summary>
+        [Test]
+        public async Task ExportByOrderId_WhenOneSessionFails_OthersContinueAndLogError()
+        {
+            var storageMock = new Mock<IStorageService>(MockBehavior.Strict);
+            var logServiceMock = new Mock<ILoggingService>(MockBehavior.Strict);
+            var logger = new NullFileLogger();
+
+            var orderName = "Order_Ex";
+            var sessions = new[]
+            {
+                new TestSession { Id = 201, OrderId = 1001, SessionName = "Order_Ex_20260126_100000", StartTime = DateTime.Now },
+                new TestSession { Id = 202, OrderId = 1001, SessionName = "Order_Ex_20260126_110000", StartTime = DateTime.Now }
+            };
+
+            storageMock.Setup(s => s.GetSessionsByOrderIdAsync(orderName)).ReturnsAsync(sessions);
+
+            storageMock
+                .Setup(s => s.ExportBySessionAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<ExportRecordFilter>()))
+                .Callback<int, string, ExportRecordFilter>((id, dir, _) =>
+                {
+                    if (id == 201)
+                        throw new InvalidOperationException("模拟 Session 201 导出失败");
+                    using (var pkg = new ExcelPackage())
+                    {
+                        pkg.Workbook.Worksheets.Add("PASS");
+                        pkg.SaveAs(new FileInfo(Path.Combine(dir, $"{id}.xlsx")));
+                    }
+                })
+                .Returns(Task.CompletedTask);
+
+            var logPath2 = Path.Combine(_outputDir, "session_Order_Ex_20260126_110000.log");
+            File.WriteAllText(logPath2, "LOG-Session2");
+            logServiceMock.Setup(ls => ls.GetLogFilePath("Order_Ex_20260126_110000")).Returns(logPath2);
+
+            var service = new ExportAggregationService(storageMock.Object, logger, logServiceMock.Object);
+
+            await service.ExportByOrderIdAsync(orderName, _outputDir);
+
+            var zipPath = Path.Combine(_outputDir, $"{orderName}.zip");
+            Assert.That(File.Exists(zipPath), Is.True);
+
+            using (var archive = ZipFile.OpenRead(zipPath))
+            {
+                var entries = archive.Entries.ToDictionary(e => e.FullName, e => e);
+                Assert.That(entries.ContainsKey($"{orderName}/Order_Ex_20260126_100000.xlsx"), Is.False, "失败 Session 不应有 Excel");
+                Assert.That(entries.ContainsKey($"{orderName}/Order_Ex_20260126_110000.xlsx"), Is.True, "成功 Session 应有 Excel");
+                Assert.That(entries.ContainsKey($"{orderName}/Order_Ex_20260126_110000.log"), Is.True, "成功 Session 应有日志");
+            }
         }
     }
 }
