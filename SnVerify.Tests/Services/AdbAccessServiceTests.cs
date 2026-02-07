@@ -30,10 +30,22 @@ namespace SnVerify.Tests.Services
             _adbAccessService = new AdbAccessService(TestAdbPath, _processRunnerMock.Object);
         }
 
+        private void SetupShellExitWarmup()
+        {
+            _processRunnerMock
+                .Setup(x => x.RunAsync(
+                    TestAdbPath,
+                    "shell exit",
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(ProcessExecutionResult.Success(string.Empty));
+        }
+
         [Test]
         public async Task ReadDeviceSnAsync_ShouldReturnSuccess_WhenBothCommandsSucceed()
         {
             // Arrange
+            SetupShellExitWarmup();
             _processRunnerMock
                 .Setup(x => x.RunAsync(
                     TestAdbPath,
@@ -72,6 +84,7 @@ namespace SnVerify.Tests.Services
         public async Task ReadDeviceSnAsync_ShouldReturnFailure_WhenYlzeroCommandFails()
         {
             // Arrange
+            SetupShellExitWarmup();
             // ylzero 命令失败，ExitCode = 127（命令不存在，debug 版机器会出现，可继续 SN 读取）
             _processRunnerMock
                 .Setup(x => x.RunAsync(
@@ -111,6 +124,7 @@ namespace SnVerify.Tests.Services
         public async Task ReadDeviceSnAsync_ShouldReturnFailure_WhenSnIsEmpty()
         {
             // Arrange
+            SetupShellExitWarmup();
             _processRunnerMock
                 .Setup(x => x.RunAsync(
                     TestAdbPath,
@@ -140,6 +154,7 @@ namespace SnVerify.Tests.Services
         public async Task ReadDeviceSnAsync_ShouldReturnFailure_WhenSnIsWhitespace()
         {
             // Arrange
+            SetupShellExitWarmup();
             _processRunnerMock
                 .Setup(x => x.RunAsync(
                     TestAdbPath,
@@ -168,6 +183,7 @@ namespace SnVerify.Tests.Services
         public async Task ReadDeviceSnAsync_ShouldRetry_WhenFirstAttemptFails()
         {
             // Arrange
+            SetupShellExitWarmup();
             var attemptCount = 0;
             _processRunnerMock
                 .Setup(x => x.RunAsync(
@@ -206,6 +222,7 @@ namespace SnVerify.Tests.Services
         public async Task ReadDeviceSnAsync_ShouldRetryUpToThreeTimes_WhenAllAttemptsFail()
         {
             // Arrange
+            SetupShellExitWarmup();
             var attemptCount = 0;
             _processRunnerMock
                 .Setup(x => x.RunAsync(
@@ -232,6 +249,7 @@ namespace SnVerify.Tests.Services
         public async Task ReadDeviceSnAsync_ShouldReturnTimeout_WhenProcessTimesOut()
         {
             // Arrange
+            SetupShellExitWarmup();
             _processRunnerMock
                 .Setup(x => x.RunAsync(
                     TestAdbPath,
@@ -253,6 +271,7 @@ namespace SnVerify.Tests.Services
         public async Task ReadDeviceSnAsync_ShouldRespectCancellationToken()
         {
             // Arrange
+            SetupShellExitWarmup();
             using (var cts = new CancellationTokenSource())
             {
                 cts.Cancel();
@@ -278,6 +297,7 @@ namespace SnVerify.Tests.Services
         public async Task ReadDeviceSnAsync_ShouldReturnFailure_WhenSnReadCommandFails()
         {
             // Arrange
+            SetupShellExitWarmup();
             _processRunnerMock
                 .Setup(x => x.RunAsync(
                     TestAdbPath,
@@ -306,6 +326,7 @@ namespace SnVerify.Tests.Services
         public async Task ReadDeviceSnAsync_ShouldTrimSnOutput()
         {
             // Arrange
+            SetupShellExitWarmup();
             var snWithWhitespace = $"  {TestSn}  \n";
             _processRunnerMock
                 .Setup(x => x.RunAsync(
@@ -329,6 +350,41 @@ namespace SnVerify.Tests.Services
             // Assert
             Assert.That(result.IsSuccess, Is.True);
             Assert.That(result.Sn, Is.EqualTo(TestSn));
+        }
+
+        [Test]
+        public async Task EnsureAdbShellWarmedUpAsync_ShouldExecuteOnlyOnce_WhenReadDeviceSnAsyncCalledMultipleTimes()
+        {
+            // Arrange: 多次调用 ReadDeviceSnAsync 应只执行一次 shell exit 预热
+            SetupShellExitWarmup();
+            _processRunnerMock
+                .Setup(x => x.RunAsync(
+                    TestAdbPath,
+                    "shell ylzero",
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(ProcessExecutionResult.Success(""));
+            _processRunnerMock
+                .Setup(x => x.RunAsync(
+                    TestAdbPath,
+                    "shell getprop sys.skyroam.osi.sn",
+                    It.IsAny<int>(),
+                    It.IsAny<CancellationToken>()))
+                .ReturnsAsync(ProcessExecutionResult.Success(TestSn));
+
+            // Act: 连续调用 3 次
+            var r1 = await _adbAccessService.ReadDeviceSnAsync();
+            var r2 = await _adbAccessService.ReadDeviceSnAsync();
+            var r3 = await _adbAccessService.ReadDeviceSnAsync();
+
+            // Assert
+            Assert.That(r1.IsSuccess, Is.True);
+            Assert.That(r2.IsSuccess, Is.True);
+            Assert.That(r3.IsSuccess, Is.True);
+            _processRunnerMock.Verify(
+                x => x.RunAsync(TestAdbPath, "shell exit", It.IsAny<int>(), It.IsAny<CancellationToken>()),
+                Times.Once,
+                "ADB shell 预热应只执行一次");
         }
     }
 }

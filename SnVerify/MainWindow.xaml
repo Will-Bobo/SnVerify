@@ -156,6 +156,7 @@
                     </Border>
                     <TextBlock Grid.Column="6" Text="检验类型：" Style="{StaticResource BatchHeaderStyle}" Margin="10,0,0,0" VerticalAlignment="Center" Padding="5,2"/>
                     <ComboBox Grid.Column="7" x:Name="VerificationTypeComboBox" MinWidth="100" Height="28" Margin="5,0" VerticalAlignment="Center"
+                              VerticalContentAlignment="Center"
                               ItemsSource="{Binding AvailableVerificationTypes}"
                               SelectedItem="{Binding CurrentVerificationType, Mode=TwoWay}">
                         <ComboBox.Style>
@@ -171,9 +172,14 @@
                         </ComboBox.Style>
                         <ComboBox.ItemTemplate>
                             <DataTemplate>
-                                <TextBlock Text="{Binding Converter={StaticResource VerificationTypeToDisplayConverter}}"/>
+                                <TextBlock Text="{Binding Converter={StaticResource VerificationTypeToDisplayConverter}}" VerticalAlignment="Center"/>
                             </DataTemplate>
                         </ComboBox.ItemTemplate>
+                        <ComboBox.ItemContainerStyle>
+                            <Style TargetType="ComboBoxItem">
+                                <Setter Property="VerticalContentAlignment" Value="Center"/>
+                            </Style>
+                        </ComboBox.ItemContainerStyle>
                     </ComboBox>
                     <Button Grid.Column="8" x:Name="StartBatchButton" Content="开始测试" Width="100" Height="28" Margin="5,0" VerticalAlignment="Center"
                             Command="{Binding StartBatchCommand}">

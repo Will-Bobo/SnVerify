@@ -22,6 +22,8 @@ namespace SnVerify.Services.Adb
         private readonly string _adbPath;
         private readonly IProcessRunner _processRunner;
         private readonly object _snapshotLock = new object();
+        private bool _adbShellWarmedUp = false;
+        private readonly object _warmupLock = new object();
         private AdbSnapshot _snapshot;
         private const int MaxRetries = 3;
         private const int RetryDelayMs = 1000;
@@ -64,9 +66,18 @@ namespace SnVerify.Services.Adb
         /// <summary>
         /// ADB shell 通道预热，避免冷启动下首次 shell 命令 protocol fault / connection reset。
         /// 失败不阻断后续流程，仅记录日志。
+        /// 仅执行一次，并发调用下保证只执行一次。
         /// </summary>
         private async Task EnsureAdbShellWarmedUpAsync(CancellationToken token)
         {
+            if (_adbShellWarmedUp) return;
+
+            lock (_warmupLock)
+            {
+                if (_adbShellWarmedUp) return;
+                _adbShellWarmedUp = true;
+            }
+
             try
             {
                 Debug.WriteLine("[AdbAccessService] adb shell warm-up executed");
