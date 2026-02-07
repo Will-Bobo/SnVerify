@@ -48,6 +48,18 @@ namespace SnVerify.Domain.Models
         /// 校验完成时间。
         /// </summary>
         public DateTime VerifyTime { get; set; }
+
+        /// <summary>
+        /// 期望版本号（VersionMatch 类型使用；SnMatch 允许为 null）。
+        /// 类型由所属 Session.VerificationType 推断。
+        /// </summary>
+        public string ExpectedVersion { get; set; }
+
+        /// <summary>
+        /// 实际版本号（VersionMatch 类型使用；SnMatch 允许为 null）。
+        /// 类型由所属 Session.VerificationType 推断。
+        /// </summary>
+        public string ActualVersion { get; set; }
     }
 }
 

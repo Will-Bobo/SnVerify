@@ -3,11 +3,13 @@
 /// </author>
 
 using System;
-using System.IO;
 using System.Collections.Generic;
+using System.IO;
+using System.Threading;
 using System.Threading.Tasks;
 using Moq;
 using NUnit.Framework;
+using SnVerify.Domain.Enums;
 using SnVerify.Domain.Models;
 using SnVerify.Domain.State;
 using SnVerify.Domain.Validation;
@@ -32,6 +34,7 @@ namespace SnVerify.Tests.ViewModels
         private Mock<ISessionLifecycleService> _sessionLifecycleServiceMock;
         private Mock<IVerificationFlowServiceFactory> _flowServiceFactoryMock;
         private Mock<IVerificationFlowService> _verificationFlowServiceMock;
+        private Mock<IVersionVerificationFlowService> _versionVerificationFlowServiceMock;
         private Mock<ILoggingService> _loggingServiceMock;
         private Mock<IStorageService> _storageServiceMock;
         private Mock<IAdbAccessService> _adbAccessServiceMock;
@@ -56,6 +59,7 @@ namespace SnVerify.Tests.ViewModels
             _sessionLifecycleServiceMock = new Mock<ISessionLifecycleService>();
             _flowServiceFactoryMock = new Mock<IVerificationFlowServiceFactory>();
             _verificationFlowServiceMock = new Mock<IVerificationFlowService>();
+            _versionVerificationFlowServiceMock = new Mock<IVersionVerificationFlowService>();
             _loggingServiceMock = new Mock<ILoggingService>();
             _storageServiceMock = new Mock<IStorageService>();
             _adbAccessServiceMock = new Mock<IAdbAccessService>();
@@ -65,6 +69,7 @@ namespace SnVerify.Tests.ViewModels
 
             _sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Idle());
             _verificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
+            _versionVerificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
             _flowServiceFactoryMock.Setup(f => f.Create(It.IsAny<string>(), It.IsAny<string>())).Returns(_verificationFlowServiceMock.Object);
             _loggingServiceMock.Setup(m => m.Snapshot).Returns(LoggingSnapshot.Idle());
 
@@ -77,6 +82,7 @@ namespace SnVerify.Tests.ViewModels
                 _exportAggregationServiceMock.Object,
                 _orderNameValidatorMock.Object,
                 _dialogServiceMock.Object,
+                _versionVerificationFlowServiceMock.Object,
                 Path.GetTempPath());
         }
 
@@ -93,6 +99,7 @@ namespace SnVerify.Tests.ViewModels
                     _exportAggregationServiceMock.Object,
                     _orderNameValidatorMock.Object,
                     _dialogServiceMock.Object,
+                    _versionVerificationFlowServiceMock.Object,
                     null));
         }
 
@@ -395,6 +402,52 @@ namespace SnVerify.Tests.ViewModels
         }
 
         [Test]
+        public void StartBatchCommand_ShouldBeDisabled_WhenVersionMatchAndTargetVersionEmpty()
+        {
+            // Arrange: VersionMatch 且目标版本为空时，开始测试按钮不可执行
+            _viewModel.CurrentVerificationType = VerificationType.VersionMatch;
+            _viewModel.TargetVersionInput = "";
+
+            // Act
+            var canExecute = _viewModel.StartBatchCommand.CanExecute(null);
+
+            // Assert
+            Assert.That(canExecute, Is.False);
+        }
+
+        [Test]
+        public void StartBatchCommand_ShouldBeEnabled_WhenVersionMatchAndTargetVersionFilled()
+        {
+            // Arrange
+            _viewModel.CurrentVerificationType = VerificationType.VersionMatch;
+            _viewModel.TargetVersionInput = "1.0.0";
+
+            // Act
+            var canExecute = _viewModel.StartBatchCommand.CanExecute(null);
+
+            // Assert
+            Assert.That(canExecute, Is.True);
+        }
+
+        [Test]
+        public async Task StartBatchAsync_WhenVersionMatchAndTargetVersionEmpty_ShouldShowWarningAndNotCreateSession()
+        {
+            // Arrange: 防御性校验 - 即使命令被绕过，执行时也应弹窗并阻止
+            _viewModel.CurrentVerificationType = VerificationType.VersionMatch;
+            _viewModel.TargetVersionInput = "";
+            _viewModel.ProjectIdInput = "PROJECT001";
+            _viewModel.OrderIdInput = "ORDER001";
+
+            // Act
+            _viewModel.StartBatchCommand.Execute(null);
+            await Task.Delay(200);
+
+            // Assert: 应弹窗提示，不调用 CreateAndStartSession
+            _dialogServiceMock.Verify(d => d.ShowWarning(It.Is<string>(s => s != null && (s.Contains("目标版本") || s.Contains("版本号"))), It.IsAny<string>()), Times.Once);
+            _sessionLifecycleServiceMock.Verify(s => s.CreateAndStartSession(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Test]
         public async Task StartBatchCommand_ShouldCreateSession_WhenProjectIdAndOrderIdProvided()
         {
             // Arrange
@@ -539,6 +592,493 @@ namespace SnVerify.Tests.ViewModels
                     Directory.Delete(exportRoot, true);
                 }
             }
+        }
+
+        [Test]
+        public void CurrentVerificationType_ShouldDefaultToSnMatch()
+        {
+            Assert.That(_viewModel.CurrentVerificationType, Is.EqualTo(VerificationType.SnMatch));
+        }
+
+        [Test]
+        public void CurrentVerificationType_WhenSet_ShouldRaisePropertyChanged()
+        {
+            var raised = false;
+            _viewModel.PropertyChanged += (s, e) =>
+            {
+                if (e.PropertyName == nameof(MainViewModel.CurrentVerificationType))
+                    raised = true;
+            };
+            _viewModel.CurrentVerificationType = VerificationType.VersionMatch;
+            Assert.That(raised, Is.True);
+            Assert.That(_viewModel.CurrentVerificationType, Is.EqualTo(VerificationType.VersionMatch));
+        }
+
+        [Test]
+        public void IsVerificationTypeComboBoxEnabled_ShouldBeTrue_WhenSessionNotActive()
+        {
+            _viewModel.SessionSnapshot = SessionSnapshot.Idle();
+            Assert.That(_viewModel.IsVerificationTypeComboBoxEnabled, Is.True);
+        }
+
+        [Test]
+        public void IsVerificationTypeComboBoxEnabled_ShouldBeFalse_WhenSessionActive()
+        {
+            var sessionId = "ORDER001_20250126_143000";
+            var orderId = "ORDER001";
+            _viewModel.SessionSnapshot = SessionSnapshot.Active(sessionId, orderId, DateTime.Now);
+            Assert.That(_viewModel.IsVerificationTypeComboBoxEnabled, Is.False);
+        }
+
+        [Test]
+        public void IsScanInputVisible_ShouldBeTrue_WhenCurrentVerificationTypeIsSnMatch()
+        {
+            _viewModel.CurrentVerificationType = VerificationType.SnMatch;
+            Assert.That(_viewModel.IsScanInputVisible, Is.True);
+        }
+
+        [Test]
+        public void IsScanInputVisible_ShouldBeFalse_WhenCurrentVerificationTypeIsVersionMatch()
+        {
+            _viewModel.CurrentVerificationType = VerificationType.VersionMatch;
+            Assert.That(_viewModel.IsScanInputVisible, Is.False);
+        }
+
+        [Test]
+        public void IsVersionInputVisible_ShouldBeTrue_WhenCurrentVerificationTypeIsVersionMatch()
+        {
+            _viewModel.CurrentVerificationType = VerificationType.VersionMatch;
+            Assert.That(_viewModel.IsVersionInputVisible, Is.True);
+        }
+
+        [Test]
+        public void IsVersionInputVisible_ShouldBeFalse_WhenCurrentVerificationTypeIsSnMatch()
+        {
+            _viewModel.CurrentVerificationType = VerificationType.SnMatch;
+            Assert.That(_viewModel.IsVersionInputVisible, Is.False);
+        }
+
+        [Test]
+        public void IsSnInfoVisible_ShouldBeTrue_WhenSnMatch()
+        {
+            _viewModel.CurrentVerificationType = VerificationType.SnMatch;
+            Assert.That(_viewModel.IsSnInfoVisible, Is.True);
+        }
+
+        [Test]
+        public void IsSnInfoVisible_ShouldBeFalse_WhenVersionMatch()
+        {
+            _viewModel.CurrentVerificationType = VerificationType.VersionMatch;
+            Assert.That(_viewModel.IsSnInfoVisible, Is.False);
+        }
+
+        [Test]
+        public void IsVersionInfoVisible_ShouldBeFalse_WhenSnMatch()
+        {
+            _viewModel.CurrentVerificationType = VerificationType.SnMatch;
+            Assert.That(_viewModel.IsVersionInfoVisible, Is.False);
+        }
+
+        [Test]
+        public void IsVersionInfoVisible_ShouldBeTrue_WhenVersionMatch()
+        {
+            _viewModel.CurrentVerificationType = VerificationType.VersionMatch;
+            Assert.That(_viewModel.IsVersionInfoVisible, Is.True);
+        }
+
+        [Test]
+        public void ActualDeviceVersionDisplay_ShouldReturnPlaceholder_WhenVersionMatchAndNoRecord()
+        {
+            _viewModel.CurrentVerificationType = VerificationType.VersionMatch;
+            // _lastVersionRecord is null by default
+            Assert.That(_viewModel.ActualDeviceVersionDisplay, Is.EqualTo("--"));
+        }
+
+        [Test]
+        public async Task ActualDeviceVersionDisplay_ShouldReturnActualVersion_WhenVersionMatchAndHasRecord()
+        {
+            _viewModel.CurrentVerificationType = VerificationType.VersionMatch;
+            // 通过反射或内部更新设置 _lastVersionRecord - MainViewModel 没有 public setter
+            // 需要调用 StartVersionVerifyAsync 或通过 VerificationSnapshot 更新触发
+            // 我们通过执行版本检验来设置
+            var sessionId = "ORDER001_20250126_143000";
+            var orderId = "ORDER001";
+            var session = new TestSession
+            {
+                Id = 1,
+                SessionName = sessionId,
+                OrderId = 1,
+                ExpectedVersion = "1.0.0",
+                StartTime = DateTime.Now
+            };
+            _sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Active(sessionId, orderId, DateTime.Now));
+            _sessionLifecycleServiceMock.Setup(m => m.GetCurrentSessionId()).Returns(sessionId);
+            _viewModel.SessionSnapshot = SessionSnapshot.Active(sessionId, orderId, DateTime.Now);
+            _storageServiceMock.Setup(s => s.GetSessionBySessionNameAsync(sessionId)).ReturnsAsync(session);
+            var record = new TestRecord
+            {
+                SessionId = 1,
+                Result = "PASS",
+                ActualVersion = "1.0.0",
+                ExpectedVersion = "1.0.0",
+                VerifyTime = DateTime.Now
+            };
+            _versionVerificationFlowServiceMock
+                .Setup(m => m.ExecuteVersionCheckAsync(It.IsAny<TestSession>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(record);
+
+            _viewModel.TargetVersionInput = "1.0.0";
+            _viewModel.StartVersionVerifyCommand.Execute(null);
+            await WaitUntilAsync(() => _viewModel.ActualDeviceVersionDisplay == "1.0.0", timeoutMs: 2000);
+
+            Assert.That(_viewModel.ActualDeviceVersionDisplay, Is.EqualTo("1.0.0"));
+        }
+
+        [Test]
+        public void ExpectedVersionDisplay_ShouldReturnTargetVersionInput_WhenVersionMatch()
+        {
+            _viewModel.CurrentVerificationType = VerificationType.VersionMatch;
+            _viewModel.TargetVersionInput = "2.0.1";
+            Assert.That(_viewModel.ExpectedVersionDisplay, Is.EqualTo("2.0.1"));
+        }
+
+        [Test]
+        public void ExpectedVersionDisplay_ShouldReturnPlaceholder_WhenVersionMatchAndEmpty()
+        {
+            _viewModel.CurrentVerificationType = VerificationType.VersionMatch;
+            _viewModel.TargetVersionInput = "";
+            Assert.That(_viewModel.ExpectedVersionDisplay, Is.EqualTo("--"));
+        }
+
+        [Test]
+        public void DeviceSN_ShouldNotShowVersionWhenSwitchedToSnMatch_AfterVersionTest()
+        {
+            // 版本检验后切换到 SnMatch，设备SN 区域应显示空而非版本号
+            var sessionId = "ORDER001_20250126_143000";
+            var orderId = "ORDER001";
+            var session = new TestSession { Id = 1, SessionName = sessionId, OrderId = 1, ExpectedVersion = "1.0.0", StartTime = DateTime.Now };
+
+            _sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Active(sessionId, orderId, DateTime.Now));
+            _sessionLifecycleServiceMock.Setup(m => m.GetCurrentSessionId()).Returns(sessionId);
+            _viewModel.SessionSnapshot = SessionSnapshot.Active(sessionId, orderId, DateTime.Now);
+            _storageServiceMock.Setup(s => s.GetSessionBySessionNameAsync(sessionId)).ReturnsAsync(session);
+
+            var record = new TestRecord { SessionId = 1, Result = "PASS", ActualVersion = "1.0.0", ExpectedVersion = "1.0.0", VerifyTime = DateTime.Now };
+            _versionVerificationFlowServiceMock.Setup(m => m.ExecuteVersionCheckAsync(It.IsAny<TestSession>(), It.IsAny<CancellationToken>())).ReturnsAsync(record);
+            _versionVerificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Completed("--", "PASS", null, sessionId, "1.0.0"));
+
+            _viewModel.CurrentVerificationType = VerificationType.VersionMatch;
+            _viewModel.TargetVersionInput = "1.0.0";
+            _viewModel.StartVersionVerifyCommand.Execute(null);
+            System.Threading.Thread.Sleep(500); // 等待异步完成
+
+            Assert.That(_viewModel.ActualDeviceVersionDisplay, Is.EqualTo("1.0.0"), "VersionMatch 时设备版本应显示版本号");
+
+            // 模拟结束测试并切换到 SnMatch
+            _sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Idle());
+            _viewModel.SessionSnapshot = SessionSnapshot.Idle();
+            _viewModel.CurrentVerificationType = VerificationType.SnMatch;
+            _verificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
+
+            // 触发快照更新（模拟定时器）
+            for (int i = 0; i < 3; i++)
+            {
+                System.Threading.Thread.Sleep(600); // 等待 UpdateSnapshotsInternal
+            }
+
+            // SnMatch 模式下 DeviceSN 应来自 SN 流程，不应显示版本号
+            Assert.That(_viewModel.DeviceSN, Is.EqualTo(""), "切换到 SnMatch 后设备SN 应为空");
+        }
+
+        [Test]
+        public void SwitchingVerificationType_ShouldUpdateVisibilityPropertiesSynchronously()
+        {
+            // 切换 VerificationType 时，UI 可见性属性同步更新
+            _viewModel.CurrentVerificationType = VerificationType.SnMatch;
+            Assert.That(_viewModel.IsSnInfoVisible, Is.True);
+            Assert.That(_viewModel.IsVersionInfoVisible, Is.False);
+
+            _viewModel.CurrentVerificationType = VerificationType.VersionMatch;
+            Assert.That(_viewModel.IsSnInfoVisible, Is.False);
+            Assert.That(_viewModel.IsVersionInfoVisible, Is.True);
+
+            _viewModel.CurrentVerificationType = VerificationType.SnMatch;
+            Assert.That(_viewModel.IsSnInfoVisible, Is.True);
+            Assert.That(_viewModel.IsVersionInfoVisible, Is.False);
+        }
+
+        [Test]
+        public void StartVersionVerifyCommand_ShouldBeDisabled_WhenVersionMatchAndTargetVersionEmpty()
+        {
+            // Arrange
+            var sessionId = "ORDER001_20250126_143000";
+            var orderId = "ORDER001";
+            _viewModel.SessionSnapshot = SessionSnapshot.Active(sessionId, orderId, DateTime.Now);
+            _viewModel.CurrentVerificationType = VerificationType.VersionMatch;
+            _viewModel.TargetVersionInput = "";
+
+            // Act
+            var canExecute = _viewModel.StartVersionVerifyCommand.CanExecute(null);
+
+            // Assert
+            Assert.That(canExecute, Is.False);
+        }
+
+        [Test]
+        public void StartVersionVerifyCommand_ShouldBeEnabled_WhenVersionMatchAndTargetVersionFilled()
+        {
+            // Arrange
+            var sessionId = "ORDER001_20250126_143000";
+            var orderId = "ORDER001";
+            _viewModel.SessionSnapshot = SessionSnapshot.Active(sessionId, orderId, DateTime.Now);
+            _viewModel.CurrentVerificationType = VerificationType.VersionMatch;
+            _viewModel.TargetVersionInput = "1.0.0";
+
+            // Act
+            var canExecute = _viewModel.StartVersionVerifyCommand.CanExecute(null);
+
+            // Assert
+            Assert.That(canExecute, Is.True);
+        }
+
+        [Test]
+        public void StartVersionVerifyCommand_ShouldBeDisabled_WhenSessionNotActive()
+        {
+            // Arrange: Session 未激活
+            _sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Idle());
+            _viewModel.SessionSnapshot = SessionSnapshot.Idle();
+
+            // Act
+            var canExecute = _viewModel.StartVersionVerifyCommand.CanExecute(null);
+
+            // Assert
+            Assert.That(canExecute, Is.False);
+        }
+
+        [Test]
+        public void StartVersionVerifyCommand_ShouldBeDisabled_WhenIsProcessing()
+        {
+            // Arrange
+            var sessionId = "ORDER001_20250126_143000";
+            var orderId = "ORDER001";
+            _viewModel.SessionSnapshot = SessionSnapshot.Active(sessionId, orderId, DateTime.Now);
+            _viewModel.VerificationSnapshot = VerificationSnapshot.Processing("SN");
+
+            // Act
+            var canExecute = _viewModel.StartVersionVerifyCommand.CanExecute(null);
+
+            // Assert
+            Assert.That(canExecute, Is.False);
+        }
+
+        [Test]
+        public void StartVersionVerifyCommand_ShouldBeDisabled_WhenIsSelfChecking()
+        {
+            // Arrange
+            var sessionId = "ORDER001_20250126_143000";
+            var orderId = "ORDER001";
+            _viewModel.SessionSnapshot = SessionSnapshot.Active(sessionId, orderId, DateTime.Now);
+            var tcs = new TaskCompletionSource<AdbSnReadResult>();
+            _adbAccessServiceMock.Setup(m => m.ReadDeviceSnAsync(default)).Returns(tcs.Task);
+            _adbAccessServiceMock.Setup(m => m.CheckMultipleDevices(out It.Ref<List<string>>.IsAny)).Returns(false);
+
+            // Act
+            _viewModel.SelfCheckCommand.Execute(null);
+            var canExecute = _viewModel.StartVersionVerifyCommand.CanExecute(null);
+
+            // Assert
+            Assert.That(canExecute, Is.False);
+
+            // Cleanup
+            tcs.SetResult(AdbSnReadResult.Success("DEVICE_SN"));
+        }
+
+        [Test]
+        public async Task StartVersionVerifyAsync_WhenSessionNotActive_ShouldLogAndSetBatchError()
+        {
+            // Arrange
+            _sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Idle());
+            _sessionLifecycleServiceMock.Setup(m => m.GetCurrentSessionId()).Returns((string)null);
+            _viewModel.SessionSnapshot = SessionSnapshot.Idle();
+
+            // Act
+            _viewModel.StartVersionVerifyCommand.Execute(null);
+            await Task.Delay(150);
+
+            // Assert
+            _loggingServiceMock.Verify(m => m.LogWarning(It.Is<string>(s => s != null && s.Contains("Session 未激活"))), Times.Once);
+            _versionVerificationFlowServiceMock.Verify(m => m.ExecuteVersionCheckAsync(It.IsAny<TestSession>(), It.IsAny<CancellationToken>()), Times.Never);
+        }
+
+        [Test]
+        public async Task StartVersionVerifyAsync_WhenExecuteReturnsPASS_ShouldUpdateSnapshotAndLastVersionRecord()
+        {
+            // Arrange
+            var sessionId = "ORDER001_20250126_143000";
+            var orderId = "ORDER001";
+            var expectedVersion = "1.0.0";
+            var actualVersion = "1.0.0";
+            var session = new TestSession
+            {
+                Id = 1,
+                SessionName = sessionId,
+                OrderId = 1,
+                ExpectedVersion = expectedVersion,
+                StartTime = DateTime.Now
+            };
+
+            _sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Active(sessionId, orderId, DateTime.Now));
+            _sessionLifecycleServiceMock.Setup(m => m.GetCurrentSessionId()).Returns(sessionId);
+            _viewModel.SessionSnapshot = SessionSnapshot.Active(sessionId, orderId, DateTime.Now);
+            _storageServiceMock.Setup(s => s.GetSessionBySessionNameAsync(sessionId)).ReturnsAsync(session);
+
+            var passRecord = new TestRecord
+            {
+                SessionId = 1,
+                Result = "PASS",
+                ActualVersion = actualVersion,
+                ExpectedVersion = expectedVersion,
+                VerifyTime = DateTime.Now
+            };
+            _versionVerificationFlowServiceMock
+                .Setup(m => m.ExecuteVersionCheckAsync(It.IsAny<TestSession>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(passRecord);
+            _versionVerificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Completed("--", "PASS", null, sessionId, actualVersion));
+
+            // Act
+            _viewModel.StartVersionVerifyCommand.Execute(null);
+            await WaitUntilAsync(() => _viewModel.VerificationSnapshot?.LastResult == "PASS", timeoutMs: 2000);
+
+            // Assert
+            Assert.That(_viewModel.VerificationSnapshot.LastResult, Is.EqualTo("PASS"));
+            Assert.That(_viewModel.VerificationSnapshot.DeviceSN, Is.EqualTo(actualVersion));
+            Assert.That(_viewModel.LastVersionRecord, Is.Not.Null);
+            Assert.That(_viewModel.LastVersionRecord.Result, Is.EqualTo("PASS"));
+            Assert.That(_viewModel.LastVersionRecord.ActualVersion, Is.EqualTo(actualVersion));
+        }
+
+        [Test]
+        public async Task StartVersionVerifyAsync_WhenExecuteReturnsFAIL_ShouldUpdateSnapshotWithFailReason()
+        {
+            // Arrange
+            var sessionId = "ORDER001_20250126_143000";
+            var orderId = "ORDER001";
+            var expectedVersion = "1.0.0";
+            var actualVersion = "1.0.1";
+            var failReason = "Version mismatch: expected 1.0.0, actual 1.0.1";
+            var session = new TestSession
+            {
+                Id = 1,
+                SessionName = sessionId,
+                OrderId = 1,
+                ExpectedVersion = expectedVersion,
+                StartTime = DateTime.Now
+            };
+
+            _sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Active(sessionId, orderId, DateTime.Now));
+            _sessionLifecycleServiceMock.Setup(m => m.GetCurrentSessionId()).Returns(sessionId);
+            _viewModel.SessionSnapshot = SessionSnapshot.Active(sessionId, orderId, DateTime.Now);
+            _storageServiceMock.Setup(s => s.GetSessionBySessionNameAsync(sessionId)).ReturnsAsync(session);
+
+            var failRecord = new TestRecord
+            {
+                SessionId = 1,
+                Result = "FAIL",
+                FailReason = failReason,
+                ActualVersion = actualVersion,
+                ExpectedVersion = expectedVersion,
+                VerifyTime = DateTime.Now
+            };
+            _versionVerificationFlowServiceMock
+                .Setup(m => m.ExecuteVersionCheckAsync(It.IsAny<TestSession>(), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(failRecord);
+            _versionVerificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Completed("--", "FAIL", failReason, sessionId, actualVersion));
+
+            // Act
+            _viewModel.StartVersionVerifyCommand.Execute(null);
+            await WaitUntilAsync(() => _viewModel.VerificationSnapshot?.LastResult == "FAIL", timeoutMs: 2000);
+
+            // Assert
+            Assert.That(_viewModel.VerificationSnapshot.LastResult, Is.EqualTo("FAIL"));
+            Assert.That(_viewModel.VerificationSnapshot.FailReason, Is.EqualTo(failReason));
+            Assert.That(_viewModel.LastVersionRecord.FailReason, Is.EqualTo(failReason));
+        }
+
+        [Test]
+        public async Task StartVersionVerifyAsync_WhenNoExpectedVersion_ShouldUseTargetVersionInput()
+        {
+            // Arrange: Session 无 ExpectedVersion，使用 TargetVersionInput
+            var sessionId = "ORDER001_20250126_143000";
+            var orderId = "ORDER001";
+            var targetVersion = "2.0.0";
+            var session = new TestSession
+            {
+                Id = 1,
+                SessionName = sessionId,
+                OrderId = 1,
+                ExpectedVersion = null,
+                StartTime = DateTime.Now
+            };
+
+            _sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Active(sessionId, orderId, DateTime.Now));
+            _sessionLifecycleServiceMock.Setup(m => m.GetCurrentSessionId()).Returns(sessionId);
+            _viewModel.SessionSnapshot = SessionSnapshot.Active(sessionId, orderId, DateTime.Now);
+            _viewModel.TargetVersionInput = targetVersion;
+            _storageServiceMock.Setup(s => s.GetSessionBySessionNameAsync(sessionId)).ReturnsAsync(session);
+
+            var passRecord = new TestRecord
+            {
+                SessionId = 1,
+                Result = "PASS",
+                ActualVersion = targetVersion,
+                ExpectedVersion = targetVersion,
+                VerifyTime = DateTime.Now
+            };
+            _versionVerificationFlowServiceMock
+                .Setup(m => m.ExecuteVersionCheckAsync(It.Is<TestSession>(s => s.ExpectedVersion == targetVersion), It.IsAny<CancellationToken>()))
+                .ReturnsAsync(passRecord);
+            _versionVerificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Completed("--", "PASS", null, sessionId, targetVersion));
+
+            // Act
+            _viewModel.StartVersionVerifyCommand.Execute(null);
+            await WaitUntilAsync(() => _viewModel.LastVersionRecord != null, timeoutMs: 2000);
+
+            // Assert
+            _versionVerificationFlowServiceMock.Verify(m => m.ExecuteVersionCheckAsync(It.Is<TestSession>(s => s.ExpectedVersion == targetVersion), It.IsAny<CancellationToken>()), Times.Once);
+        }
+
+        [Test]
+        public async Task StartVersionVerifyAsync_WhenExceptionThrown_ShouldSetUiStateFailAndLogError()
+        {
+            // Arrange
+            var sessionId = "ORDER001_20250126_143000";
+            var orderId = "ORDER001";
+            var session = new TestSession
+            {
+                Id = 1,
+                SessionName = sessionId,
+                OrderId = 1,
+                ExpectedVersion = "1.0.0",
+                StartTime = DateTime.Now
+            };
+
+            _sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Active(sessionId, orderId, DateTime.Now));
+            _sessionLifecycleServiceMock.Setup(m => m.GetCurrentSessionId()).Returns(sessionId);
+            _viewModel.SessionSnapshot = SessionSnapshot.Active(sessionId, orderId, DateTime.Now);
+            _storageServiceMock.Setup(s => s.GetSessionBySessionNameAsync(sessionId)).ReturnsAsync(session);
+
+            _versionVerificationFlowServiceMock
+                .Setup(m => m.ExecuteVersionCheckAsync(It.IsAny<TestSession>(), It.IsAny<CancellationToken>()))
+                .ThrowsAsync(new InvalidOperationException("ADB 连接失败"));
+
+            // Act
+            _viewModel.StartVersionVerifyCommand.Execute(null);
+            await WaitUntilAsync(() => _viewModel.VerificationSnapshot?.LastResult == "FAIL", timeoutMs: 2000);
+
+            // Assert
+            Assert.That(_viewModel.VerificationSnapshot.LastResult, Is.EqualTo("FAIL"));
+            Assert.That(_viewModel.UiState, Is.EqualTo(VerificationUiState.Fail));
+            _loggingServiceMock.Verify(m => m.LogError(It.Is<string>(s => s != null && s.Contains("ADB")), It.IsAny<Exception>()), Times.Once);
         }
 
         [Test]

@@ -6,6 +6,7 @@
 /// </remarks>
 
 using System;
+using SnVerify.Domain.Enums;
 
 namespace SnVerify.Domain.Models
 {
@@ -44,6 +45,16 @@ namespace SnVerify.Domain.Models
         /// 当前状态（可选），例如：Pending / Running / Completed。
         /// </summary>
         public string Status { get; set; }
+
+        /// <summary>
+        /// 检验类型：SN 匹配 / 版本匹配。Session 创建时必须显式指定，生命周期内不可变。
+        /// </summary>
+        public VerificationType VerificationType { get; set; }
+
+        /// <summary>
+        /// 目标版本号（VersionMatch 类型 Session 使用；SnMatch 允许为 null）。
+        /// </summary>
+        public string ExpectedVersion { get; set; }
     }
 }
 

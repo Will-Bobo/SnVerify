@@ -151,6 +151,12 @@ namespace SnVerify.Services.Storage
         Task<int?> GetInternalSessionIdBySessionNameAsync(string sessionName);
 
         /// <summary>
+        /// 根据业务 SessionName 获取完整 TestSession；若不存在则返回 null。
+        /// </summary>
+        /// <param name="sessionName">业务会话名（通常为 OrderName_yyyyMMdd_HHmmss）</param>
+        Task<TestSession> GetSessionBySessionNameAsync(string sessionName);
+
+        /// <summary>
         /// 按 SessionId + StickerSN 获取最近一条测试记录；若不存在则返回 null。
         /// </summary>
         Task<TestRecord> GetTestRecordBySessionAndStickerSnAsync(int sessionId, string stickerSN);

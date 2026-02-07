@@ -873,6 +873,58 @@ CREATE INDEX IF NOT EXISTS idx_testrecord_devicesn_result ON TestRecord(DeviceSN
         }
 
         /// <summary>
+        /// 根据业务 SessionName 获取完整 TestSession；若不存在则返回 null。
+        /// </summary>
+        public async Task<TestSession> GetSessionBySessionNameAsync(string sessionName)
+        {
+            if (string.IsNullOrWhiteSpace(sessionName))
+                return null;
+
+            EnsureConnectionInitialized();
+
+            const string sql = @"
+                SELECT Id, SessionName, OrderId, StartTime, EndTime, Status
+                FROM TestSession
+                WHERE SessionName = @SessionName
+                LIMIT 1";
+
+            TestSession session = null;
+
+            await Task.Run(() =>
+            {
+                lock (_lockObject)
+                {
+                    if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                    {
+                        throw new InvalidOperationException("数据库连接未初始化或已关闭");
+                    }
+
+                    using (var cmd = new SQLiteCommand(sql, _connection))
+                    {
+                        cmd.Parameters.AddWithValue("@SessionName", sessionName);
+                        using (var reader = cmd.ExecuteReader())
+                        {
+                            if (reader.Read())
+                            {
+                                session = new TestSession
+                                {
+                                    Id = reader.GetInt32(0),
+                                    SessionName = reader.GetString(1),
+                                    OrderId = reader.GetInt32(2),
+                                    StartTime = reader.GetDateTime(3),
+                                    EndTime = reader.IsDBNull(4) ? (DateTime?)null : reader.GetDateTime(4),
+                                    Status = reader.IsDBNull(5) ? null : reader.GetString(5)
+                                };
+                            }
+                        }
+                    }
+                }
+            });
+
+            return session;
+        }
+
+        /// <summary>
         /// 按业务 SessionId（字符串，如 OrderId_yyyyMMdd_HHmmss）获取所有 TestRecord。
         /// 实现方式：先根据 SessionName 查到内部自增 Id，再复用 INT 版本查询；若未找到则返回空列表。
         /// </summary>

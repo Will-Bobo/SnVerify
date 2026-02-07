@@ -253,6 +253,128 @@ namespace SnVerify.Services.Adb
         }
 
         /// <summary>
+        /// 读取设备信息（SN + Version），仅用于 UI「设备信息」按钮的临时调试接口。
+        /// 完全独立于现有 SN 读取 / 自检 / MES 流程，可整体删除。
+        /// </summary>
+        public async Task<AdbDeviceInfoResult> ReadDeviceInfoAsync(CancellationToken cancellationToken = default)
+        {
+            try
+            {
+                // Step 0: ADB shell warm-up（冷启动下避免首次 shell 命令失败）
+                await EnsureAdbShellWarmedUpAsync(cancellationToken);
+
+                // Step 1: 尝试执行 ylzero（失败允许，仅记录日志，不做重试）
+                try
+                {
+                    var ylzeroResult = await _processRunner.RunAsync(
+                        _adbPath,
+                        "shell ylzero",
+                        TotalTimeoutMs,
+                        cancellationToken);
+
+                    if (!ylzeroResult.IsSuccess)
+                    {
+                        Debug.WriteLine($"[AdbAccessService] ReadDeviceInfoAsync ylzero failed: {ylzeroResult.ErrorMessage}");
+                    }
+                }
+                catch (OperationCanceledException ex)
+                {
+                    // 取消也视为失败，但不阻断后续异常处理逻辑，由外层 catch 统一转换
+                    Debug.WriteLine($"[AdbAccessService] ReadDeviceInfoAsync ylzero cancelled: {ex.Message}");
+                    throw;
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[AdbAccessService] ReadDeviceInfoAsync ylzero exception: {ex.Message}");
+                    // 按约定：ylzero 失败允许，继续后续 SN 读取
+                }
+
+                // Step 2: 读取 SN（失败即整个调用失败，不做重试）
+                ProcessExecutionResult snResult;
+                try
+                {
+                    snResult = await _processRunner.RunAsync(
+                        _adbPath,
+                        "shell getprop sys.skyroam.osi.sn",
+                        TotalTimeoutMs,
+                        cancellationToken);
+                }
+                catch (OperationCanceledException ex)
+                {
+                    Debug.WriteLine($"[AdbAccessService] ReadDeviceInfoAsync SN cancelled: {ex.Message}");
+                    return AdbDeviceInfoResult.Failure("SN read cancelled");
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[AdbAccessService] ReadDeviceInfoAsync SN exception: {ex.Message}");
+                    return AdbDeviceInfoResult.Failure("SN read exception: " + ex.Message);
+                }
+
+                if (!snResult.IsSuccess)
+                {
+                    Debug.WriteLine($"[AdbAccessService] ReadDeviceInfoAsync SN read failed: {snResult.ErrorMessage}");
+                    return AdbDeviceInfoResult.Failure("SN read failed: " + (snResult.ErrorMessage ?? string.Empty));
+                }
+
+                var sn = snResult.StandardOutput?.Trim();
+                if (string.IsNullOrWhiteSpace(sn))
+                {
+                    Debug.WriteLine("[AdbAccessService] ReadDeviceInfoAsync SN is empty or whitespace");
+                    return AdbDeviceInfoResult.Failure("SN is empty or whitespace");
+                }
+
+                // Step 3: 读取版本号（失败允许，仅记录日志，结果中 Version 置空）
+                string version = null;
+                try
+                {
+                    var versionResult = await _processRunner.RunAsync(
+                        _adbPath,
+                        "shell getprop ro.build.display.id",
+                        TotalTimeoutMs,
+                        cancellationToken);
+
+                    if (versionResult.IsSuccess)
+                    {
+                        version = versionResult.StandardOutput?.Trim();
+                    }
+                    else
+                    {
+                        Debug.WriteLine($"[AdbAccessService] ReadDeviceInfoAsync version read failed: {versionResult.ErrorMessage}");
+                    }
+                }
+                catch (OperationCanceledException ex)
+                {
+                    Debug.WriteLine($"[AdbAccessService] ReadDeviceInfoAsync version cancelled: {ex.Message}");
+                    // 版本读取失败不影响整体成功，只记录日志
+                }
+                catch (Exception ex)
+                {
+                    Debug.WriteLine($"[AdbAccessService] ReadDeviceInfoAsync version exception: {ex.Message}");
+                    // 版本读取失败不影响整体成功，只记录日志
+                }
+
+                if (string.IsNullOrWhiteSpace(version))
+                {
+                    version = null;
+                }
+
+                return AdbDeviceInfoResult.Success(sn, version);
+            }
+            catch (OperationCanceledException ex)
+            {
+                // 所有异常必须被捕获，不向上传播
+                Debug.WriteLine($"[AdbAccessService] ReadDeviceInfoAsync cancelled: {ex.Message}");
+                return AdbDeviceInfoResult.Failure("Operation cancelled");
+            }
+            catch (Exception ex)
+            {
+                // 所有异常必须被捕获，不向上传播
+                Debug.WriteLine($"[AdbAccessService] ReadDeviceInfoAsync unexpected error: {ex.Message}");
+                return AdbDeviceInfoResult.Failure("Unexpected error: " + ex.Message);
+            }
+        }
+
+        /// <summary>
         /// 获取指定设备的 SN（Phase2 新增）
         /// </summary>
         public async Task<string> GetDeviceSNAsync(string deviceId = null, string batchId = null, CancellationToken cancellationToken = default)

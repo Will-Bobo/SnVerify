@@ -1,4 +1,4 @@
-﻿/// <author>
+/// <author>
 /// AI Assistant
 /// </author>
 
@@ -8,6 +8,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Data;
 using System.Windows.Input;
+using SnVerify.Domain.Enums;
 using SnVerify.ViewModels;
 
 namespace SnVerify
@@ -262,6 +263,30 @@ namespace SnVerify
                 textBox.SelectAll();
             }
         }
+
+        /// <summary>
+        /// 设备信息按钮：触发 ViewModel 的临时设备信息读取接口，并展开调试日志。
+        /// </summary>
+        private async void DeviceInfoButton_Click(object sender, RoutedEventArgs e)
+        {
+            if (_viewModel != null)
+            {
+                try
+                {
+                    await _viewModel.ReadDeviceInfoForDebugAsync();
+                }
+                catch (Exception ex)
+                {
+                    System.Diagnostics.Debug.WriteLine($"[MainWindow] DeviceInfoButton_Click exception: {ex.Message}");
+                }
+            }
+
+            var expander = this.FindName("DebugLogExpander") as System.Windows.Controls.Expander;
+            if (expander != null)
+            {
+                expander.IsExpanded = true;
+            }
+        }
     }
 
     /// <summary>
@@ -281,6 +306,54 @@ namespace SnVerify
             if (value is bool boolValue)
                 return !boolValue;
             return false;
+        }
+    }
+
+    /// <summary>
+    /// 根据 VerificationType 转换为 Visibility：当 value 与 parameter 匹配时 Visible，否则 Collapsed。
+    /// parameter 为 "SnMatch" 或 "VersionMatch" 字符串。
+    /// </summary>
+    public class VerificationTypeToVisibilityConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value is VerificationType type && parameter is string paramStr)
+            {
+                if (paramStr == "SnMatch" && type == VerificationType.SnMatch)
+                    return Visibility.Visible;
+                if (paramStr == "VersionMatch" && type == VerificationType.VersionMatch)
+                    return Visibility.Visible;
+            }
+            return Visibility.Collapsed;
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
+        }
+    }
+
+    /// <summary>
+    /// VerificationType 转显示文本：SnMatch -> "SN", VersionMatch -> "Version"
+    /// </summary>
+    public class VerificationTypeToDisplayConverter : IValueConverter
+    {
+        public object Convert(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            if (value is VerificationType type)
+            {
+                switch (type)
+                {
+                    case VerificationType.SnMatch: return "SN检验";
+                    case VerificationType.VersionMatch: return "版本检验";
+                }
+            }
+            return value?.ToString() ?? "";
+        }
+
+        public object ConvertBack(object value, Type targetType, object parameter, CultureInfo culture)
+        {
+            throw new NotImplementedException();
         }
     }
 }

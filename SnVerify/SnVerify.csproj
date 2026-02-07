@@ -100,7 +100,9 @@
       <DependentUpon>App.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="Domain\Enums\VerificationType.cs" />
     <Compile Include="Domain\Models\AdbSnReadResult.cs" />
+    <Compile Include="Domain\Models\AdbDeviceInfoResult.cs" />
     <Compile Include="Domain\Models\BatchInfo.cs" />
     <Compile Include="Domain\Models\Order.cs" />
     <Compile Include="Domain\Models\Product.cs" />
@@ -131,9 +133,11 @@
     <Compile Include="Services\Session\SessionLifecycleService.cs" />
     <Compile Include="Services\Coordination\IProcessCoordinator.cs" />
     <Compile Include="Services\Coordination\IVerificationFlowService.cs" />
+    <Compile Include="Services\Coordination\IVersionVerificationFlowService.cs" />
     <Compile Include="Services\Coordination\IVerificationFlowServiceFactory.cs" />
     <Compile Include="Services\Coordination\ProcessCoordinator.cs" />
     <Compile Include="Services\Coordination\VerificationFlowService.cs" />
+    <Compile Include="Services\Coordination\VersionVerificationFlowService.cs" />
     <Compile Include="Services\Input\IScanInputService.cs" />
     <Compile Include="Services\Input\ScanInputService.cs" />
     <Compile Include="Services\Logging\IFileLogger.cs" />

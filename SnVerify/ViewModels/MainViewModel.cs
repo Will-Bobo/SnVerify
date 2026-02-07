@@ -10,6 +10,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Windows.Input;
+using SnVerify.Domain.Enums;
 using SnVerify.Domain.Models;
 using SnVerify.Domain.State;
 using SnVerify.Domain.Validation;
@@ -47,10 +48,12 @@ namespace SnVerify.ViewModels
         private readonly IExportAggregationService _exportAggregationService;
         private readonly IOrderNameValidator _orderNameValidator;
         private readonly IUserDialogService _dialogService;
+        private readonly IVersionVerificationFlowService _versionVerificationFlowService;
         private readonly string _logDirectory;
         private readonly SynchronizationContext _uiContext;
 
         private IVerificationFlowService _verificationFlowService;
+        private TestRecord _lastVersionRecord;
         private IVerificationFlowService _mesEventSource; // 当前订阅 MES 事件的流程服务实例（避免重复订阅）
         private SessionSnapshot _sessionSnapshot;
         private VerificationSnapshot _verificationSnapshot;
@@ -80,10 +83,12 @@ namespace SnVerify.ViewModels
                     OnPropertyChanged(nameof(CurrentOrderId));
                     OnPropertyChanged(nameof(CurrentTestIdentifier));
                     OnPropertyChanged(nameof(IsSessionActive));
+                    OnPropertyChanged(nameof(IsVerificationTypeComboBoxEnabled));
                     StartBatchCommand?.RaiseCanExecuteChanged();
                     EndBatchCommand?.RaiseCanExecuteChanged();
                     ExportCommand?.RaiseCanExecuteChanged();
                     StartVerifyCommand?.RaiseCanExecuteChanged();
+                    StartVersionVerifyCommand?.RaiseCanExecuteChanged();
                 }
             }
         }
@@ -109,7 +114,9 @@ namespace SnVerify.ViewModels
                     OnPropertyChanged(nameof(StatusText));
                     OnPropertyChanged(nameof(ShowFailReason));
                     OnPropertyChanged(nameof(UiState));
+                    OnPropertyChanged(nameof(LastVersionRecord));
                     StartVerifyCommand?.RaiseCanExecuteChanged();
+                    StartVersionVerifyCommand?.RaiseCanExecuteChanged();
                     StartBatchCommand?.RaiseCanExecuteChanged();
                     EndBatchCommand?.RaiseCanExecuteChanged();
                     ExportCommand?.RaiseCanExecuteChanged();
@@ -235,6 +242,101 @@ namespace SnVerify.ViewModels
             }
         }
 
+        private string _targetVersionInput;
+        private VerificationType _currentVerificationType = VerificationType.SnMatch;
+
+        /// <summary>
+        /// 当前检验类型（SN / Version），用于控制输入框显示与流程分支
+        /// </summary>
+        public VerificationType CurrentVerificationType
+        {
+            get => _currentVerificationType;
+            set
+            {
+                if (_currentVerificationType != value)
+                {
+                    _currentVerificationType = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(IsScanInputVisible));
+                    OnPropertyChanged(nameof(IsVersionInputVisible));
+                    OnPropertyChanged(nameof(IsSnInfoVisible));
+                    OnPropertyChanged(nameof(IsVersionInfoVisible));
+                    OnPropertyChanged(nameof(ExpectedVersionDisplay));
+                    StartVersionVerifyCommand?.RaiseCanExecuteChanged();
+                    StartBatchCommand?.RaiseCanExecuteChanged();
+                }
+            }
+        }
+
+        /// <summary>
+        /// 检验类型 ComboBox 是否可用（开始测试后禁用）
+        /// </summary>
+        public bool IsVerificationTypeComboBoxEnabled => !IsSessionActive;
+
+        /// <summary>
+        /// 扫码输入框是否显示（VerificationType == SnMatch 时显示）
+        /// </summary>
+        public bool IsScanInputVisible => CurrentVerificationType == VerificationType.SnMatch;
+
+        /// <summary>
+        /// 版本输入框是否显示（VerificationType == VersionMatch 时显示）
+        /// </summary>
+        public bool IsVersionInputVisible => CurrentVerificationType == VerificationType.VersionMatch;
+
+        /// <summary>
+        /// SN 信息区是否显示（扫码SN + 设备SN，VerificationType == SnMatch 时显示）
+        /// </summary>
+        public bool IsSnInfoVisible => CurrentVerificationType == VerificationType.SnMatch;
+
+        /// <summary>
+        /// 设备版本信息区是否显示（目标版本 + 设备实际版本，VerificationType == VersionMatch 时显示）
+        /// </summary>
+        public bool IsVersionInfoVisible => CurrentVerificationType == VerificationType.VersionMatch;
+
+        /// <summary>
+        /// 目标版本显示（VersionMatch 时用，来自 TargetVersionInput，空时显示 --）
+        /// </summary>
+        public string ExpectedVersionDisplay
+        {
+            get
+            {
+                if (CurrentVerificationType != VerificationType.VersionMatch)
+                    return "--";
+                var v = TargetVersionInput?.Trim();
+                return string.IsNullOrEmpty(v) ? "--" : v;
+            }
+        }
+
+        /// <summary>
+        /// 设备实际版本显示（VersionMatch 时用，来自 LastVersionRecord.ActualVersion，无记录时显示 --）
+        /// </summary>
+        public string ActualDeviceVersionDisplay => _lastVersionRecord?.ActualVersion?.Trim() ?? "--";
+
+        /// <summary>
+        /// ComboBox 可选的检验类型列表（不含 None）
+        /// </summary>
+        public IReadOnlyList<VerificationType> AvailableVerificationTypes { get; } =
+            new[] { VerificationType.SnMatch, VerificationType.VersionMatch };
+
+        /// <summary>
+        /// 版本检验目标版本号输入（VersionMatch 流程使用）
+        /// </summary>
+        public string TargetVersionInput
+        {
+            get => _targetVersionInput ?? "";
+            set
+            {
+                if (_targetVersionInput != value)
+                {
+                    _targetVersionInput = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(ExpectedVersionDisplay));
+                    StartVersionVerifyCommand?.RaiseCanExecuteChanged();
+                    StartBatchCommand?.RaiseCanExecuteChanged();
+                }
+            }
+        }
+
         /// <summary>
         /// 是否 Session 活动（用于按钮状态）
         /// </summary>
@@ -275,6 +377,7 @@ namespace SnVerify.ViewModels
                     OnPropertyChanged(nameof(IsScanInputEnabled));
                     SelfCheckCommand?.RaiseCanExecuteChanged();
                     StartVerifyCommand?.RaiseCanExecuteChanged(); // 规则 8：自检期间禁用人工检验
+                    StartVersionVerifyCommand?.RaiseCanExecuteChanged();
                     StartBatchCommand?.RaiseCanExecuteChanged();
                     EndBatchCommand?.RaiseCanExecuteChanged();
                     ExportCommand?.RaiseCanExecuteChanged();
@@ -353,6 +456,24 @@ namespace SnVerify.ViewModels
         }
 
         /// <summary>
+        /// 将检验区恢复到默认等待状态（结束测试时调用）。
+        /// </summary>
+        private void ResetVerificationUiToIdle()
+        {
+            _versionVerificationFlowService.ResetToIdle();
+            VerificationSnapshot = VerificationSnapshot.Idle();
+            _lastVersionRecord = null;
+            OnPropertyChanged(nameof(LastVersionRecord));
+            OnPropertyChanged(nameof(ActualDeviceVersionDisplay));
+            ClearBatchError();
+        }
+
+        /// <summary>
+        /// 最后一次版本检验记录（VersionMatch 流程使用，用于 UI 绑定 ActualVersion、Result、FailReason）
+        /// </summary>
+        public TestRecord LastVersionRecord => _lastVersionRecord;
+
+        /// <summary>
         /// UI 状态（用于立体结果卡片显示）
         /// </summary>
         public VerificationUiState UiState
@@ -395,6 +516,11 @@ namespace SnVerify.ViewModels
         public RelayCommand SelfCheckCommand { get; }
 
         /// <summary>
+        /// 版本检验命令（VersionMatch 流程：读取设备版本与目标版本对比）
+        /// </summary>
+        public RelayCommand StartVersionVerifyCommand { get; }
+
+        /// <summary>
         /// 导出命令（导出当前结束批次的校验结果与日志）
         /// </summary>
         public RelayCommand ExportCommand { get; }
@@ -411,6 +537,7 @@ namespace SnVerify.ViewModels
             IExportAggregationService exportAggregationService,
             IOrderNameValidator orderNameValidator,
             IUserDialogService dialogService,
+            IVersionVerificationFlowService versionVerificationFlowService,
             string logDirectory)
         {
             _sessionLifecycleService = sessionLifecycleService ?? throw new ArgumentNullException(nameof(sessionLifecycleService));
@@ -421,6 +548,7 @@ namespace SnVerify.ViewModels
             _exportAggregationService = exportAggregationService ?? throw new ArgumentNullException(nameof(exportAggregationService));
             _orderNameValidator = orderNameValidator ?? throw new ArgumentNullException(nameof(orderNameValidator));
             _dialogService = dialogService ?? throw new ArgumentNullException(nameof(dialogService));
+            _versionVerificationFlowService = versionVerificationFlowService ?? throw new ArgumentNullException(nameof(versionVerificationFlowService));
             _logDirectory = logDirectory ?? throw new ArgumentNullException(nameof(logDirectory));
             _uiContext = SynchronizationContext.Current ?? new SynchronizationContext();
 
@@ -438,13 +566,14 @@ namespace SnVerify.ViewModels
             _orderIdInput = Settings.Default.LastOrderId ?? "";
 
             // 规则 3/5/8：自检期间禁用 Start/End/导出；检验中也禁用 Start/End/导出（防止重复点击/并发操作）。
-            StartBatchCommand = new RelayCommand(async () => await StartBatchAsync(), () => !IsSessionActive && !IsSelfChecking && !IsProcessing);
+            StartBatchCommand = new RelayCommand(async () => await StartBatchAsync(), () => CanExecuteStartBatch());
             EndBatchCommand = new RelayCommand(async () => await EndBatchAsync(), () => IsSessionActive && !IsSelfChecking && !IsProcessing);
             // 导出：仅在进行中的测试时段（开始测试→结束测试）不可用，其余时间均可点击
             ExportCommand = new RelayCommand(async () => await ExportAsync(), () => !IsSessionActive);
             // 规则 8：自检期间禁用人工检验；未点击「开始测试」时人工检验置灰
             StartVerifyCommand = new RelayCommand(async () => await StartVerifyAsync(), () => IsSessionActive && !IsProcessing && !IsSelfChecking);
             SelfCheckCommand = new RelayCommand(async () => await SelfCheckAsync(), () => !IsSelfChecking);
+            StartVersionVerifyCommand = new RelayCommand(async () => await StartVersionVerifyAsync(), () => CanExecuteStartVersionVerify());
 
             _snapshotUpdateTimer = new Timer(UpdateSnapshots, null, TimeSpan.Zero, TimeSpan.FromMilliseconds(500));
         }
@@ -460,6 +589,18 @@ namespace SnVerify.ViewModels
         }
 
         /// <summary>
+        /// 根据当前 VerificationType 获取对应的快照来源（单一事实来源，不含 UI 拼接）。
+        /// </summary>
+        private VerificationSnapshot GetActiveVerificationSnapshot()
+        {
+            if (!IsSessionActive)
+                return VerificationSnapshot.Idle();
+            if (CurrentVerificationType == VerificationType.VersionMatch)
+                return _versionVerificationFlowService.Snapshot;
+            return _verificationFlowService.Snapshot;
+        }
+
+        /// <summary>
         /// 内部方法：实际更新快照（在 UI 线程上执行）
         /// </summary>
         private void UpdateSnapshotsInternal()
@@ -471,8 +612,8 @@ namespace SnVerify.ViewModels
                 LoggingSnapshot = newLoggingSnapshot;
             }
 
-            // 更新其他快照（可选，根据需要）
-            var newVerificationSnapshot = _verificationFlowService.Snapshot;
+            // 更新校验快照：根据 VerificationType 选择对应 FlowService 的快照，仅做「是否变化 → 推送到 UI」
+            var newVerificationSnapshot = GetActiveVerificationSnapshot();
             if (newVerificationSnapshot != _verificationSnapshot)
             {
                 VerificationSnapshot = newVerificationSnapshot;
@@ -483,6 +624,18 @@ namespace SnVerify.ViewModels
             {
                 SessionSnapshot = newSessionSnapshot;
             }
+        }
+
+        /// <summary>
+        /// 开始测试命令是否可执行：未激活、非自检、非处理中，且 VersionMatch 时需填写目标版本。
+        /// </summary>
+        private bool CanExecuteStartBatch()
+        {
+            if (IsSessionActive || IsSelfChecking || IsProcessing)
+                return false;
+            if (CurrentVerificationType == VerificationType.VersionMatch && string.IsNullOrWhiteSpace(TargetVersionInput))
+                return false;
+            return true;
         }
 
         /// <summary>
@@ -499,6 +652,13 @@ namespace SnVerify.ViewModels
                 if (string.IsNullOrWhiteSpace(projectId) || string.IsNullOrWhiteSpace(orderId))
                 {
                     _dialogService.ShowWarning("项目名 和订单名 都不能为空", "校验失败");
+                    return;
+                }
+
+                // VersionMatch 时目标版本必填
+                if (CurrentVerificationType == VerificationType.VersionMatch && string.IsNullOrWhiteSpace(TargetVersionInput?.Trim()))
+                {
+                    _dialogService.ShowWarning("版本检验模式下，请先填写目标版本号", "校验失败");
                     return;
                 }
 
@@ -569,6 +729,9 @@ namespace SnVerify.ViewModels
                 LoggingSnapshot = _loggingService.Snapshot;
                 ExportCommand?.RaiseCanExecuteChanged();
                 StatusBarMessage = "";
+
+                // 将检验区恢复到默认等待状态
+                ResetVerificationUiToIdle();
             }
             catch (Exception)
             {
@@ -791,6 +954,144 @@ namespace SnVerify.ViewModels
         }
 
         /// <summary>
+        /// 版本检验命令是否可执行：Session 激活、非处理中、非自检中，且 VersionMatch 时需填写目标版本。
+        /// </summary>
+        private bool CanExecuteStartVersionVerify()
+        {
+            if (!IsSessionActive || IsProcessing || IsSelfChecking)
+                return false;
+            if (CurrentVerificationType == VerificationType.VersionMatch && string.IsNullOrWhiteSpace(TargetVersionInput))
+                return false;
+            return true;
+        }
+
+        /// <summary>
+        /// 版本检验：读取设备版本与目标版本对比，更新 Snapshot 与 LastVersionRecord。
+        /// </summary>
+        private async System.Threading.Tasks.Task StartVersionVerifyAsync()
+        {
+            if (!IsSessionActive)
+            {
+                _loggingService.LogWarning("版本检验：Session 未激活，请先开始测试");
+                LoggingSnapshot = _loggingService.Snapshot;
+                SetBatchError("请先开始测试");
+                return;
+            }
+
+            var sessionId = _sessionLifecycleService.GetCurrentSessionId();
+            if (string.IsNullOrWhiteSpace(sessionId))
+            {
+                _loggingService.LogWarning("版本检验：无法获取当前 Session");
+                LoggingSnapshot = _loggingService.Snapshot;
+                SetBatchError("无法获取当前 Session");
+                return;
+            }
+
+            TestSession session;
+            try
+            {
+                session = await _storageService.GetSessionBySessionNameAsync(sessionId);
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError("版本检验：获取 Session 失败 - " + ex.Message, ex);
+                LoggingSnapshot = _loggingService.Snapshot;
+                SetBatchError("获取 Session 失败");
+                VerificationSnapshot = VerificationSnapshot.Completed("--", "FAIL", "获取 Session 失败", sessionId, null);
+                return;
+            }
+
+            if (session == null)
+            {
+                _loggingService.LogWarning("版本检验：Session 不存在");
+                LoggingSnapshot = _loggingService.Snapshot;
+                SetBatchError("Session 不存在");
+                return;
+            }
+
+            var expectedVersion = session.ExpectedVersion ?? TargetVersionInput?.Trim();
+            if (string.IsNullOrWhiteSpace(expectedVersion))
+            {
+                _loggingService.LogWarning("版本检验：未设置目标版本号，请在输入框中填写后重试");
+                LoggingSnapshot = _loggingService.Snapshot;
+                SetBatchError("请填写目标版本号");
+                return;
+            }
+
+            session.VerificationType = VerificationType.VersionMatch;
+            session.ExpectedVersion = expectedVersion;
+
+            // 清空上次结果；Processing/Completed 由 VersionVerificationFlowService 驱动，定时器推送
+            _lastVersionRecord = null;
+            OnPropertyChanged(nameof(LastVersionRecord));
+            OnPropertyChanged(nameof(ActualDeviceVersionDisplay));
+            ClearBatchError();
+
+            TestRecord record = null;
+            try
+            {
+                record = await _versionVerificationFlowService.ExecuteVersionCheckAsync(session, CancellationToken.None);
+                _lastVersionRecord = record;
+                OnPropertyChanged(nameof(LastVersionRecord));
+                OnPropertyChanged(nameof(ActualDeviceVersionDisplay));
+
+                _loggingService.LogInfo($"版本检验完成: {(record.Result == "PASS" ? "PASS" : "FAIL")}, 实际版本={record.ActualVersion ?? "-"}");
+                LoggingSnapshot = _loggingService.Snapshot;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError("版本检验异常: " + ex.Message, ex);
+                LoggingSnapshot = _loggingService.Snapshot;
+                _lastVersionRecord = new TestRecord
+                {
+                    SessionId = session.Id,
+                    Result = "FAIL",
+                    FailReason = ex.Message,
+                    ActualVersion = null,
+                    ExpectedVersion = expectedVersion,
+                    VerifyTime = DateTime.Now
+                };
+                OnPropertyChanged(nameof(LastVersionRecord));
+                OnPropertyChanged(nameof(ActualDeviceVersionDisplay));
+                _versionVerificationFlowService.ResetToIdle();
+                // 异常时服务内部未完成，需手动设置 Completed 快照供 UI 显示
+                VerificationSnapshot = VerificationSnapshot.Completed("--", "FAIL", ex.Message, sessionId, null);
+            }
+        }
+
+        /// <summary>
+        /// 设备信息读取：仅用于 UI「设备信息」按钮的临时调试接口。
+        /// 不参与 SN 检验 / 自检 / MES 流程，可整体删除。
+        /// </summary>
+        public async System.Threading.Tasks.Task ReadDeviceInfoForDebugAsync()
+        {
+            try
+            {
+                var result = await _adbAccessService.ReadDeviceInfoAsync();
+                if (result == null)
+                {
+                    _loggingService.LogWarning("设备信息读取失败：结果为空");
+                }
+                else if (result.IsSuccess)
+                {
+                    var versionText = string.IsNullOrEmpty(result.DeviceVersion) ? "(无版本信息)" : result.DeviceVersion;
+                    _loggingService.LogInfo($"设备信息读取成功：SN={result.DeviceSn}, Version={versionText}");
+                }
+                else
+                {
+                    _loggingService.LogWarning("设备信息读取失败：" + (result.ErrorMessage ?? "未知错误"));
+                }
+
+                LoggingSnapshot = _loggingService.Snapshot;
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError("设备信息读取异常: " + ex.Message, ex);
+                LoggingSnapshot = _loggingService.Snapshot;
+            }
+        }
+
+        /// <summary>
         /// 处理扫码输入
         /// </summary>
         /// <param name="sn">扫码输入的 SN</param>
@@ -831,6 +1132,11 @@ namespace SnVerify.ViewModels
                 // 当前选择：拒绝扫码，要求先开始测试
                 return;
             }
+
+            // SN 检验开始时清除版本检验结果，避免与 SN 结果混淆
+            _lastVersionRecord = null;
+            OnPropertyChanged(nameof(LastVersionRecord));
+            OnPropertyChanged(nameof(ActualDeviceVersionDisplay));
 
             try
             {

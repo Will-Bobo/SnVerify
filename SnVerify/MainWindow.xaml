@@ -8,6 +8,9 @@
         Title="Smartke SN校验程序" Height="800" Width="1300"
         WindowStartupLocation="CenterScreen">
     <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <local:VerificationTypeToVisibilityConverter x:Key="VerificationTypeToVisibilityConverter"/>
+        <local:VerificationTypeToDisplayConverter x:Key="VerificationTypeToDisplayConverter"/>
         <!-- 工业上位机样式：简约、清晰、无装饰 -->
         
         <!-- 订单/测试区标题样式（阶段 3 C1.1：文案改为「本次测试」「当前订单」，不出现 SessionId/Session） -->
@@ -98,6 +101,8 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="180"/>
                         <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="130"/>
+                        <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
@@ -149,7 +154,28 @@
                             </TextBlock.Style>
                         </TextBlock>
                     </Border>
-                    <Button Grid.Column="6" x:Name="StartBatchButton" Content="开始测试" Width="100" Height="28" Margin="5,0" VerticalAlignment="Center"
+                    <TextBlock Grid.Column="6" Text="检验类型：" Style="{StaticResource BatchHeaderStyle}" Margin="10,0,0,0" VerticalAlignment="Center" Padding="5,2"/>
+                    <ComboBox Grid.Column="7" x:Name="VerificationTypeComboBox" MinWidth="100" Height="28" Margin="5,0" VerticalAlignment="Center"
+                              ItemsSource="{Binding AvailableVerificationTypes}"
+                              SelectedItem="{Binding CurrentVerificationType, Mode=TwoWay}">
+                        <ComboBox.Style>
+                            <Style TargetType="ComboBox">
+                                <Setter Property="IsEnabled" Value="True"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding IsVerificationTypeComboBoxEnabled}" Value="False">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                        <Setter Property="Background" Value="#E0E0E0"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </ComboBox.Style>
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding Converter={StaticResource VerificationTypeToDisplayConverter}}"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <Button Grid.Column="8" x:Name="StartBatchButton" Content="开始测试" Width="100" Height="28" Margin="5,0" VerticalAlignment="Center"
                             Command="{Binding StartBatchCommand}">
                         <Button.Style>
                             <Style TargetType="Button">
@@ -162,7 +188,7 @@
                             </Style>
                         </Button.Style>
                     </Button>
-                    <Button Grid.Column="7" x:Name="EndBatchButton" Content="结束测试" Width="100" Height="28" Margin="5,0" VerticalAlignment="Center"
+                    <Button Grid.Column="9" x:Name="EndBatchButton" Content="结束测试" Width="100" Height="28" Margin="5,0" VerticalAlignment="Center"
                             Command="{Binding EndBatchCommand}">
                         <Button.Style>
                             <Style TargetType="Button">
@@ -175,7 +201,7 @@
                             </Style>
                         </Button.Style>
                     </Button>
-                    <Button Grid.Column="8" x:Name="ExportBatchButton" Content="导出" Width="80" Height="28" Margin="5,0" VerticalAlignment="Center"
+                    <Button Grid.Column="10" x:Name="ExportBatchButton" Content="导出" Width="80" Height="28" Margin="5,0" VerticalAlignment="Center"
                             Command="{Binding ExportCommand}">
                         <Button.Style>
                             <Style TargetType="Button">
@@ -382,7 +408,7 @@
                         </Border>
                     </Grid>
 
-                    <!-- 扫码输入框（弱化样式，位于主状态卡片与 SN 信息之间） -->
+                    <!-- 扫码输入框（VerificationType==SnMatch 时显示） -->
                     <Border Grid.Row="2"
                             HorizontalAlignment="Center"
                             Margin="0,10,0,0"
@@ -390,7 +416,8 @@
                             BorderBrush="#CCCCCC"
                             BorderThickness="1"
                             Padding="8,4"
-                            CornerRadius="4">
+                            CornerRadius="4"
+                            Visibility="{Binding IsScanInputVisible, Converter={StaticResource BoolToVisibilityConverter}}">
                         <StackPanel Orientation="Horizontal">
                             <TextBlock Text="扫码：" VerticalAlignment="Center" Margin="0,0,8,0" FontSize="12" Foreground="#666666"/>
                             <TextBox x:Name="ScanInputTextBox" Width="260" Height="26" Margin="0"
@@ -416,7 +443,43 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- SN信息显示（扫码SN和设备SN） - 高度与字体进一步收紧 -->
+                    <!-- 版本输入框 + 版本检验按钮（VerificationType==VersionMatch 时显示，与扫码输入框同位置同样式） -->
+                    <Border Grid.Row="2"
+                            HorizontalAlignment="Center"
+                            Margin="0,10,0,0"
+                            Background="#F0F0F0"
+                            BorderBrush="#CCCCCC"
+                            BorderThickness="1"
+                            Padding="8,4"
+                            CornerRadius="4"
+                            Visibility="{Binding IsVersionInputVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Text="目标版本：" VerticalAlignment="Center" Margin="0,0,8,0" FontSize="12" Foreground="#666666"/>
+                            <TextBox x:Name="TargetVersionTextBox" Width="200" Height="26" Margin="0,0,8,0"
+                                     Text="{Binding TargetVersionInput, UpdateSourceTrigger=PropertyChanged}"
+                                     FontSize="14"
+                                     Background="White"
+                                     BorderBrush="#999999"
+                                     BorderThickness="1">
+                                <TextBox.Style>
+                                    <Style TargetType="TextBox">
+                                        <Setter Property="IsEnabled" Value="{Binding IsScanInputEnabled}"/>
+                                        <Setter Property="Background" Value="White"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsScanInputEnabled}" Value="False">
+                                                <Setter Property="Background" Value="#E0E0E0"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBox.Style>
+                            </TextBox>
+                            <Button x:Name="StartVersionVerifyButton" Content="版本检验" Width="100" Height="26" Margin="0"
+                                    Command="{Binding StartVersionVerifyCommand}"
+                                    FontSize="13" FontWeight="Bold"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- SN信息显示（扫码SN和设备SN，VerificationType==SnMatch 时显示） -->
                     <Border Grid.Row="3" 
                             Background="#F8F8F8" 
                             BorderBrush="#DDDDDD" 
@@ -425,7 +488,8 @@
                             Padding="10,4"
                             Margin="0,8,0,4"
                             HorizontalAlignment="Center"
-                            Width="680">
+                            Width="680"
+                            Visibility="{Binding IsSnInfoVisible, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="*"/>
@@ -492,6 +556,61 @@
                         </Grid>
                     </Border>
 
+                    <!-- 设备版本信息显示（目标版本+设备实际版本，VerificationType==VersionMatch 时显示） -->
+                    <Border Grid.Row="3" 
+                            Background="#F8F8F8" 
+                            BorderBrush="#DDDDDD" 
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="10,4"
+                            Margin="0,8,0,4"
+                            HorizontalAlignment="Center"
+                            Width="680"
+                            Visibility="{Binding IsVersionInfoVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <!-- 目标版本 -->
+                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                <TextBlock Text="目标版本" 
+                                           FontSize="12" 
+                                           FontWeight="Bold"
+                                           Foreground="#666666"
+                                           Margin="0,0,0,2"
+                                           HorizontalAlignment="Center"/>
+                                <TextBlock Text="{Binding ExpectedVersionDisplay}" 
+                                           FontSize="18" 
+                                           Foreground="#333333"
+                                           HorizontalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           TextWrapping="NoWrap"/>
+                            </StackPanel>
+                            <!-- 分隔线 -->
+                            <Rectangle Grid.Column="1" Width="1" 
+                                       Fill="#DDDDDD" 
+                                       VerticalAlignment="Stretch" 
+                                       Margin="0,2"/>
+                            <!-- 设备版本 -->
+                            <StackPanel Grid.Column="2" Margin="16,0,0,0">
+                                <TextBlock Text="设备版本" 
+                                           FontSize="12" 
+                                           FontWeight="Bold"
+                                           Foreground="#666666"
+                                           Margin="0,0,0,2"
+                                           HorizontalAlignment="Center"/>
+                                <TextBlock Text="{Binding ActualDeviceVersionDisplay}" 
+                                           FontSize="18" 
+                                           Foreground="#333333"
+                                           HorizontalAlignment="Center"
+                                           TextTrimming="CharacterEllipsis"
+                                           TextWrapping="NoWrap"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
                     <!-- 失败原因显示（仅FAIL时显示，区域更紧凑） -->
                     <Grid Grid.Row="4" MinHeight="40" Margin="0,6,0,6">
                         <Border Style="{StaticResource ErrorDetailPanelStyle}">
@@ -501,7 +620,7 @@
                 </Grid>
             </Border>
 
-            <!-- 3. 辅助功能区（右侧：人工检验、自检） -->
+            <!-- 3. 辅助功能区（右侧：人工检验、自检、设备信息调试） -->
             <StackPanel Grid.Column="1" Margin="15,0,0,0" VerticalAlignment="Top">
                 <Button x:Name="StartVerifyButton" Content="人工检验" Width="120" Height="45" Margin="0,5"
                         Command="{Binding StartVerifyCommand}"
@@ -510,6 +629,10 @@
                 <Button x:Name="SelfCheckButton" Content="自检" Width="120" Height="45" Margin="0,5"
                         Command="{Binding SelfCheckCommand}"
                         Click="SelfCheckButton_Click"
+                        FontSize="14" FontWeight="Bold"/>
+                <!-- 设备信息按钮：仅触发临时调试接口，不参与 SN 检验/自检/MES 流程 -->
+                <Button x:Name="DeviceInfoButton" Content="设备信息" Width="120" Height="45" Margin="0,5"
+                        Click="DeviceInfoButton_Click"
                         FontSize="14" FontWeight="Bold"/>
             </StackPanel>
         </Grid>

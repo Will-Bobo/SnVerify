@@ -36,6 +36,14 @@ namespace SnVerify.Services.Adb
         Task<AdbSnReadResult> ReadDeviceSnAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
+        /// 读取设备信息（SN + Version），仅用于 UI「设备信息」按钮的临时调试接口。
+        /// 不参与任何 SN 检验 / 自检 / MES 流程，可整体删除。
+        /// </summary>
+        /// <param name="cancellationToken">取消令牌</param>
+        /// <returns>设备信息读取结果</returns>
+        Task<AdbDeviceInfoResult> ReadDeviceInfoAsync(CancellationToken cancellationToken = default);
+
+        /// <summary>
         /// 获取指定设备的 SN（Phase2 新增）
         /// </summary>
         /// <param name="deviceId">设备 ID（如果为 null，则使用第一个可用设备）</param>
@@ -52,3 +60,4 @@ namespace SnVerify.Services.Adb
         bool CheckMultipleDevices(out List<string> deviceIds);
     }
 }
+
