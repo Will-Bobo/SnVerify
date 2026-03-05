@@ -75,7 +75,7 @@ namespace SnVerify.Tests.Services
             var record = await _service.ExecuteVersionCheckAsync(session);
 
             Assert.That(record.Result, Is.EqualTo("FAIL"));
-            Assert.That(record.FailReason, Is.EqualTo("Version mismatch: expected 1.0.0, actual 1.0.1"));
+            Assert.That(record.FailReason, Is.EqualTo("版本号不匹配: 目标 1.0.0, 实际 1.0.1"));
             Assert.That(record.ExpectedVersion, Is.EqualTo("1.0.0"));
             Assert.That(record.ActualVersion, Is.EqualTo("1.0.1"));
             Assert.That(record.DeviceSN, Is.EqualTo("SN001"), "成功读取时应收存设备 SN");
