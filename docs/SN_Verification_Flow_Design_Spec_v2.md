@@ -9,7 +9,7 @@ Status: Frozen for Phase 3 Development
 
 本文档定义 SN 产线验证流程的业务规则与决策逻辑，用于指导：
 
-ProcessCoordinator 流程实现
+ProcessCoordinator（Phase3 扩展入口：`ProcessScanAsync`）流程实现
 
 单元测试（TDD）
 
@@ -41,7 +41,7 @@ FAIL	本条测试失败
       ↓
 ScanInputService 捕获
       ↓
-ProcessCoordinator.StartVerification(sn)
+ProcessCoordinator.ProcessScanAsync(sn, productCode)
       ↓
 执行 SN 验证流程
 
@@ -76,18 +76,19 @@ adb shell echo "SN=$(getprop xxx) CHIP=$(cat xxx) WIFI=$(cat xxx) ..."
 
 实现必须：
 
-ProcessCoordinator 不依赖读取次数
+- ProcessCoordinator / RulePipelineExecutor 不依赖读取次数（聚合命令或分字段读取均可）
+- ADB 读取失败需按策略重试（见第 14 节）
 5. 校验规则总览（Decision Table）
 Step	校验项	规则	失败结果
-1	SN历史PASS	SN在本订单已有PASS	SN_ALREADY_PASS
-2	ADB读取	ADB读取设备信息成功	ADB_READ_FAIL
-3	SN匹配	StickerSN == DeviceSN	SN_NOT_MATCH
-4	ChipID格式	ChipID 以 F50 开头	CHIPID_INVALID
-5	ChipID唯一	本订单未出现该ChipID	CHIPID_DUPLICATE
-6	Android版本	设备版本 == 目标版本	ANDROID_VERSION_MISMATCH
-7	Board版本	设备版本 == 目标版本	BOARD_VERSION_MISMATCH
-8	ChargeBoard版本	设备版本 == 目标版本	CHARGE_BOARD_VERSION_MISMATCH
-9	写入记录	记录测试数据	PASS
+1	参数检查（Parameter）	parameter != null	PARAMETER_NOT_CONFIGURED
+2	读取产品Profile（ProductRegistry）	ProductProfile 存在	PRODUCT_PROFILE_NOT_FOUND
+3	ADB读取	ADB读取设备信息成功	ADB_READ_FAIL
+4	SN匹配	StickerSN == DeviceSN	SN_NOT_MATCH
+5	SN历史PASS（Order维度）	SN在本订单已有PASS	SN_DUPLICATE
+6	ChipID格式	ChipID 以 F50 开头	CHIPID_INVALID
+7	ChipID唯一（Order维度）	本订单未出现该ChipID	CHIPID_DUPLICATE
+8	三版本强校验	Android/Board/ChargeBoard 版本匹配	ANDROID_VERSION_MISMATCH / BOARD_VERSION_MISMATCH / CHARGE_BOARD_VERSION_MISMATCH
+9	写入记录	记录测试数据（由 Coordinator 落库）	PASS
 
 执行规则：
 
@@ -97,19 +98,25 @@ Step	校验项	规则	失败结果
 
 SN 唯一范围：
 
-同一订单 (OrderId)
+同一订单（OrderId：业务订单名 OrderName）
 
 规则：
 
 StickerSN 在同一订单 PASS 后
-禁止再次测试
+禁止再次测
 
 SQL示例：
+
+说明：
+
+- 本文档中的 `OrderId` 指 **业务订单号（即 UI 输入框中的订单号字符串）**，在数据库中对应 `Order.OrderName`。
+- 若未来流程层改为传递数据库内部主键 `Order.Id`（int），则可直接以 `TestSession.OrderId = @orderIdInt` 过滤，无需再 JOIN `Order` 表。
 
 SELECT COUNT(1)
 FROM TestRecord r
 JOIN TestSession s ON r.SessionId = s.Id
-WHERE s.OrderId = @OrderId
+JOIN "Order" o ON s.OrderId = o.Id
+WHERE o.OrderName = @OrderId
 AND r.StickerSN = @StickerSN
 AND r.Result = 'PASS'
 7. ChipID 校验规则
@@ -133,10 +140,16 @@ CHIPID_INVALID
 
 SQL示例：
 
+说明：
+
+- 本文档中的 `OrderId` 指 **业务订单号（OrderName）**，而非数据库内部 `Order.Id`。
+- 当前实现使用 `OrderName` 的原因：上层流程天然持有订单号字符串；若改为传内部 Id，需要额外做一次 `OrderName → Order.Id` 映射查询或调整接口参数。
+
 SELECT COUNT(1)
 FROM TestRecord r
 JOIN TestSession s ON r.SessionId = s.Id
-WHERE s.OrderId = @OrderId
+JOIN "Order" o ON s.OrderId = o.Id
+WHERE o.OrderName = @OrderId
 AND r.ChipId = @ChipId
 AND r.Result = 'PASS'
 9. 版本校验规则
@@ -165,15 +178,12 @@ Project 配置
 AndroidVersion / BoardVersion / ChargeBoardVersion
 均采用 Expected / Actual 校验模型。
 
-在开始验证流程前，必须完成目标版本录入。
+在开始验证流程前，必须完成 Parameter 配置读取（`parameter != null`）。
 
-若任一目标版本为空：
+说明（Phase3 实现）：
 
-系统必须提示：
-
-请先录入目标版本参数。
-
-禁止启动校验流程。
+- Parameter 对象必须存在，否则流程 FailFast：`PARAMETER_NOT_CONFIGURED`。
+- 对于 Expected 字段：若某一项为空，则该项版本校验跳过；非空项执行严格字符串匹配并返回对应 FailReason。
 
 10. WiFi MAC 规则
 
@@ -199,7 +209,9 @@ FailureReason
 失败原因枚举：
 
 Code	说明
-SN_ALREADY_PASS	SN 已测试成功
+PARAMETER_NOT_CONFIGURED	项目参数未配置（Expected* 缺失）
+PRODUCT_PROFILE_NOT_FOUND	未找到产品 Profile（ProductRegistry 无对应 ProductCode）
+SN_DUPLICATE	订单维度内已存在该 StickerSN 的 PASS 记录
 ADB_READ_FAIL	ADB读取失败
 SN_NOT_MATCH	设备SN与标签不一致
 CHIPID_INVALID	ChipID格式错误
@@ -223,16 +235,23 @@ WifiMac	ADB
 AndroidVersion	ADB
 BoardVersion	ADB
 ChargeBoardVersion	ADB
+Result	流程结果（PASS）
+FailReason	为空（PASS 时）
 13. ProcessCoordinator 流程图
 扫码SN
    │
    ▼
-SN已PASS?
+Parameter存在?
    │
-   ├─YES → FAIL(SN_ALREADY_PASS)
+   ├─NO → FAIL(PARAMETER_NOT_CONFIGURED)
    │
    ▼
-ADB读取设备信息
+读取ProductProfile（ProductRegistry）
+   │
+   ├─NOT FOUND → FAIL(PRODUCT_PROFILE_NOT_FOUND)
+   │
+   ▼
+ADB读取设备信息（RulePipelineExecutor 内执行）
    │
    ├─FAIL → FAIL(ADB_READ_FAIL)
    │
@@ -240,6 +259,11 @@ ADB读取设备信息
 SN匹配?
    │
    ├─NO → FAIL(SN_NOT_MATCH)
+   │
+   ▼
+SN已PASS?(Order维度)
+   │
+   ├─YES → FAIL(SN_DUPLICATE)
    │
    ▼
 ChipID合法?
@@ -254,17 +278,17 @@ ChipID重复?
    ▼
 Android版本匹配?
    │
-   ├─NO → FAIL
+   ├─NO → FAIL(ANDROID_VERSION_MISMATCH)
    │
    ▼
 Board版本匹配?
    │
-   ├─NO → FAIL
+   ├─NO → FAIL(BOARD_VERSION_MISMATCH)
    │
    ▼
 ChargeBoard版本匹配?
    │
-   ├─NO → FAIL
+   ├─NO → FAIL(CHARGE_BOARD_VERSION_MISMATCH)
    │
    ▼
 PASS
@@ -309,7 +333,9 @@ MES Gate
 必须覆盖测试：
 
 测试	说明
-SN 已PASS	必须失败
+Parameter 未配置	必须失败（PARAMETER_NOT_CONFIGURED）
+ProductProfile 不存在	必须失败（PRODUCT_PROFILE_NOT_FOUND）
+SN 已PASS（Order维度）	必须失败（SN_DUPLICATE）
 ADB读取失败	必须失败
 SN不匹配	必须失败
 ChipID非法	必须失败

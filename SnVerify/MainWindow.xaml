@@ -191,11 +191,13 @@
                             </TextBlock.Style>
                         </TextBlock>
                     </Border>
-                    <TextBlock Grid.Row="1" Grid.Column="6" Text="检验类型：" Style="{StaticResource BatchHeaderStyle}" Margin="10,0,0,0" VerticalAlignment="Center" Padding="5,2"/>
+                    <TextBlock Grid.Row="1" Grid.Column="6" Text="检验类型：" Style="{StaticResource BatchHeaderStyle}" Margin="10,0,0,0" VerticalAlignment="Center" Padding="5,2"
+                               Visibility="{Binding IsLegacyProduct, Converter={StaticResource BoolToVisibilityConverter}}"/>
                     <ComboBox Grid.Row="1" Grid.Column="7" x:Name="VerificationTypeComboBox" MinWidth="100" Height="28" Margin="5,0" VerticalAlignment="Center"
                               VerticalContentAlignment="Center"
                               ItemsSource="{Binding AvailableVerificationTypes}"
-                              SelectedItem="{Binding CurrentVerificationType, Mode=TwoWay}">
+                              SelectedItem="{Binding CurrentVerificationType, Mode=TwoWay}"
+                              Visibility="{Binding IsLegacyProduct, Converter={StaticResource BoolToVisibilityConverter}}">
                         <ComboBox.Style>
                             <Style TargetType="ComboBox">
                                 <Setter Property="IsEnabled" Value="True"/>
@@ -318,12 +320,13 @@
             <Border Grid.Column="0" BorderBrush="#999999" BorderThickness="1" Padding="30" Background="White">
                 <Grid>
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto"/>
-                        <!-- 主状态卡片行，设置较小的最小高度，便于整体紧凑 -->
-                        <RowDefinition Height="*" MinHeight="260"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>               <!-- Row0 SN -->
+                        <RowDefinition Height="*" MinHeight="260"/>  <!-- Row1 状态卡片 -->
+                        <RowDefinition Height="Auto"/>               <!-- Row2 输入区 -->
+                        <RowDefinition Height="Auto"/>               <!-- Row3 SN/版本信息 -->
+                        <RowDefinition Height="Auto"/>               <!-- Row4 KM001目标版本 -->
+                        <RowDefinition Height="Auto"/>               <!-- Row5 KM001设备信息 -->
+                        <RowDefinition Height="Auto"/>               <!-- Row6 FailReason -->
                     </Grid.RowDefinitions>
 
                     <!-- 当前SN显示（大字号，清晰可见） -->
@@ -599,7 +602,7 @@
                         </Grid>
                     </Border>
 
-                    <!-- 设备版本信息显示（目标版本+设备实际版本，VerificationType==VersionMatch 时显示） -->
+                    <!-- 设备版本信息显示（目标版本+设备实际版本，VerificationType==VersionMatch 时显示，Legacy 产品使用） -->
                     <Border Grid.Row="3" 
                             Background="#F8F8F8" 
                             BorderBrush="#DDDDDD" 
@@ -654,8 +657,84 @@
                         </Grid>
                     </Border>
 
+                    <!-- Phase3：目标版本配置（KM001 使用） -->
+                    <GroupBox Grid.Row="4" Header="目标版本配置"
+                              Margin="0,8,0,4"
+                              Visibility="{Binding IsPhase3Product, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Grid Margin="4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Android Version：" Margin="0,2,8,2" VerticalAlignment="Center"/>
+                            <TextBox Grid.Row="0" Grid.Column="1" Height="24" Margin="0,2,0,2"
+                                     Text="{Binding ExpectedAndroidVersion, UpdateSourceTrigger=PropertyChanged}"
+                                     IsEnabled="{Binding IsVersionInputEnabled}"/>
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Board Version：" Margin="0,2,8,2" VerticalAlignment="Center"/>
+                            <TextBox Grid.Row="1" Grid.Column="1" Height="24" Margin="0,2,0,2"
+                                     Text="{Binding ExpectedBoardVersion, UpdateSourceTrigger=PropertyChanged}"
+                                     IsEnabled="{Binding IsVersionInputEnabled}"/>
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="ChargeBoard Version：" Margin="0,2,8,2" VerticalAlignment="Center"/>
+                            <TextBox Grid.Row="2" Grid.Column="1" Height="24" Margin="0,2,0,2"
+                                     Text="{Binding ExpectedChargeBoardVersion, UpdateSourceTrigger=PropertyChanged}"
+                                     IsEnabled="{Binding IsVersionInputEnabled}"/>
+                        </Grid>
+                    </GroupBox>
+
+                    <!-- Phase3：设备信息显示（KM001 使用） -->
+                    <GroupBox Grid.Row="5" Header="设备信息"
+                              Margin="0,4,0,4"
+                              Visibility="{Binding IsPhase3Product, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Grid Margin="4">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                                <RowDefinition Height="Auto"/>
+                            </Grid.RowDefinitions>
+
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="DeviceSN：" Margin="0,2,8,2" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="0" Grid.Column="1" Margin="0,2,0,2"
+                                       Text="{Binding CurrentDeviceInfo.DeviceSn}" />
+
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="ChipId：" Margin="0,2,8,2" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,2,0,2"
+                                       Text="{Binding CurrentDeviceInfo.ChipId}" />
+
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="WifiMac：" Margin="0,2,8,2" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,2,0,2"
+                                       Text="{Binding CurrentDeviceInfo.WifiMac}" />
+
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="AndroidVersion：" Margin="0,2,8,2" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,2,0,2"
+                                       Text="{Binding CurrentDeviceInfo.AndroidVersion}" />
+
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="BoardVersion：" Margin="0,2,8,2" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="4" Grid.Column="1" Margin="0,2,0,2"
+                                       Text="{Binding CurrentDeviceInfo.BoardVersion}" />
+
+                            <TextBlock Grid.Row="5" Grid.Column="0" Text="ChargeBoardVersion：" Margin="0,2,8,2" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="5" Grid.Column="1" Margin="0,2,0,2"
+                                       Text="{Binding CurrentDeviceInfo.ChargeBoardVersion}" />
+                        </Grid>
+                    </GroupBox>
+
                     <!-- 失败原因显示（仅FAIL时显示，区域更紧凑） -->
-                    <Grid Grid.Row="4" MinHeight="40" Margin="0,6,0,6">
+                    <Grid Grid.Row="6" MinHeight="40" Margin="0,6,0,6">
                         <Border Style="{StaticResource ErrorDetailPanelStyle}">
                             <TextBlock Text="{Binding FailReason}" Style="{StaticResource FailReasonStyle}"/>
                         </Border>

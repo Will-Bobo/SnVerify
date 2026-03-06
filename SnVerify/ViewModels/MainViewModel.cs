@@ -80,6 +80,13 @@ namespace SnVerify.ViewModels
         // 当 Session 从 Active → Idle 时，允许下一次将 VerificationSnapshot 回退到 Idle（清屏/避免残留版本号）。
         private bool _allowIdleVerificationSnapshotOverwriteOnce;
 
+        private DeviceInfo _currentDeviceInfo;
+        private string _expectedAndroidVersion;
+        private string _expectedBoardVersion;
+        private string _expectedChargeBoardVersion;
+        private bool _isLegacyProduct;
+        private bool _isPhase3Product;
+
         // SessionLock：用于防止“真实运行中的活动 Session”被 UI/外部代码误改关键输入。
         // 说明：单元测试中常直接设置 SessionSnapshot 为 Active，但 Mock 的 ISessionLifecycleService.GetCurrentSessionId 可能仍返回 null；
         // 为保持测试稳定且不影响真实运行，此处以 GetCurrentSessionId 是否存在作为“真实活动 Session”的辅助判定。
@@ -114,6 +121,15 @@ namespace SnVerify.ViewModels
         }
 
         /// <summary>
+        /// 项目名称（UI 展示用，当前与 ProjectIdInput 等价）。
+        /// </summary>
+        public string ProjectName
+        {
+            get => ProjectIdInput;
+            set => ProjectIdInput = value;
+        }
+
+        /// <summary>
         /// 当前产品显示文本（格式：ProductCode + Mode）。
         /// </summary>
         public string CurrentProductDisplay
@@ -133,6 +149,38 @@ namespace SnVerify.ViewModels
         /// ProductCode 下拉框是否可用（Session 未启动时可选，启动后禁用）。
         /// </summary>
         public bool IsProductCodeComboBoxEnabled => !IsSessionActive;
+
+        /// <summary>
+        /// 是否为 Legacy 产品（SOLTAG25 等）。
+        /// </summary>
+        public bool IsLegacyProduct
+        {
+            get => _isLegacyProduct;
+            private set
+            {
+                if (_isLegacyProduct != value)
+                {
+                    _isLegacyProduct = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        /// <summary>
+        /// 是否为 Phase3 产品（KM001 等）。
+        /// </summary>
+        public bool IsPhase3Product
+        {
+            get => _isPhase3Product;
+            private set
+            {
+                if (_isPhase3Product != value)
+                {
+                    _isPhase3Product = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
 
         /// <summary>
         /// Session 状态快照（Phase 2.5：替代 BatchSnapshot）
@@ -195,6 +243,15 @@ namespace SnVerify.ViewModels
                     StartBatchCommand?.RaiseCanExecuteChanged();
                     EndBatchCommand?.RaiseCanExecuteChanged();
                     ExportCommand?.RaiseCanExecuteChanged();
+
+                    // Phase3：从 Snapshot 更新当前设备信息的基础字段（DeviceSN）。
+                    if (_verificationSnapshot != null && !string.IsNullOrWhiteSpace(_verificationSnapshot.DeviceSN))
+                    {
+                        CurrentDeviceInfo = new DeviceInfo
+                        {
+                            DeviceSn = _verificationSnapshot.DeviceSN
+                        };
+                    }
                 }
             }
         }
@@ -449,6 +506,75 @@ namespace SnVerify.ViewModels
         public string DeviceSN => VerificationSnapshot?.DeviceSN ?? "";
 
         /// <summary>
+        /// 当前设备信息（Phase3：KM001 设备信息展示使用）。
+        /// </summary>
+        public DeviceInfo CurrentDeviceInfo
+        {
+            get => _currentDeviceInfo;
+            private set
+            {
+                if (!ReferenceEquals(_currentDeviceInfo, value))
+                {
+                    _currentDeviceInfo = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Phase3：目标 Android 版本（仅用于 KM001 目标版本配置 UI）。
+        /// </summary>
+        public string ExpectedAndroidVersion
+        {
+            get => _expectedAndroidVersion ?? "";
+            set
+            {
+                if (_expectedAndroidVersion != value)
+                {
+                    _expectedAndroidVersion = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Phase3：目标 Board 版本。
+        /// </summary>
+        public string ExpectedBoardVersion
+        {
+            get => _expectedBoardVersion ?? "";
+            set
+            {
+                if (_expectedBoardVersion != value)
+                {
+                    _expectedBoardVersion = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Phase3：目标 ChargeBoard 版本。
+        /// </summary>
+        public string ExpectedChargeBoardVersion
+        {
+            get => _expectedChargeBoardVersion ?? "";
+            set
+            {
+                if (_expectedChargeBoardVersion != value)
+                {
+                    _expectedChargeBoardVersion = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        /// <summary>
+        /// Phase3：目标版本输入是否可编辑（Session 未激活时可编辑）。
+        /// </summary>
+        public bool IsVersionInputEnabled => !IsSessionActive;
+
+        /// <summary>
         /// 是否正在处理（用于显示）
         /// </summary>
         public bool IsProcessing => VerificationSnapshot?.IsProcessing ?? false;
@@ -701,6 +827,8 @@ namespace SnVerify.ViewModels
             {
                 _currentProductProfile = null;
                 CurrentProductDisplay = "--";
+                IsLegacyProduct = false;
+                IsPhase3Product = false;
                 return;
             }
 
@@ -708,11 +836,16 @@ namespace SnVerify.ViewModels
             if (_currentProductProfile == null)
             {
                 CurrentProductDisplay = $"{SelectedProductCode} [未知]";
+                IsLegacyProduct = false;
+                IsPhase3Product = false;
                 return;
             }
 
             var modeText = _currentProductProfile.Mode == VerificationMode.Phase3 ? "Phase3模式" : "Legacy模式";
             CurrentProductDisplay = $"{_currentProductProfile.ProductCode} [{modeText}]";
+
+             IsLegacyProduct = _currentProductProfile.Mode == VerificationMode.Legacy;
+             IsPhase3Product = _currentProductProfile.Mode == VerificationMode.Phase3;
         }
 
         /// <summary>
