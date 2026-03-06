@@ -1,8 +1,10 @@
+
 /// <author>AI Assistant</author>
 /// <remarks>
 /// This file is generated or initially scaffolded by AI.
 /// Human review and refinement may follow.
 /// Phase 2.5 Step 6：TestRecord 模型，使用 INT SessionId 关联 TestSession。
+/// Phase 3：在保持 TestSession 作为归属事实的前提下，增加 ChipId / WifiMac / 多版本字段以支撑扩展校验规则。
 /// </remarks>
 
 using System;
@@ -10,7 +12,8 @@ using System;
 namespace SnVerify.Domain.Models
 {
     /// <summary>
-    /// SN 粒度测试记录。不冗余 Product/Order，通过 SessionId 关联 TestSession。
+    /// SN 粒度测试记录。通过 SessionId 关联 TestSession，Order 维度通过会话推导。
+    /// Phase 3 起引入 ChipId / WifiMac / 多版本字段，用于扩展校验与追溯。
     /// </summary>
     public class TestRecord
     {
@@ -35,6 +38,26 @@ namespace SnVerify.Domain.Models
         public string DeviceSN { get; set; }
 
         /// <summary>
+        /// 设备 WiFi MAC 地址（来自 ADB 读取，Phase 3 引入）。
+        /// </summary>
+        public string WifiMac { get; set; }
+
+        /// <summary>
+        /// 芯片 ID（ChipId，来自 ADB 读取，Phase 3 引入）。
+        /// </summary>
+        public string ChipId { get; set; }
+
+        /// <summary>
+        /// 主板版本号（BoardVersion，来自 ADB 读取，Phase 3 引入）。
+        /// </summary>
+        public string BoardVersion { get; set; }
+
+        /// <summary>
+        /// 充电小板版本号（ChargeBoardVersion，来自 ADB 读取，Phase 3 引入）。
+        /// </summary>
+        public string ChargeBoardVersion { get; set; }
+
+        /// <summary>
         /// 校验结果：PASS / FAIL / TIMEOUT。
         /// </summary>
         public string Result { get; set; }
@@ -50,16 +73,13 @@ namespace SnVerify.Domain.Models
         public DateTime VerifyTime { get; set; }
 
         /// <summary>
-        /// 期望版本号（VersionMatch 类型使用；SnMatch 允许为 null）。
-        /// 类型由所属 Session.VerificationType 推断。
+        /// 期望 Android 版本号（VersionMatch 或 SN+版本联合流程使用；允许为 null）。
         /// </summary>
         public string ExpectedVersion { get; set; }
 
         /// <summary>
-        /// 实际版本号（VersionMatch 类型使用；SnMatch 允许为 null）。
-        /// 类型由所属 Session.VerificationType 推断。
+        /// 实际 Android 版本号（VersionMatch 或 SN+版本联合流程使用；允许为 null）。
         /// </summary>
         public string ActualVersion { get; set; }
     }
 }
-

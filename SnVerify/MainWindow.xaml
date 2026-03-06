@@ -93,6 +93,10 @@
             <!-- 测试控制区（Phase 2.5：ProjectId + OrderId 输入 + 本次测试标识只读展示） -->
             <Border Grid.Column="0" BorderBrush="#CCCCCC" BorderThickness="1" Padding="10" Background="#F5F5F5">
                 <Grid>
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto"/>
+                        <RowDefinition Height="Auto"/>
+                    </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="140"/>
@@ -106,8 +110,41 @@
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
                     </Grid.ColumnDefinitions>
-                    <TextBlock Grid.Column="0" Text="项目名：" Style="{StaticResource BatchHeaderStyle}" VerticalAlignment="Center" Padding="5,2"/>
-                    <TextBox Grid.Column="1" x:Name="ProjectIdTextBox" MinWidth="120" Height="28" Margin="5,0" VerticalAlignment="Center" VerticalContentAlignment="Center"
+                    
+                    <!-- 产品选择与显示（Stage3 Step2） -->
+                    <Grid Grid.Row="0" Margin="0,0,0,8">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="220"/>
+                            <ColumnDefinition Width="Auto"/>
+                            <ColumnDefinition Width="160"/>
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock Grid.Column="0" Text="本次测试产品：" Style="{StaticResource BatchHeaderStyle}" VerticalAlignment="Center" Padding="5,2"/>
+                        <Border Grid.Column="1" Height="28" Margin="5,0" VerticalAlignment="Center"
+                                Background="#F0F0F0" Padding="5,0">
+                            <TextBlock VerticalAlignment="Center" Text="{Binding CurrentProductDisplay}" FontSize="12" Foreground="#666666"/>
+                        </Border>
+
+                        <TextBlock Grid.Column="2" Text="产品代码：" Style="{StaticResource BatchHeaderStyle}" Margin="10,0,0,0" VerticalAlignment="Center" Padding="5,2"/>
+                        <ComboBox Grid.Column="3" Height="28" Margin="5,0" VerticalAlignment="Center"
+                                  ItemsSource="{Binding AvailableProducts}"
+                                  SelectedItem="{Binding SelectedProductCode, Mode=TwoWay}">
+                            <ComboBox.Style>
+                                <Style TargetType="ComboBox">
+                                    <Setter Property="IsEnabled" Value="True"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsProductCodeComboBoxEnabled}" Value="False">
+                                            <Setter Property="IsEnabled" Value="False"/>
+                                            <Setter Property="Background" Value="#E0E0E0"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </ComboBox.Style>
+                        </ComboBox>
+                    </Grid>
+                    <TextBlock Grid.Row="1" Grid.Column="0" Text="项目名：" Style="{StaticResource BatchHeaderStyle}" VerticalAlignment="Center" Padding="5,2"/>
+                    <TextBox Grid.Row="1" Grid.Column="1" x:Name="ProjectIdTextBox" MinWidth="120" Height="28" Margin="5,0" VerticalAlignment="Center" VerticalContentAlignment="Center"
                              Text="{Binding ProjectIdInput, UpdateSourceTrigger=PropertyChanged}">
                         <TextBox.Style>
                             <Style TargetType="TextBox">
@@ -121,8 +158,8 @@
                             </Style>
                         </TextBox.Style>
                     </TextBox>
-                    <TextBlock Grid.Column="2" Text="订单号：" Style="{StaticResource BatchHeaderStyle}" Margin="10,0,0,0" VerticalAlignment="Center" Padding="5,2"/>
-                    <TextBox Grid.Column="3" x:Name="OrderIdTextBox" MinWidth="120" Height="28" Margin="5,0" VerticalAlignment="Center" VerticalContentAlignment="Center"
+                    <TextBlock Grid.Row="1" Grid.Column="2" Text="订单号：" Style="{StaticResource BatchHeaderStyle}" Margin="10,0,0,0" VerticalAlignment="Center" Padding="5,2"/>
+                    <TextBox Grid.Row="1" Grid.Column="3" x:Name="OrderIdTextBox" MinWidth="120" Height="28" Margin="5,0" VerticalAlignment="Center" VerticalContentAlignment="Center"
                              Text="{Binding OrderIdInput, UpdateSourceTrigger=PropertyChanged}">
                         <TextBox.Style>
                             <Style TargetType="TextBox">
@@ -136,8 +173,8 @@
                             </Style>
                         </TextBox.Style>
                     </TextBox>
-                    <TextBlock Grid.Column="4" Text="本次测试：" Style="{StaticResource BatchHeaderStyle}" Margin="10,0,0,0" VerticalAlignment="Center" Padding="5,2"/>
-                    <Border Grid.Column="5" MinWidth="150" Height="28" Margin="5,0" VerticalAlignment="Center" HorizontalAlignment="Center"
+                    <TextBlock Grid.Row="1" Grid.Column="4" Text="本次测试：" Style="{StaticResource BatchHeaderStyle}" Margin="10,0,0,0" VerticalAlignment="Center" Padding="5,2"/>
+                    <Border Grid.Row="1" Grid.Column="5" MinWidth="150" Height="28" Margin="5,0" VerticalAlignment="Center" HorizontalAlignment="Center"
                             Background="#F0F0F0" Padding="5,0">
                         <TextBlock x:Name="CurrentTestIdentifierText"
                                VerticalAlignment="Center" HorizontalAlignment="Center" TextAlignment="Center"
@@ -154,8 +191,8 @@
                             </TextBlock.Style>
                         </TextBlock>
                     </Border>
-                    <TextBlock Grid.Column="6" Text="检验类型：" Style="{StaticResource BatchHeaderStyle}" Margin="10,0,0,0" VerticalAlignment="Center" Padding="5,2"/>
-                    <ComboBox Grid.Column="7" x:Name="VerificationTypeComboBox" MinWidth="100" Height="28" Margin="5,0" VerticalAlignment="Center"
+                    <TextBlock Grid.Row="1" Grid.Column="6" Text="检验类型：" Style="{StaticResource BatchHeaderStyle}" Margin="10,0,0,0" VerticalAlignment="Center" Padding="5,2"/>
+                    <ComboBox Grid.Row="1" Grid.Column="7" x:Name="VerificationTypeComboBox" MinWidth="100" Height="28" Margin="5,0" VerticalAlignment="Center"
                               VerticalContentAlignment="Center"
                               ItemsSource="{Binding AvailableVerificationTypes}"
                               SelectedItem="{Binding CurrentVerificationType, Mode=TwoWay}">
@@ -181,7 +218,7 @@
                             </Style>
                         </ComboBox.ItemContainerStyle>
                     </ComboBox>
-                    <Button Grid.Column="8" x:Name="StartBatchButton" Content="开始测试" Width="100" Height="28" Margin="5,0" VerticalAlignment="Center"
+                    <Button Grid.Row="1" Grid.Column="8" x:Name="StartBatchButton" Content="开始测试" Width="100" Height="28" Margin="5,0" VerticalAlignment="Center"
                             Command="{Binding StartBatchCommand}">
                         <Button.Style>
                             <Style TargetType="Button">
@@ -194,7 +231,7 @@
                             </Style>
                         </Button.Style>
                     </Button>
-                    <Button Grid.Column="9" x:Name="EndBatchButton" Content="结束测试" Width="100" Height="28" Margin="5,0" VerticalAlignment="Center"
+                    <Button Grid.Row="1" Grid.Column="9" x:Name="EndBatchButton" Content="结束测试" Width="100" Height="28" Margin="5,0" VerticalAlignment="Center"
                             Command="{Binding EndBatchCommand}">
                         <Button.Style>
                             <Style TargetType="Button">
@@ -207,7 +244,7 @@
                             </Style>
                         </Button.Style>
                     </Button>
-                    <Button Grid.Column="10" x:Name="ExportBatchButton" Content="导出" Width="80" Height="28" Margin="5,0" VerticalAlignment="Center"
+                    <Button Grid.Row="1" Grid.Column="10" x:Name="ExportBatchButton" Content="导出" Width="80" Height="28" Margin="5,0" VerticalAlignment="Center"
                             Command="{Binding ExportCommand}">
                         <Button.Style>
                             <Style TargetType="Button">

@@ -110,6 +110,12 @@
     <Compile Include="Domain\Models\BatchInfo.cs" />
     <Compile Include="Domain\Models\Order.cs" />
     <Compile Include="Domain\Models\Product.cs" />
+    <Compile Include="Domain\Product\VerificationMode.cs" />
+    <Compile Include="Domain\Product\DeviceInfoCommandSet.cs" />
+    <Compile Include="Domain\Product\ProductProfile.cs" />
+    <Compile Include="Domain\Models\DeviceInfo.cs" />
+    <Compile Include="Domain\Models\VerificationParameter.cs" />
+    <Compile Include="Domain\Models\ProjectProfile.cs" />
     <Compile Include="Domain\Models\TestSession.cs" />
     <Compile Include="Domain\Models\TestRecord.cs" />
     <Compile Include="Domain\Models\SnCapturedEventArgs.cs" />
@@ -131,6 +137,9 @@
     </Compile>
     <Compile Include="Infrastructure\ServiceFactory.cs" />
     <Compile Include="Infrastructure\VerificationFlowServiceFactory.cs" />
+    <Compile Include="Infrastructure\Product\ProductRegistry.cs" />
+    <Compile Include="Infrastructure\Product\IProductRegistry.cs" />
+    <Compile Include="Infrastructure\Product\ProductRegistryAdapter.cs" />
     <Compile Include="Services\Adb\AdbAccessService.cs" />
     <Compile Include="Services\Adb\IAdbAccessService.cs" />
     <Compile Include="Services\Adb\IProcessRunner.cs" />
@@ -166,6 +175,15 @@
     <Compile Include="Services\Storage\StorageService.cs" />
     <Compile Include="Services\Storage\IExportAggregationService.cs" />
     <Compile Include="Services\Storage\ExportAggregationService.cs" />
+    <Compile Include="Services\Parameter\IParameterService.cs" />
+    <Compile Include="Services\Parameter\ParameterService.cs" />
+    <Compile Include="Services\Product\IProductProfileFactory.cs" />
+    <Compile Include="Services\Product\ProductProfileFactory.cs" />
+    <Compile Include="Services\Verification\IVersionVerificationService.cs" />
+    <Compile Include="Services\Verification\VersionVerificationService.cs" />
+    <Compile Include="Services\Rules\RuleExecutionResult.cs" />
+    <Compile Include="Services\Rules\IRulePipelineExecutor.cs" />
+    <Compile Include="Services\Rules\RulePipelineExecutor.cs" />
     <Compile Include="Services\Ui\IUserDialogService.cs" />
     <Compile Include="Ui\WpfUserDialogService.cs" />
     <Compile Include="ViewModels\MainViewModel.cs" />

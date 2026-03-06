@@ -15,6 +15,11 @@ using SnVerify.Services.Adb;
 using SnVerify.Services.Logging;
 using SnVerify.Services.Mes.Gate;
 using SnVerify.Services.Storage;
+using SnVerify.Services.Parameter;
+using SnVerify.Services.ProductProfiles;
+using SnVerify.Services.Verification;
+using SnVerify.Infrastructure.Product;
+using SnVerify.Services.Rules;
 
 namespace SnVerify.Services.Coordination
 {
@@ -31,6 +36,11 @@ namespace SnVerify.Services.Coordination
         private readonly IMesPreCheck _mesPreCheck;
         private readonly IMesResultReporter _mesReporter;
         private readonly MesMode _mesMode;
+        private readonly IParameterService _parameterService;
+        private readonly IVersionVerificationService _versionVerificationService;
+        private readonly IProductProfileFactory _productProfileFactory;
+        private readonly IProductRegistry _productRegistry;
+        private readonly IRulePipelineExecutor _rulePipelineExecutor;
         private readonly object _lockObject = new object();
         private VerificationSnapshot _snapshot;
 
@@ -75,7 +85,12 @@ namespace SnVerify.Services.Coordination
         /// <param name="mesPreCheck">MES Pre-Gate（可选，null 时不调用）</param>
         /// <param name="mesReporter">MES Post-Report（可选，null 时不调用）</param>
         /// <param name="mesMode">MES 模式，Disabled 时不调用 Pre/Post</param>
-        /// <param name="orderId">订单 ID（可选，用于 MES 上下文）</param>
+        /// <param name="orderId">订单 ID（可选，用于 MES 上下文与订单维度唯一性检查）</param>
+        /// <param name="parameterService">版本参数服务（Phase 3：用于获取项目级版本目标配置，可选）</param>
+        /// <param name="versionVerificationService">三版本强校验服务（Phase 3 Stage2：可选，未注入时使用默认实现）。</param>
+        /// <param name="productProfileFactory">Product / Project Profile 工厂（可选，未注入时使用调用方传入的 profile）。</param>
+        /// <param name="productRegistry">ProductRegistry 读取接口（Stage3：唯一规则入口，可选；默认使用静态注册表适配器）。</param>
+        /// <param name="rulePipelineExecutor">规则链执行器（Stage3：可选；为空时使用默认实现）。</param>
         public ProcessCoordinator(
             string sessionId,
             IStorageService storageService,
@@ -84,7 +99,12 @@ namespace SnVerify.Services.Coordination
             IMesPreCheck mesPreCheck = null,
             IMesResultReporter mesReporter = null,
             MesMode mesMode = MesMode.Disabled,
-            string orderId = null)
+            string orderId = null,
+            IParameterService parameterService = null,
+            IVersionVerificationService versionVerificationService = null,
+            IProductProfileFactory productProfileFactory = null,
+            IProductRegistry productRegistry = null,
+            IRulePipelineExecutor rulePipelineExecutor = null)
         {
             _sessionId = sessionId ?? throw new ArgumentNullException(nameof(sessionId));
             _orderId = orderId;
@@ -94,6 +114,11 @@ namespace SnVerify.Services.Coordination
             _mesPreCheck = mesPreCheck;
             _mesReporter = mesReporter;
             _mesMode = mesMode;
+            _parameterService = parameterService;
+            _versionVerificationService = versionVerificationService;
+            _productProfileFactory = productProfileFactory;
+            _productRegistry = productRegistry ?? new ProductRegistryAdapter();
+            _rulePipelineExecutor = rulePipelineExecutor;
             _snapshot = VerificationSnapshot.Idle(_sessionId);
         }
 
@@ -286,6 +311,95 @@ namespace SnVerify.Services.Coordination
         }
 
         /// <summary>
+        /// Phase 3 SN 校验流程（扩展版）：
+        /// 获取项目参数 → ADB 读取设备信息 → SN 匹配 → ChipId 格式检查 → ChipId 订单内唯一性检查 → 版本校验 → 保存 TestRecord。
+        /// 
+        /// 说明：
+        /// - 不改变原有 StartVerificationAsync 的行为，仅作为 Phase 3 扩展入口供后续挂接。
+        /// - orderId 维度使用构造函数中注入的 _orderId，projectId 用于 ParameterService。
+        /// </summary>
+        /// <param name="sn">扫码输入的 SN（StickerSN）</param>
+        /// <param name="projectId">项目 ID（用于参数读取）</param>
+        /// <param name="projectProfile">项目 Profile（用于 ADB 读取命令配置，可为 null）</param>
+        public async Task ProcessScanAsync(string sn, string projectId, ProjectProfile projectProfile = null)
+        {
+            if (string.IsNullOrWhiteSpace(sn))
+                throw new ArgumentException("SN 不能为空", nameof(sn));
+            if (string.IsNullOrWhiteSpace(projectId))
+                throw new ArgumentException("ProjectId 不能为空", nameof(projectId));
+            if (string.IsNullOrWhiteSpace(_orderId))
+                throw new InvalidOperationException("OrderId 未设置，无法执行订单维度唯一性检查");
+
+            // 原子锁定检查
+            bool shouldProcess = false;
+            lock (_lockObject)
+            {
+                if (!_snapshot.IsProcessing)
+                {
+                    shouldProcess = true;
+                    UpdateSnapshot(VerificationSnapshot.Processing(sn, _sessionId));
+                }
+            }
+
+            if (!shouldProcess)
+            {
+                // 正在处理中，忽略本次请求
+                return;
+            }
+
+            _loggingService?.LogInfo($"[Phase3] 校验开始，项目={projectId}, 订单={_orderId}, SN={sn}");
+
+            try
+            {
+                // Step 1: 获取项目参数配置（ExpectedAndroidVersion / ExpectedBoardVersion / ExpectedChargeBoardVersion）
+                VerificationParameter parameter = null;
+                if (_parameterService != null)
+                {
+                    parameter = await _parameterService.GetParameterAsync(projectId).ConfigureAwait(false);
+                }
+
+                if (parameter == null)
+                {
+                    const string failReason = "PARAMETER_NOT_CONFIGURED";
+                    await SavePhase3ResultAsync(sn, "FAIL", failReason, null, null).ConfigureAwait(false);
+                    _loggingService?.LogInfo("[Phase3] 参数未配置，终止流程");
+                    UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", failReason, _sessionId, null));
+                    return;
+                }
+
+                // Stage3：规则判断全部外移到 RulePipelineExecutor。
+                // Profile 必须来自 ProductRegistry（唯一规则入口）。
+                var productProfile = _productRegistry.GetProductProfile(projectId);
+                if (productProfile == null)
+                {
+                    const string failReason = "PRODUCT_PROFILE_NOT_FOUND";
+                    _loggingService?.LogInfo($"[Phase3] 未找到产品 Profile: productCode={projectId}");
+                    UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", failReason, _sessionId, null));
+                    return;
+                }
+
+                var executor = _rulePipelineExecutor ?? new RulePipelineExecutor(
+                    _sessionId,
+                    _storageService,
+                    _adbAccessService,
+                    _versionVerificationService ?? new VersionVerificationService());
+
+                var execResult = await executor
+                    .ExecuteAsync(productProfile, deviceInfo: null, parameter, stickerSn: sn, orderId: _orderId)
+                    .ConfigureAwait(false);
+
+                var deviceSN = execResult?.DeviceInfo?.DeviceSn?.Trim();
+                UpdateSnapshot(VerificationSnapshot.Completed(sn.Trim(), execResult?.Result ?? "FAIL", execResult?.FailReason, _sessionId, deviceSN));
+            }
+            catch (Exception ex)
+            {
+                var failReason = $"EXCEPTION: {ex.Message}";
+                _loggingService?.LogInfo($"[Phase3] 校验异常: {ex.Message}");
+                UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", failReason, _sessionId, null));
+            }
+        }
+
+        /// <summary>
         /// 重置流程状态，允许下一次扫描
         /// </summary>
         public void Reset()
@@ -382,6 +496,44 @@ namespace SnVerify.Services.Coordination
             catch
             {
                 // 保存失败不影响流程
+            }
+        }
+
+        /// <summary>
+        /// Phase 3：保存扩展字段的校验结果到 TestRecord（包含 DeviceInfo 与版本参数）。
+        /// </summary>
+        private async Task SavePhase3ResultAsync(string sn, string result, string failReason, DeviceInfo deviceInfo, VerificationParameter parameter)
+        {
+            try
+            {
+                var internalSessionId = await _storageService.GetInternalSessionIdBySessionNameAsync(_sessionId).ConfigureAwait(false);
+                if (!internalSessionId.HasValue)
+                {
+                    return;
+                }
+
+                var record = new TestRecord
+                {
+                    SessionId = internalSessionId.Value,
+                    StickerSN = sn,
+                    DeviceSN = deviceInfo?.DeviceSn,
+                    WifiMac = deviceInfo?.WifiMac,
+                    ChipId = deviceInfo?.ChipId,
+                    BoardVersion = deviceInfo?.BoardVersion,
+                    ChargeBoardVersion = deviceInfo?.ChargeBoardVersion,
+                    Result = result,
+                    FailReason = failReason,
+                    VerifyTime = DateTime.Now,
+                    ExpectedVersion = parameter?.ExpectedAndroidVersion,
+                    ActualVersion = deviceInfo?.AndroidVersion
+                };
+
+                await _storageService.SaveTestRecordAsync(record).ConfigureAwait(false);
+                await PostReportAsync(sn, result, failReason, record.DeviceSN).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Phase 3 扩展结果保存失败不应中断上层流程。
             }
         }
 

@@ -386,6 +386,101 @@ namespace SnVerify.Services.Adb
         }
 
         /// <summary>
+        /// 按项目配置读取设备信息（DeviceInfo），用于 Phase3 SN 校验流程。
+        /// 优先尝试一次 ADB 命令读取全部字段；若配置未提供聚合命令或执行失败，则退回到现有 SN/版本读取逻辑，其他字段置空。
+        /// 默认总超时 10 秒，期间内部允许多次重试。
+        /// </summary>
+        public async Task<DeviceInfo> ReadDeviceInfoAsync(ProjectProfile profile)
+        {
+            // 使用总超时控制，防止外部调用被长时间阻塞。
+            using (var timeoutCts = new CancellationTokenSource(TotalTimeoutMs))
+            {
+                var token = timeoutCts.Token;
+                string deviceSn = null;
+                string wifiMac = null;
+                string chipId = null;
+                string boardVersion = null;
+                string chargeBoardVersion = null;
+                string androidVersion = null;
+
+                try
+                {
+                    // Step 1：若 ProjectProfile 提供聚合命令，则优先使用。
+                    // 目前项目尚未定义具体格式，这里只保留挂载点，实际解析规则可在后续 Phase 中补充。
+                    if (profile != null && !string.IsNullOrWhiteSpace(profile.AggregateDeviceInfoCommand))
+                    {
+                        try
+                        {
+                            await EnsureAdbShellWarmedUpAsync(token).ConfigureAwait(false);
+
+                            var aggregateResult = await _processRunner.RunAsync(
+                                _adbPath,
+                                profile.AggregateDeviceInfoCommand,
+                                TotalTimeoutMs,
+                                token).ConfigureAwait(false);
+
+                            if (aggregateResult.IsSuccess && !string.IsNullOrWhiteSpace(aggregateResult.StandardOutput))
+                            {
+                                // TODO: 根据后续文档定义解析规则，目前仅占位。
+                                Debug.WriteLine("[AdbAccessService] Aggregate device info command executed, but parsing is not yet implemented.");
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Debug.WriteLine($"[AdbAccessService] Aggregate device info command failed: {ex.Message}");
+                            // 聚合命令失败不阻断流程，继续使用分字段读取。
+                        }
+                    }
+
+                    // Step 2：使用现有 SN 读取逻辑，保证与 Phase 2.5 行为一致。
+                    var snResult = await ReadDeviceSnAsync(token).ConfigureAwait(false);
+                    if (snResult.IsSuccess)
+                    {
+                        deviceSn = snResult.Sn;
+                    }
+
+                    // Step 3：读取 Android 版本（与调试接口一致）。
+                    try
+                    {
+                        await EnsureAdbShellWarmedUpAsync(token).ConfigureAwait(false);
+
+                        var versionResult = await _processRunner.RunAsync(
+                            _adbPath,
+                            "shell getprop ro.build.display.id",
+                            TotalTimeoutMs / MaxRetries,
+                            token).ConfigureAwait(false);
+
+                        if (versionResult.IsSuccess)
+                        {
+                            var v = versionResult.StandardOutput?.Trim();
+                            androidVersion = string.IsNullOrWhiteSpace(v) ? null : v;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Debug.WriteLine($"[AdbAccessService] ReadDeviceInfoAsync(ProjectProfile) version read failed: {ex.Message}");
+                    }
+                }
+                catch (OperationCanceledException ex)
+                {
+                    Debug.WriteLine($"[AdbAccessService] ReadDeviceInfoAsync(ProjectProfile) cancelled: {ex.Message}");
+                }
+
+                // 其余字段（WifiMac / ChipId / BoardVersion / ChargeBoardVersion）暂未在硬件协议中约定，先返回 null。
+                // 业务层在使用时必须做好 null 防御处理。
+                return new DeviceInfo
+                {
+                    DeviceSn = deviceSn,
+                    WifiMac = wifiMac,
+                    ChipId = chipId,
+                    BoardVersion = boardVersion,
+                    ChargeBoardVersion = chargeBoardVersion,
+                    AndroidVersion = androidVersion
+                };
+            }
+        }
+
+        /// <summary>
         /// 获取指定设备的 SN（Phase2 新增）
         /// </summary>
         public async Task<string> GetDeviceSNAsync(string deviceId = null, string batchId = null, CancellationToken cancellationToken = default)

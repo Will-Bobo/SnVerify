@@ -21,7 +21,7 @@ namespace SnVerify.Tests.Services
     {
         private Mock<IAdbAccessService> _adbMock;
         private Mock<IStorageService> _storageMock;
-        private IVersionVerificationFlowService _service;
+        private VersionVerificationFlowService _service;
 
         private static TestSession CreateVersionMatchSession(string expectedVersion = "1.0.0", int id = 1)
         {
@@ -178,6 +178,114 @@ namespace SnVerify.Tests.Services
             Assert.That(record.ExpectedVersion, Is.EqualTo(""));
             Assert.That(record.ActualVersion, Is.EqualTo(""));
             Assert.That(record.DeviceSN, Is.EqualTo("SN001"), "成功时应收存设备 SN");
+        }
+
+        [Test]
+        public void VerifyVersion_WhenAllThreeMatch_ReturnsPass()
+        {
+            var device = new DeviceInfo
+            {
+                AndroidVersion = "A1",
+                BoardVersion = "B1",
+                ChargeBoardVersion = "C1"
+            };
+
+            var parameter = new VerificationParameter
+            {
+                ExpectedAndroidVersion = "A1",
+                ExpectedBoardVersion = "B1",
+                ExpectedChargeBoardVersion = "C1"
+            };
+
+            var (isPass, failReason) = _service.VerifyVersion(device, parameter);
+
+            Assert.That(isPass, Is.True);
+            Assert.That(failReason, Is.Null);
+        }
+
+        [Test]
+        public void VerifyVersion_WhenAndroidVersionMismatch_ReturnsFailWithAndroidCode()
+        {
+            var device = new DeviceInfo
+            {
+                AndroidVersion = "AX",
+                BoardVersion = "B1",
+                ChargeBoardVersion = "C1"
+            };
+
+            var parameter = new VerificationParameter
+            {
+                ExpectedAndroidVersion = "A1",
+                ExpectedBoardVersion = "B1",
+                ExpectedChargeBoardVersion = "C1"
+            };
+
+            var (isPass, failReason) = _service.VerifyVersion(device, parameter);
+
+            Assert.That(isPass, Is.False);
+            Assert.That(failReason, Is.EqualTo("ANDROID_VERSION_MISMATCH"));
+        }
+
+        [Test]
+        public void VerifyVersion_WhenBoardVersionMismatch_ReturnsFailWithBoardCode()
+        {
+            var device = new DeviceInfo
+            {
+                AndroidVersion = "A1",
+                BoardVersion = "BX",
+                ChargeBoardVersion = "C1"
+            };
+
+            var parameter = new VerificationParameter
+            {
+                ExpectedAndroidVersion = "A1",
+                ExpectedBoardVersion = "B1",
+                ExpectedChargeBoardVersion = "C1"
+            };
+
+            var (isPass, failReason) = _service.VerifyVersion(device, parameter);
+
+            Assert.That(isPass, Is.False);
+            Assert.That(failReason, Is.EqualTo("BOARD_VERSION_MISMATCH"));
+        }
+
+        [Test]
+        public void VerifyVersion_WhenChargeBoardVersionMismatch_ReturnsFailWithChargeCode()
+        {
+            var device = new DeviceInfo
+            {
+                AndroidVersion = "A1",
+                BoardVersion = "B1",
+                ChargeBoardVersion = "CX"
+            };
+
+            var parameter = new VerificationParameter
+            {
+                ExpectedAndroidVersion = "A1",
+                ExpectedBoardVersion = "B1",
+                ExpectedChargeBoardVersion = "C1"
+            };
+
+            var (isPass, failReason) = _service.VerifyVersion(device, parameter);
+
+            Assert.That(isPass, Is.False);
+            Assert.That(failReason, Is.EqualTo("CHARGE_BOARD_VERSION_MISMATCH"));
+        }
+
+        [Test]
+        public void VerifyVersion_WhenParameterNotConfigured_ReturnsFailWithParameterNotConfigured()
+        {
+            var device = new DeviceInfo
+            {
+                AndroidVersion = "A1",
+                BoardVersion = "B1",
+                ChargeBoardVersion = "C1"
+            };
+
+            var (isPass, failReason) = _service.VerifyVersion(device, null);
+
+            Assert.That(isPass, Is.False);
+            Assert.That(failReason, Is.EqualTo("PARAMETER_NOT_CONFIGURED"));
         }
     }
 }

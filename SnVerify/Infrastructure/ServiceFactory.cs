@@ -14,6 +14,7 @@ using SnVerify.Domain.Validation;
 using SnVerify.Services.Ui;
 using SnVerify.Ui;
 using System.Threading.Tasks;
+using SnVerify.Infrastructure.Product;
 
 namespace SnVerify.Infrastructure
 {
@@ -97,7 +98,8 @@ namespace SnVerify.Infrastructure
                 orderNameValidator,
                 dialogService,
                 versionVerificationFlowService,
-                logDirectory);
+                logDirectory,
+                new ProductRegistryAdapter());
 
             return viewModel;
         }

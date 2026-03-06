@@ -48,6 +48,22 @@ namespace SnVerify.Services.Storage
         /// <returns>是否存在该 SN 的 PASS 记录</returns>
         Task<bool> IsBindingInPassHistoryAsync(string sn);
 
+        /// <summary>
+        /// 检查给定贴纸 SN 是否在指定订单内已产生 PASS 记录（Order 维度唯一性检查）。
+        /// </summary>
+        /// <param name="orderId">订单业务标识（等同于 OrderName）</param>
+        /// <param name="sn">贴纸 SN（StickerSN）</param>
+        /// <returns>若该订单内存在 Result='PASS' 的记录则返回 true，否则 false。</returns>
+        Task<bool> IsStickerSnPassedInOrderAsync(string orderId, string sn);
+
+        /// <summary>
+        /// 检查给定 ChipId 是否在指定订单内已产生 PASS 记录（Order 维度唯一性检查）。
+        /// </summary>
+        /// <param name="orderId">订单业务标识（等同于 OrderName）</param>
+        /// <param name="chipId">芯片 ID（ChipId）</param>
+        /// <returns>若该订单内存在 Result='PASS' 的记录则返回 true，否则 false。</returns>
+        Task<bool> IsChipIdPassedInOrderAsync(string orderId, string chipId);
+
         // ---------- Phase 2.5 Step 6：Product / Order / TestSession / TestRecord ----------
 
         /// <summary>
@@ -171,6 +187,18 @@ namespace SnVerify.Services.Storage
         /// 更新已有测试记录（必须包含有效 Id）。
         /// </summary>
         Task UpdateTestRecordAsync(TestRecord record);
+
+        /// <summary>
+        /// 获取指定 ProjectId 下配置的版本校验参数；不存在时返回 null。
+        /// </summary>
+        /// <param name="projectId">项目 ID（与 VerificationParameter.ProjectId 对齐）</param>
+        Task<VerificationParameter> GetVerificationParameterAsync(string projectId);
+
+        /// <summary>
+        /// 保存或更新指定 ProjectId 的版本校验参数。
+        /// </summary>
+        /// <param name="parameter">版本参数实体，ProjectId 为主键。</param>
+        Task SaveVerificationParameterAsync(VerificationParameter parameter);
 
         /// <summary>
         /// 按 Session 导出：单 Session → xlsx 双 Sheet（PASS 原样、FAIL 按 (StickerSN, DeviceSN) 去重保留第一条）+ txt。

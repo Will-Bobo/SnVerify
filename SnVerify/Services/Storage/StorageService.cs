@@ -111,7 +111,7 @@ namespace SnVerify.Services.Storage
         /// </summary>
         private async Task CreateTablesAsync()
         {
-            // 新增四张业务基础表（必须幂等）
+            // 新增业务基础表（必须幂等）
             var createProductTable = @"
 CREATE TABLE IF NOT EXISTS Product (
     Id          INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -143,15 +143,19 @@ CREATE TABLE IF NOT EXISTS TestSession (
 
             var createTestRecordTable = @"
 CREATE TABLE IF NOT EXISTS TestRecord (
-    Id              INTEGER PRIMARY KEY AUTOINCREMENT,
-    SessionId       INTEGER NOT NULL,
-    StickerSN       TEXT    NOT NULL,
-    DeviceSN        TEXT,
-    Result          TEXT    NOT NULL,
-    FailReason      TEXT,
-    VerifyTime      DATETIME NOT NULL,
-    ExpectedVersion TEXT,
-    ActualVersion   TEXT,
+    Id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    SessionId           INTEGER NOT NULL,
+    StickerSN           TEXT    NOT NULL,
+    DeviceSN            TEXT,
+    WifiMac             TEXT,
+    ChipId              TEXT,
+    BoardVersion        TEXT,
+    ChargeBoardVersion  TEXT,
+    Result              TEXT    NOT NULL,
+    FailReason          TEXT,
+    VerifyTime          DATETIME NOT NULL,
+    ExpectedVersion     TEXT,
+    ActualVersion       TEXT,
     FOREIGN KEY (SessionId) REFERENCES TestSession(Id)
 );";
 
@@ -178,12 +182,29 @@ CREATE INDEX IF NOT EXISTS idx_testrecord_stickersn_result ON TestRecord(Sticker
             var createTestRecordDeviceIdx = @"
 CREATE INDEX IF NOT EXISTS idx_testrecord_devicesn_result ON TestRecord(DeviceSN, Result);";
 
-            // 建表顺序：先表后索引，保证外键依赖顺序
+            var createTestRecordChipIdx = @"
+CREATE INDEX IF NOT EXISTS idx_testrecord_chipid_result ON TestRecord(ChipId, Result);";
+
+            var createVerificationParameterTable = @"
+CREATE TABLE IF NOT EXISTS VerificationParameter (
+    ProjectId                  TEXT PRIMARY KEY,
+    ExpectedAndroidVersion     TEXT,
+    ExpectedBoardVersion       TEXT,
+    ExpectedChargeBoardVersion TEXT
+);";
+
+            // 建表顺序：先表结构（含迁移），再索引，保证外键与列依赖顺序
             await ExecuteNonQueryAsync(createProductTable);
             await ExecuteNonQueryAsync(createOrderTable);
             await ExecuteNonQueryAsync(createTestSessionTable);
             await ExecuteNonQueryAsync(createTestRecordTable);
+            await ExecuteNonQueryAsync(createVerificationParameterTable);
 
+            // 先做表结构迁移（例如为旧库添加 ExpectedVersion / ActualVersion / ChipId 等列）
+            await MigrateOrderToOrderNameProductIdUniqueAsync();
+            await MigrateTestRecordAddColumnsAsync();
+
+            // 再统一创建索引，确保引用的列已存在
             await ExecuteNonQueryAsync(createOrderNameProductUnique);
             await ExecuteNonQueryAsync(createOrderProductIdx);
             await ExecuteNonQueryAsync(createSessionNameUnique);
@@ -191,9 +212,7 @@ CREATE INDEX IF NOT EXISTS idx_testrecord_devicesn_result ON TestRecord(DeviceSN
             await ExecuteNonQueryAsync(createTestRecordSessionIdx);
             await ExecuteNonQueryAsync(createTestRecordStickerIdx);
             await ExecuteNonQueryAsync(createTestRecordDeviceIdx);
-
-            await MigrateOrderToOrderNameProductIdUniqueAsync();
-            await MigrateTestRecordAddVersionColumnsAsync();
+            await ExecuteNonQueryAsync(createTestRecordChipIdx);
         }
 
         /// <summary>
@@ -260,15 +279,26 @@ CREATE TABLE ""Order_new"" (
         }
 
         /// <summary>
-        /// 迁移：为已有 TestRecord 表添加 ExpectedVersion、ActualVersion 列（若不存在）。
+        /// 迁移：为已有 TestRecord 表添加 Phase 3 所需列（若不存在）。
         /// </summary>
-        private async Task MigrateTestRecordAddVersionColumnsAsync()
+        private async Task MigrateTestRecordAddColumnsAsync()
         {
+            // 版本列
             foreach (var col in new[] { "ExpectedVersion", "ActualVersion" })
             {
-                if (await ColumnExistsAsync("TestRecord", col))
-                    continue;
-                await ExecuteNonQueryAsync($"ALTER TABLE TestRecord ADD COLUMN {col} TEXT");
+                if (!await ColumnExistsAsync("TestRecord", col))
+                {
+                    await ExecuteNonQueryAsync($"ALTER TABLE TestRecord ADD COLUMN {col} TEXT");
+                }
+            }
+
+            // 设备扩展信息列
+            foreach (var col in new[] { "WifiMac", "ChipId", "BoardVersion", "ChargeBoardVersion" })
+            {
+                if (!await ColumnExistsAsync("TestRecord", col))
+                {
+                    await ExecuteNonQueryAsync($"ALTER TABLE TestRecord ADD COLUMN {col} TEXT");
+                }
             }
         }
 
@@ -451,6 +481,110 @@ CREATE TABLE ""Order_new"" (
             catch (Exception ex)
             {
                 _logger?.LogError($"检查历史 PASS 记录失败: {ex.Message}", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 检查给定贴纸 SN 是否在指定订单内已产生 PASS 记录（Order 维度唯一性检查）。
+        /// OrderId 为业务订单名（OrderName）。
+        /// </summary>
+        public async Task<bool> IsStickerSnPassedInOrderAsync(string orderId, string sn)
+        {
+            if (string.IsNullOrWhiteSpace(orderId))
+                throw new ArgumentException("OrderId 不能为空", nameof(orderId));
+            if (string.IsNullOrWhiteSpace(sn))
+                throw new ArgumentException("SN 不能为空", nameof(sn));
+
+            EnsureConnectionInitialized();
+
+            try
+            {
+                const string sql = @"
+                    SELECT COUNT(1)
+                    FROM TestRecord r
+                    INNER JOIN TestSession s ON r.SessionId = s.Id
+                    INNER JOIN ""Order"" o ON s.OrderId = o.Id
+                    WHERE o.OrderName = @OrderId
+                      AND r.StickerSN = @StickerSN
+                      AND r.Result = 'PASS'";
+
+                var exists = await Task.Run(() =>
+                {
+                    lock (_lockObject)
+                    {
+                        if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        {
+                            throw new InvalidOperationException("数据库连接未初始化或已关闭");
+                        }
+
+                        using (var command = new SQLiteCommand(sql, _connection))
+                        {
+                            command.Parameters.AddWithValue("@OrderId", orderId);
+                            command.Parameters.AddWithValue("@StickerSN", sn);
+                            var count = command.ExecuteScalar();
+                            return Convert.ToInt32(count) > 0;
+                        }
+                    }
+                });
+
+                return exists;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError($"检查订单内 StickerSN PASS 记录失败: {ex.Message}", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 检查给定 ChipId 是否在指定订单内已产生 PASS 记录（Order 维度唯一性检查）。
+        /// OrderId 为业务订单名（OrderName）。
+        /// </summary>
+        public async Task<bool> IsChipIdPassedInOrderAsync(string orderId, string chipId)
+        {
+            if (string.IsNullOrWhiteSpace(orderId))
+                throw new ArgumentException("OrderId 不能为空", nameof(orderId));
+            if (string.IsNullOrWhiteSpace(chipId))
+                throw new ArgumentException("ChipId 不能为空", nameof(chipId));
+
+            EnsureConnectionInitialized();
+
+            try
+            {
+                const string sql = @"
+                    SELECT COUNT(1)
+                    FROM TestRecord r
+                    INNER JOIN TestSession s ON r.SessionId = s.Id
+                    INNER JOIN ""Order"" o ON s.OrderId = o.Id
+                    WHERE o.OrderName = @OrderId
+                      AND r.ChipId = @ChipId
+                      AND r.Result = 'PASS'";
+
+                var exists = await Task.Run(() =>
+                {
+                    lock (_lockObject)
+                    {
+                        if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        {
+                            throw new InvalidOperationException("数据库连接未初始化或已关闭");
+                        }
+
+                        using (var command = new SQLiteCommand(sql, _connection))
+                        {
+                            command.Parameters.AddWithValue("@OrderId", orderId);
+                            command.Parameters.AddWithValue("@ChipId", chipId);
+                            var count = command.ExecuteScalar();
+                            return Convert.ToInt32(count) > 0;
+                        }
+                    }
+                });
+
+                return exists;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError($"检查订单内 ChipId PASS 记录失败: {ex.Message}", ex);
                 throw;
             }
         }
@@ -840,8 +974,8 @@ CREATE TABLE ""Order_new"" (
             EnsureConnectionInitialized();
 
             var sql = @"
-                INSERT INTO TestRecord (SessionId, StickerSN, DeviceSN, Result, FailReason, VerifyTime, ExpectedVersion, ActualVersion)
-                VALUES (@SessionId, @StickerSN, @DeviceSN, @Result, @FailReason, @VerifyTime, @ExpectedVersion, @ActualVersion)";
+                INSERT INTO TestRecord (SessionId, StickerSN, DeviceSN, WifiMac, ChipId, BoardVersion, ChargeBoardVersion, Result, FailReason, VerifyTime, ExpectedVersion, ActualVersion)
+                VALUES (@SessionId, @StickerSN, @DeviceSN, @WifiMac, @ChipId, @BoardVersion, @ChargeBoardVersion, @Result, @FailReason, @VerifyTime, @ExpectedVersion, @ActualVersion)";
 
             await Task.Run(() =>
             {
@@ -854,6 +988,10 @@ CREATE TABLE ""Order_new"" (
                         cmd.Parameters.AddWithValue("@SessionId", record.SessionId);
                         cmd.Parameters.AddWithValue("@StickerSN", record.StickerSN);
                         cmd.Parameters.AddWithValue("@DeviceSN", (object)record.DeviceSN ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@WifiMac", (object)record.WifiMac ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@ChipId", (object)record.ChipId ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@BoardVersion", (object)record.BoardVersion ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@ChargeBoardVersion", (object)record.ChargeBoardVersion ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@Result", record.Result);
                         cmd.Parameters.AddWithValue("@FailReason", (object)record.FailReason ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@VerifyTime", record.VerifyTime);
@@ -877,7 +1015,7 @@ CREATE TABLE ""Order_new"" (
             EnsureConnectionInitialized();
 
             var sql = @"
-                SELECT Id, SessionId, StickerSN, DeviceSN, Result, FailReason, VerifyTime, ExpectedVersion, ActualVersion
+                SELECT Id, SessionId, StickerSN, DeviceSN, WifiMac, ChipId, BoardVersion, ChargeBoardVersion, Result, FailReason, VerifyTime, ExpectedVersion, ActualVersion
                 FROM TestRecord WHERE SessionId = @SessionId ORDER BY VerifyTime ASC";
 
             var list = await Task.Run(() =>
@@ -900,11 +1038,15 @@ CREATE TABLE ""Order_new"" (
                                     SessionId = r.GetInt32(1),
                                     StickerSN = r.GetString(2),
                                     DeviceSN = r.IsDBNull(3) ? null : r.GetString(3),
-                                    Result = r.GetString(4),
-                                    FailReason = r.IsDBNull(5) ? null : r.GetString(5),
-                                    VerifyTime = r.GetDateTime(6),
-                                    ExpectedVersion = r.IsDBNull(7) ? null : r.GetString(7),
-                                    ActualVersion = r.IsDBNull(8) ? null : r.GetString(8)
+                                    WifiMac = r.IsDBNull(4) ? null : r.GetString(4),
+                                    ChipId = r.IsDBNull(5) ? null : r.GetString(5),
+                                    BoardVersion = r.IsDBNull(6) ? null : r.GetString(6),
+                                    ChargeBoardVersion = r.IsDBNull(7) ? null : r.GetString(7),
+                                    Result = r.GetString(8),
+                                    FailReason = r.IsDBNull(9) ? null : r.GetString(9),
+                                    VerifyTime = r.GetDateTime(10),
+                                    ExpectedVersion = r.IsDBNull(11) ? null : r.GetString(11),
+                                    ActualVersion = r.IsDBNull(12) ? null : r.GetString(12)
                                 });
                             }
                         }
@@ -1042,7 +1184,7 @@ CREATE TABLE ""Order_new"" (
             EnsureConnectionInitialized();
 
             var sql = @"
-                SELECT Id, SessionId, StickerSN, DeviceSN, Result, FailReason, VerifyTime
+                SELECT Id, SessionId, StickerSN, DeviceSN, WifiMac, ChipId, BoardVersion, ChargeBoardVersion, Result, FailReason, VerifyTime, ExpectedVersion, ActualVersion
                 FROM TestRecord WHERE SessionId = @SessionId AND StickerSN = @StickerSN ORDER BY VerifyTime DESC LIMIT 1";
 
             return await Task.Run(() =>
@@ -1064,9 +1206,15 @@ CREATE TABLE ""Order_new"" (
                                 SessionId = r.GetInt32(1),
                                 StickerSN = r.GetString(2),
                                 DeviceSN = r.IsDBNull(3) ? null : r.GetString(3),
-                                Result = r.GetString(4),
-                                FailReason = r.IsDBNull(5) ? null : r.GetString(5),
-                                VerifyTime = r.GetDateTime(6)
+                                WifiMac = r.IsDBNull(4) ? null : r.GetString(4),
+                                ChipId = r.IsDBNull(5) ? null : r.GetString(5),
+                                BoardVersion = r.IsDBNull(6) ? null : r.GetString(6),
+                                ChargeBoardVersion = r.IsDBNull(7) ? null : r.GetString(7),
+                                Result = r.GetString(8),
+                                FailReason = r.IsDBNull(9) ? null : r.GetString(9),
+                                VerifyTime = r.GetDateTime(10),
+                                ExpectedVersion = r.IsDBNull(11) ? null : r.GetString(11),
+                                ActualVersion = r.IsDBNull(12) ? null : r.GetString(12)
                             };
                         }
                     }
@@ -1087,7 +1235,15 @@ CREATE TABLE ""Order_new"" (
             EnsureConnectionInitialized();
 
             var sql = @"
-                UPDATE TestRecord SET DeviceSN = @DeviceSN, Result = @Result, FailReason = @FailReason, VerifyTime = @VerifyTime
+                UPDATE TestRecord 
+                SET DeviceSN = @DeviceSN,
+                    WifiMac = @WifiMac,
+                    ChipId = @ChipId,
+                    BoardVersion = @BoardVersion,
+                    ChargeBoardVersion = @ChargeBoardVersion,
+                    Result = @Result,
+                    FailReason = @FailReason,
+                    VerifyTime = @VerifyTime
                 WHERE Id = @Id";
 
             await Task.Run(() =>
@@ -1100,6 +1256,10 @@ CREATE TABLE ""Order_new"" (
                     {
                         cmd.Parameters.AddWithValue("@Id", record.Id);
                         cmd.Parameters.AddWithValue("@DeviceSN", (object)record.DeviceSN ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@WifiMac", (object)record.WifiMac ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@ChipId", (object)record.ChipId ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@BoardVersion", (object)record.BoardVersion ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@ChargeBoardVersion", (object)record.ChargeBoardVersion ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@Result", record.Result);
                         cmd.Parameters.AddWithValue("@FailReason", (object)record.FailReason ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@VerifyTime", record.VerifyTime);
@@ -1273,6 +1433,108 @@ CREATE TABLE ""Order_new"" (
                 }
             });
             return count > 0;
+        }
+
+        /// <summary>
+        /// 获取指定 ProjectId 下配置的版本校验参数；不存在时返回 null。
+        /// </summary>
+        public async Task<VerificationParameter> GetVerificationParameterAsync(string projectId)
+        {
+            if (string.IsNullOrWhiteSpace(projectId))
+            {
+                throw new ArgumentException("ProjectId 不能为空", nameof(projectId));
+            }
+
+            EnsureConnectionInitialized();
+
+            const string sql = @"
+                SELECT ProjectId, ExpectedAndroidVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion
+                FROM VerificationParameter
+                WHERE ProjectId = @ProjectId
+                LIMIT 1";
+
+            VerificationParameter parameter = null;
+
+            await Task.Run(() =>
+            {
+                lock (_lockObject)
+                {
+                    if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                    {
+                        throw new InvalidOperationException("数据库连接未初始化或已关闭");
+                    }
+
+                    using (var cmd = new SQLiteCommand(sql, _connection))
+                    {
+                        cmd.Parameters.AddWithValue("@ProjectId", projectId);
+                        using (var reader = cmd.ExecuteReader())
+                        {
+                            if (reader.Read())
+                            {
+                                parameter = new VerificationParameter
+                                {
+                                    ProjectId = reader.GetString(0),
+                                    ExpectedAndroidVersion = reader.IsDBNull(1) ? null : reader.GetString(1),
+                                    ExpectedBoardVersion = reader.IsDBNull(2) ? null : reader.GetString(2),
+                                    ExpectedChargeBoardVersion = reader.IsDBNull(3) ? null : reader.GetString(3)
+                                };
+                            }
+                        }
+                    }
+                }
+            });
+
+            return parameter;
+        }
+
+        /// <summary>
+        /// 保存或更新指定 ProjectId 的版本校验参数。
+        /// </summary>
+        public async Task SaveVerificationParameterAsync(VerificationParameter parameter)
+        {
+            if (parameter == null)
+                throw new ArgumentNullException(nameof(parameter));
+            if (string.IsNullOrWhiteSpace(parameter.ProjectId))
+                throw new ArgumentException("ProjectId 不能为空", nameof(parameter));
+
+            EnsureConnectionInitialized();
+
+            const string selectSql = @"SELECT COUNT(1) FROM VerificationParameter WHERE ProjectId = @ProjectId";
+            const string insertSql = @"
+                INSERT INTO VerificationParameter (ProjectId, ExpectedAndroidVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion)
+                VALUES (@ProjectId, @ExpectedAndroidVersion, @ExpectedBoardVersion, @ExpectedChargeBoardVersion)";
+            const string updateSql = @"
+                UPDATE VerificationParameter
+                SET ExpectedAndroidVersion = @ExpectedAndroidVersion,
+                    ExpectedBoardVersion = @ExpectedBoardVersion,
+                    ExpectedChargeBoardVersion = @ExpectedChargeBoardVersion
+                WHERE ProjectId = @ProjectId";
+
+            await Task.Run(() =>
+            {
+                lock (_lockObject)
+                {
+                    if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        throw new InvalidOperationException("数据库连接未初始化或已关闭");
+
+                    int existingCount;
+                    using (var cmd = new SQLiteCommand(selectSql, _connection))
+                    {
+                        cmd.Parameters.AddWithValue("@ProjectId", parameter.ProjectId);
+                        existingCount = Convert.ToInt32(cmd.ExecuteScalar());
+                    }
+
+                    var sql = existingCount > 0 ? updateSql : insertSql;
+                    using (var cmd = new SQLiteCommand(sql, _connection))
+                    {
+                        cmd.Parameters.AddWithValue("@ProjectId", parameter.ProjectId);
+                        cmd.Parameters.AddWithValue("@ExpectedAndroidVersion", (object)parameter.ExpectedAndroidVersion ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@ExpectedBoardVersion", (object)parameter.ExpectedBoardVersion ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@ExpectedChargeBoardVersion", (object)parameter.ExpectedChargeBoardVersion ?? DBNull.Value);
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+            });
         }
 
         /// <summary>

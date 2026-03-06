@@ -17,6 +17,7 @@ namespace SnVerify.Services.Coordination
     /// <summary>
     /// 版本匹配检验流程服务
     /// </summary>
+    [Obsolete("Replaced by VersionVerificationService in Phase3")]
     public class VersionVerificationFlowService : IVersionVerificationFlowService
     {
         private readonly IAdbAccessService _adbAccessService;
@@ -41,6 +42,58 @@ namespace SnVerify.Services.Coordination
         public void ResetToIdle()
         {
             _snapshot = VerificationSnapshot.Idle();
+        }
+
+        /// <summary>
+        /// Phase3：对三类版本字段执行强校验（Android / Board / ChargeBoard）。
+        /// 
+        /// 约束：
+        /// - Parameter 为空时直接判定为配置缺失（PARAMETER_NOT_CONFIGURED）；
+        /// - 对于每个非空 Expected 字段，都执行严格相等校验（忽略大小写与首尾空白）；
+        /// - 任一字段不匹配立即返回 FAIL，并携带对应 FailReason 代码；
+        /// - 所有已配置字段均匹配时返回 PASS。
+        /// 
+        /// 说明：该方法不负责 SN / ChipId / 订单唯一性与落库，仅聚焦版本强校验本身。
+        /// </summary>
+        /// <param name="deviceInfo">从 ADB 读取到的设备信息快照。</param>
+        /// <param name="parameter">项目级版本期望配置。</param>
+        /// <returns>
+        /// (isPass, failReason) 元组；当 isPass 为 true 时 failReason 为 null。
+        /// </returns>
+        public (bool isPass, string failReason) VerifyVersion(DeviceInfo deviceInfo, VerificationParameter parameter)
+        {
+            if (parameter == null)
+            {
+                return (false, "PARAMETER_NOT_CONFIGURED");
+            }
+
+            var androidExpected = parameter.ExpectedAndroidVersion?.Trim();
+            var boardExpected = parameter.ExpectedBoardVersion?.Trim();
+            var chargeExpected = parameter.ExpectedChargeBoardVersion?.Trim();
+
+            var androidActual = (deviceInfo?.AndroidVersion ?? string.Empty).Trim();
+            var boardActual = (deviceInfo?.BoardVersion ?? string.Empty).Trim();
+            var chargeActual = (deviceInfo?.ChargeBoardVersion ?? string.Empty).Trim();
+
+            if (!string.IsNullOrWhiteSpace(androidExpected) &&
+                !string.Equals(androidExpected, androidActual, StringComparison.OrdinalIgnoreCase))
+            {
+                return (false, "ANDROID_VERSION_MISMATCH");
+            }
+
+            if (!string.IsNullOrWhiteSpace(boardExpected) &&
+                !string.Equals(boardExpected, boardActual, StringComparison.OrdinalIgnoreCase))
+            {
+                return (false, "BOARD_VERSION_MISMATCH");
+            }
+
+            if (!string.IsNullOrWhiteSpace(chargeExpected) &&
+                !string.Equals(chargeExpected, chargeActual, StringComparison.OrdinalIgnoreCase))
+            {
+                return (false, "CHARGE_BOARD_VERSION_MISMATCH");
+            }
+
+            return (true, null);
         }
 
         /// <inheritdoc />
