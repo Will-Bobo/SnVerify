@@ -78,14 +78,6 @@ namespace SnVerify.Tests.Services
             _versionMock = new Mock<IVersionVerificationService>();
 
             _storageMock
-                .Setup(s => s.GetInternalSessionIdBySessionNameAsync(SessionId))
-                .ReturnsAsync(10);
-
-            _storageMock
-                .Setup(s => s.SaveTestRecordAsync(It.IsAny<TestRecord>()))
-                .Returns(Task.CompletedTask);
-
-            _storageMock
                 .Setup(s => s.IsStickerSnPassedInOrderAsync(It.IsAny<string>(), It.IsAny<string>()))
                 .ReturnsAsync(false);
 
@@ -93,11 +85,17 @@ namespace SnVerify.Tests.Services
                 .Setup(s => s.IsChipIdPassedInOrderAsync(It.IsAny<string>(), It.IsAny<string>()))
                 .ReturnsAsync(false);
 
+            // 默认 ADB 读取成功，避免用例因未配置 ADB Mock 而提前失败为 ADB_READ_FAIL。
+            // 需要 ADB 失败/特定字段值的用例会在各自测试中覆盖该 Setup。
+            _adbMock
+                .Setup(a => a.ReadDeviceInfoAsync(It.IsAny<ProjectProfile>()))
+                .ReturnsAsync(CreateDeviceInfo(deviceSn: "SN001", chipId: "F501234"));
+
             _versionMock
                 .Setup(v => v.VerifyAsync(It.IsAny<DeviceInfo>(), It.IsAny<VerificationParameter>(), default))
                 .ReturnsAsync((true, (string)null));
 
-            _executor = new RulePipelineExecutor(SessionId, _storageMock.Object, _adbMock.Object, _versionMock.Object);
+            _executor = new RulePipelineExecutor(_storageMock.Object, _adbMock.Object, _versionMock.Object);
         }
 
         [Test]
@@ -105,6 +103,12 @@ namespace SnVerify.Tests.Services
         {
             var profile = CreatePhase3Profile();
             var parameter = CreateParameter();
+
+            // Frozen Pipeline: ①Parameter → ②ADB → ③SN匹配 → ④SN历史PASS
+            // 因此此用例必须提供可用的 ADB 读取结果，否则会提前在 ② 失败为 ADB_READ_FAIL。
+            _adbMock
+                .Setup(a => a.ReadDeviceInfoAsync(It.IsAny<ProjectProfile>()))
+                .ReturnsAsync(CreateDeviceInfo(deviceSn: "SN001", chipId: "F501234"));
 
             _storageMock
                 .Setup(s => s.IsStickerSnPassedInOrderAsync(OrderId, "SN001"))
@@ -115,7 +119,10 @@ namespace SnVerify.Tests.Services
             Assert.That(result.Result, Is.EqualTo("FAIL"));
             Assert.That(result.FailReason, Is.EqualTo("SN_DUPLICATE"));
 
-            _adbMock.Verify(a => a.ReadDeviceInfoAsync(It.IsAny<ProjectProfile>()), Times.Never);
+            // 按 Stage3 Frozen Pipeline：Parameter → ADB → SN 匹配 → SN 历史 PASS，
+            // 即使 SN 已在订单内 PASS，仍会先读取设备信息并做物理 SN 匹配。
+            _adbMock.Verify(a => a.ReadDeviceInfoAsync(It.IsAny<ProjectProfile>()), Times.Once);
+            _storageMock.Verify(s => s.SaveTestRecordAsync(It.IsAny<TestRecord>()), Times.Never);
         }
 
         [Test]
@@ -132,6 +139,7 @@ namespace SnVerify.Tests.Services
 
             Assert.That(result.Result, Is.EqualTo("FAIL"));
             Assert.That(result.FailReason, Is.EqualTo("ADB_READ_FAIL"));
+            _storageMock.Verify(s => s.SaveTestRecordAsync(It.IsAny<TestRecord>()), Times.Never);
         }
 
         [Test]
@@ -150,6 +158,7 @@ namespace SnVerify.Tests.Services
             Assert.That(result.FailReason, Is.EqualTo("CHIPID_INVALID"));
 
             _storageMock.Verify(s => s.IsChipIdPassedInOrderAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _storageMock.Verify(s => s.SaveTestRecordAsync(It.IsAny<TestRecord>()), Times.Never);
         }
 
         [Test]
@@ -170,6 +179,7 @@ namespace SnVerify.Tests.Services
 
             Assert.That(result.Result, Is.EqualTo("FAIL"));
             Assert.That(result.FailReason, Is.EqualTo("CHIPID_DUPLICATE"));
+            _storageMock.Verify(s => s.SaveTestRecordAsync(It.IsAny<TestRecord>()), Times.Never);
         }
 
         [Test]
@@ -190,6 +200,7 @@ namespace SnVerify.Tests.Services
 
             Assert.That(result.Result, Is.EqualTo("FAIL"));
             Assert.That(result.FailReason, Is.EqualTo("ANDROID_VERSION_MISMATCH"));
+            _storageMock.Verify(s => s.SaveTestRecordAsync(It.IsAny<TestRecord>()), Times.Never);
         }
 
         [Test]
@@ -206,11 +217,22 @@ namespace SnVerify.Tests.Services
 
             Assert.That(result.Result, Is.EqualTo("PASS"));
             Assert.That(result.FailReason, Is.Null);
+            _storageMock.Verify(s => s.SaveTestRecordAsync(It.IsAny<TestRecord>()), Times.Never);
+            _versionMock.Verify(v => v.VerifyAsync(It.IsAny<DeviceInfo>(), It.IsAny<VerificationParameter>(), default), Times.Once);
+        }
 
-            _storageMock.Verify(s => s.SaveTestRecordAsync(It.Is<TestRecord>(r =>
-                r.Result == "PASS" &&
-                r.FailReason == null &&
-                r.StickerSN == "SN001")), Times.Once);
+        [Test]
+        public async Task ExecuteAsync_WhenParameterNotConfigured_ShouldFailAndSkipAdb()
+        {
+            var profile = CreatePhase3Profile();
+
+            var result = await _executor.ExecuteAsync(profile, null, parameter: null, stickerSn: "SN001", orderId: OrderId);
+
+            Assert.That(result.Result, Is.EqualTo("FAIL"));
+            Assert.That(result.FailReason, Is.EqualTo("PARAMETER_NOT_CONFIGURED"));
+
+            _adbMock.Verify(a => a.ReadDeviceInfoAsync(It.IsAny<ProjectProfile>()), Times.Never);
+            _storageMock.Verify(s => s.SaveTestRecordAsync(It.IsAny<TestRecord>()), Times.Never);
         }
     }
 }

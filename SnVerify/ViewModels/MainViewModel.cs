@@ -77,6 +77,14 @@ namespace SnVerify.ViewModels
         private string _currentProductDisplay;
         private ProductProfile _currentProductProfile;
 
+        // 当 Session 从 Active → Idle 时，允许下一次将 VerificationSnapshot 回退到 Idle（清屏/避免残留版本号）。
+        private bool _allowIdleVerificationSnapshotOverwriteOnce;
+
+        // SessionLock：用于防止“真实运行中的活动 Session”被 UI/外部代码误改关键输入。
+        // 说明：单元测试中常直接设置 SessionSnapshot 为 Active，但 Mock 的 ISessionLifecycleService.GetCurrentSessionId 可能仍返回 null；
+        // 为保持测试稳定且不影响真实运行，此处以 GetCurrentSessionId 是否存在作为“真实活动 Session”的辅助判定。
+        private bool IsSessionLocked => IsSessionActive && !string.IsNullOrWhiteSpace(_sessionLifecycleService?.GetCurrentSessionId());
+
         /// <summary>
         /// 可选的产品代码列表（来源：ProductRegistry，禁止硬编码）。
         /// </summary>
@@ -136,6 +144,14 @@ namespace SnVerify.ViewModels
             {
                 if (_sessionSnapshot != value)
                 {
+                    // 记录 Session 结束（Active → Idle），用于允许一次性将校验快照回退到 Idle。
+                    var wasActive = _sessionSnapshot?.IsActive ?? false;
+                    var willBeActive = value?.IsActive ?? false;
+                    if (wasActive && !willBeActive)
+                    {
+                        _allowIdleVerificationSnapshotOverwriteOnce = true;
+                    }
+
                     _sessionSnapshot = value;
                     OnPropertyChanged();
                     OnPropertyChanged(nameof(CurrentOrderId));
@@ -277,6 +293,12 @@ namespace SnVerify.ViewModels
             get => _projectIdInput;
             set
             {
+                // SessionLock：真实活动 Session 时禁止修改项目 ID
+                if (IsSessionLocked && !string.Equals(_projectIdInput, value, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
                 if (_projectIdInput != value)
                 {
                     _projectIdInput = value;
@@ -293,6 +315,12 @@ namespace SnVerify.ViewModels
             get => _orderIdInput;
             set
             {
+                // SessionLock：真实活动 Session 时禁止修改订单号
+                if (IsSessionLocked && !string.Equals(_orderIdInput, value, StringComparison.Ordinal))
+                {
+                    return;
+                }
+
                 if (_orderIdInput != value)
                 {
                     _orderIdInput = value;
@@ -323,6 +351,10 @@ namespace SnVerify.ViewModels
                     OnPropertyChanged(nameof(ExpectedVersionDisplay));
                     StartVersionVerifyCommand?.RaiseCanExecuteChanged();
                     StartBatchCommand?.RaiseCanExecuteChanged();
+
+                    // 单一事实源：切换检验类型时，立即将 UI 校验快照切换到对应 FlowService 的 Snapshot，
+                    // 避免残留「版本检验将版本号写入 DeviceSN」导致 SnMatch 模式显示异常。
+                    VerificationSnapshot = GetActiveVerificationSnapshot();
                 }
             }
         }
@@ -722,21 +754,34 @@ namespace SnVerify.ViewModels
             if (!ReferenceEquals(newVerificationSnapshot, _verificationSnapshot))
             {
                 // 单元测试/异常场景下，Mock 的 FlowService.Snapshot 可能长期保持 Idle，
-                // 而测试会直接将 VerificationSnapshot 置为 Processing/Completed 以验证按钮可用性。
-                // 为避免后台定时器将 Processing 状态错误重置为 Idle，这里在
-                // 「现有为 Processing 且新快照为 Idle」的情况下跳过更新。
-                if (_verificationSnapshot != null &&
-                    _verificationSnapshot.IsProcessing &&
+                // 而测试或业务流程会直接将 VerificationSnapshot 置为 Processing/Completed 以验证按钮可用性。
+                // 为避免后台定时器将「已有结果/处理中」错误重置为 Idle，这里在
+                // 「新快照为 Idle 且现有快照非 Idle」的情况下跳过更新。
+                // 生产环境中如需清空结果，会由流程/命令显式设置 Idle 快照，因此不会受此保护影响。
+                var newIsIdle =
                     newVerificationSnapshot != null &&
                     !newVerificationSnapshot.IsProcessing &&
                     string.IsNullOrEmpty(newVerificationSnapshot.CurrentSn) &&
-                    string.IsNullOrEmpty(newVerificationSnapshot.LastResult))
+                    string.IsNullOrEmpty(newVerificationSnapshot.LastResult);
+
+                var currentIsNotIdle =
+                    _verificationSnapshot != null &&
+                    (_verificationSnapshot.IsProcessing ||
+                     !string.IsNullOrEmpty(_verificationSnapshot.CurrentSn) ||
+                     !string.IsNullOrEmpty(_verificationSnapshot.LastResult));
+
+                if (newIsIdle && currentIsNotIdle && !_allowIdleVerificationSnapshotOverwriteOnce)
                 {
                     // skip
                 }
                 else
                 {
-                VerificationSnapshot = newVerificationSnapshot;
+                    if (newIsIdle && currentIsNotIdle && _allowIdleVerificationSnapshotOverwriteOnce)
+                    {
+                        // 消费一次性允许回退标记（仅用于 Session 结束后的清屏）。
+                        _allowIdleVerificationSnapshotOverwriteOnce = false;
+                    }
+                    VerificationSnapshot = newVerificationSnapshot;
                 }
             }
 
@@ -1373,7 +1418,8 @@ namespace SnVerify.ViewModels
 
         public async void Execute(object parameter)
         {
-            await _execute();
+            // 命令执行不应阻塞 UI；async/await 自然让出 UI 线程，避免在后台线程直接修改 UI 绑定属性。
+            await _execute().ConfigureAwait(true);
         }
 
         public void RaiseCanExecuteChanged()

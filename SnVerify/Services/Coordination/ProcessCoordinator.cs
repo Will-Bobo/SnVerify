@@ -358,15 +358,6 @@ namespace SnVerify.Services.Coordination
                     parameter = await _parameterService.GetParameterAsync(projectId).ConfigureAwait(false);
                 }
 
-                if (parameter == null)
-                {
-                    const string failReason = "PARAMETER_NOT_CONFIGURED";
-                    await SavePhase3ResultAsync(sn, "FAIL", failReason, null, null).ConfigureAwait(false);
-                    _loggingService?.LogInfo("[Phase3] 参数未配置，终止流程");
-                    UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", failReason, _sessionId, null));
-                    return;
-                }
-
                 // Stage3：规则判断全部外移到 RulePipelineExecutor。
                 // Profile 必须来自 ProductRegistry（唯一规则入口）。
                 var productProfile = _productRegistry.GetProductProfile(projectId);
@@ -374,12 +365,12 @@ namespace SnVerify.Services.Coordination
                 {
                     const string failReason = "PRODUCT_PROFILE_NOT_FOUND";
                     _loggingService?.LogInfo($"[Phase3] 未找到产品 Profile: productCode={projectId}");
+                    await SavePhase3ResultAsync(sn.Trim(), "FAIL", failReason, null, parameter).ConfigureAwait(false);
                     UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", failReason, _sessionId, null));
                     return;
                 }
 
                 var executor = _rulePipelineExecutor ?? new RulePipelineExecutor(
-                    _sessionId,
                     _storageService,
                     _adbAccessService,
                     _versionVerificationService ?? new VersionVerificationService());
@@ -389,11 +380,13 @@ namespace SnVerify.Services.Coordination
                     .ConfigureAwait(false);
 
                 var deviceSN = execResult?.DeviceInfo?.DeviceSn?.Trim();
+                await SavePhase3ResultAsync(sn.Trim(), execResult?.Result ?? "FAIL", execResult?.FailReason, execResult?.DeviceInfo, parameter).ConfigureAwait(false);
                 UpdateSnapshot(VerificationSnapshot.Completed(sn.Trim(), execResult?.Result ?? "FAIL", execResult?.FailReason, _sessionId, deviceSN));
             }
             catch (Exception ex)
             {
                 var failReason = $"EXCEPTION: {ex.Message}";
+                await SavePhase3ResultAsync(sn.Trim(), "FAIL", failReason, null, null).ConfigureAwait(false);
                 _loggingService?.LogInfo($"[Phase3] 校验异常: {ex.Message}");
                 UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", failReason, _sessionId, null));
             }

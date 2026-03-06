@@ -11,7 +11,8 @@ using SnVerify.Domain.Product;
 namespace SnVerify.Services.Rules
 {
     /// <summary>
-    /// 规则链执行器：执行固定顺序的校验 Pipeline，并在内部完成落库。
+    /// 规则链执行器：执行固定顺序的校验 Pipeline。
+    /// 注意：该执行器仅负责规则判断与 Fail Fast，不得执行持久化；落库由 ProcessCoordinator 统一调度。
     /// </summary>
     public interface IRulePipelineExecutor
     {
