@@ -9,7 +9,7 @@ using System;
 using System.Threading.Tasks;
 using SnVerify.Domain.Models;
 using SnVerify.Domain.Product;
-using SnVerify.Services.Adb;
+using SnVerify.Services.DeviceAccess;
 using SnVerify.Services.Storage;
 using SnVerify.Services.Verification;
 
@@ -21,16 +21,16 @@ namespace SnVerify.Services.Rules
     public class RulePipelineExecutor : IRulePipelineExecutor
     {
         private readonly IStorageService _storageService;
-        private readonly IAdbAccessService _adbAccessService;
+        private readonly IDeviceAccessService _deviceAccessService;
         private readonly IVersionVerificationService _versionVerificationService;
 
         public RulePipelineExecutor(
             IStorageService storageService,
-            IAdbAccessService adbAccessService,
+            IDeviceAccessService deviceAccessService,
             IVersionVerificationService versionVerificationService)
         {
             _storageService = storageService ?? throw new ArgumentNullException(nameof(storageService));
-            _adbAccessService = adbAccessService ?? throw new ArgumentNullException(nameof(adbAccessService));
+            _deviceAccessService = deviceAccessService ?? throw new ArgumentNullException(nameof(deviceAccessService));
             _versionVerificationService = versionVerificationService ?? throw new ArgumentNullException(nameof(versionVerificationService));
         }
 
@@ -53,17 +53,18 @@ namespace SnVerify.Services.Rules
 
             var sticker = stickerSn.Trim();
             
-            // ② ADB 读取设备信息（deviceInfo 可由外部预读；为空则由执行器内部读取）
+            // ② 设备信息读取（deviceInfo 可由外部预读；为空则由 IDeviceAccessService 按 profile.AdbConfig 读取）
             var di = deviceInfo;
             if (di == null)
             {
-                var projectProfile = new ProjectProfile
+                try
                 {
-                    ProjectId = profile.ProductCode,
-                    AggregateDeviceInfoCommand = null
-                };
-
-                di = await _adbAccessService.ReadDeviceInfoAsync(projectProfile).ConfigureAwait(false);
+                    di = await _deviceAccessService.ReadDeviceInfoAsync(profile).ConfigureAwait(false);
+                }
+                catch (InvalidOperationException ex) when (ex.Message?.Contains("ADB 命令") == true || ex.Message?.Contains("ADB 命令未配置") == true)
+                {
+                    return RuleExecutionResult.Fail("ADB 命令为空", null);
+                }
             }
 
             if (di == null || string.IsNullOrWhiteSpace(di.DeviceSn))

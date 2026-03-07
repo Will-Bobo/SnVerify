@@ -22,9 +22,10 @@ namespace SnVerify.Services.Session
         /// </summary>
         /// <param name="orderId">订单 ID</param>
         /// <param name="orderName">订单名称（可选，用于 Order 创建与 TestSession.OrderName）</param>
-        /// <param name="projectId">项目 ID（可选，用于 Order 创建）</param>
+        /// <param name="projectId">项目 ID（可选，项目个体名，用于 Product.ProductName 与 Order 关联）</param>
+        /// <param name="productCode">项目类型代码（可选，如 KM001，用于 Product.ProductCode；Phase3 传入）</param>
         /// <returns>新 Session 的 SessionId</returns>
-        string CreateAndStartSession(string orderId, string orderName = null, string projectId = null);
+        string CreateAndStartSession(string orderId, string orderName = null, string projectId = null, string productCode = null);
 
         /// <summary>
         /// 开始已存在的 Session（将指定 SessionId 设为当前活动 Session）。

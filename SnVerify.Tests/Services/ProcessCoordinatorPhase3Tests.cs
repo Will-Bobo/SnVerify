@@ -8,7 +8,8 @@ using Moq;
 using NUnit.Framework;
 using SnVerify.Domain.Models;
 using SnVerify.Domain.State;
-using SnVerify.Services.Adb;
+using SnVerify.Domain.Product;
+using SnVerify.Services.DeviceAccess;
 using SnVerify.Services.Coordination;
 using SnVerify.Services.Logging;
 using SnVerify.Services.Parameter;
@@ -32,22 +33,27 @@ namespace SnVerify.Tests.Services
         private const string ChipId = "F501234";
 
         private Mock<IStorageService> _storageMock;
-        private Mock<IAdbAccessService> _adbMock;
+        private Mock<IDeviceAccessService> _deviceAccessMock;
         private Mock<ILoggingService> _loggingMock;
         private Mock<IParameterService> _parameterServiceMock;
+        private Mock<SnVerify.Services.Adb.IAdbAccessService> _adbMock;
         private ProcessCoordinator _coordinator;
 
         [SetUp]
         public void SetUp()
         {
             _storageMock = new Mock<IStorageService>();
-            _adbMock = new Mock<IAdbAccessService>();
+            _deviceAccessMock = new Mock<IDeviceAccessService>();
+            _adbMock = new Mock<SnVerify.Services.Adb.IAdbAccessService>();
             _loggingMock = new Mock<ILoggingService>();
             _parameterServiceMock = new Mock<IParameterService>();
 
             _storageMock
                 .Setup(x => x.GetInternalSessionIdBySessionNameAsync(SessionId))
                 .ReturnsAsync(InternalSessionId);
+            _storageMock
+                .Setup(x => x.GetProductNameBySessionNameAsync(SessionId))
+                .ReturnsAsync(ProjectId);
             _storageMock
                 .Setup(x => x.SaveTestRecordAsync(It.IsAny<TestRecord>()))
                 .Returns(Task.CompletedTask);
@@ -61,7 +67,10 @@ namespace SnVerify.Tests.Services
                 null,
                 MesMode.Disabled,
                 OrderId,
-                _parameterServiceMock.Object);
+                _parameterServiceMock.Object,
+                versionVerificationService: null,
+                productRegistry: new SnVerify.Infrastructure.Product.ProductRegistryAdapter(),
+                deviceAccessService: _deviceAccessMock.Object);
         }
 
         private static VerificationParameter CreateParameter(
@@ -103,8 +112,8 @@ namespace SnVerify.Tests.Services
                 .Setup(x => x.GetParameterAsync(ProjectId))
                 .ReturnsAsync(CreateParameter(android: "A1"));
 
-            _adbMock
-                .Setup(x => x.ReadDeviceInfoAsync(It.IsAny<ProjectProfile>()))
+            _deviceAccessMock
+                .Setup(x => x.ReadDeviceInfoAsync(It.IsAny<ProductProfile>()))
                 .ReturnsAsync(CreateDeviceInfo(sn: StickerSn, chipId: ChipId, android: "A1"));
 
             _storageMock
@@ -144,8 +153,8 @@ namespace SnVerify.Tests.Services
                 .Setup(x => x.GetParameterAsync(ProjectId))
                 .ReturnsAsync(CreateParameter(android: "A1"));
 
-            _adbMock
-                .Setup(x => x.ReadDeviceInfoAsync(It.IsAny<ProjectProfile>()))
+            _deviceAccessMock
+                .Setup(x => x.ReadDeviceInfoAsync(It.IsAny<ProductProfile>()))
                 .ReturnsAsync(CreateDeviceInfo(sn: "OTHER_SN", chipId: ChipId, android: "A1"));
 
             _storageMock
@@ -175,8 +184,8 @@ namespace SnVerify.Tests.Services
                 .Setup(x => x.GetParameterAsync(ProjectId))
                 .ReturnsAsync(CreateParameter(android: "A1"));
 
-            _adbMock
-                .Setup(x => x.ReadDeviceInfoAsync(It.IsAny<ProjectProfile>()))
+            _deviceAccessMock
+                .Setup(x => x.ReadDeviceInfoAsync(It.IsAny<ProductProfile>()))
                 .ReturnsAsync(CreateDeviceInfo(sn: StickerSn, chipId: "X123", android: "A1"));
 
             _storageMock
@@ -205,8 +214,8 @@ namespace SnVerify.Tests.Services
                 .Setup(x => x.GetParameterAsync(ProjectId))
                 .ReturnsAsync(CreateParameter(android: "A1"));
 
-            _adbMock
-                .Setup(x => x.ReadDeviceInfoAsync(It.IsAny<ProjectProfile>()))
+            _deviceAccessMock
+                .Setup(x => x.ReadDeviceInfoAsync(It.IsAny<ProductProfile>()))
                 .ReturnsAsync(CreateDeviceInfo(sn: StickerSn, chipId: ChipId, android: "A1"));
 
             _storageMock
@@ -234,8 +243,8 @@ namespace SnVerify.Tests.Services
                 .Setup(x => x.GetParameterAsync(ProjectId))
                 .ReturnsAsync(CreateParameter(android: "A1"));
 
-            _adbMock
-                .Setup(x => x.ReadDeviceInfoAsync(It.IsAny<ProjectProfile>()))
+            _deviceAccessMock
+                .Setup(x => x.ReadDeviceInfoAsync(It.IsAny<ProductProfile>()))
                 .ReturnsAsync(CreateDeviceInfo(sn: StickerSn, chipId: ChipId, android: "A2"));
 
             _storageMock
@@ -263,8 +272,8 @@ namespace SnVerify.Tests.Services
                 .Setup(x => x.GetParameterAsync(ProjectId))
                 .ReturnsAsync(CreateParameter(android: "A1"));
 
-            _adbMock
-                .Setup(x => x.ReadDeviceInfoAsync(It.IsAny<ProjectProfile>()))
+            _deviceAccessMock
+                .Setup(x => x.ReadDeviceInfoAsync(It.IsAny<ProductProfile>()))
                 .ReturnsAsync((DeviceInfo)null);
 
             _storageMock
@@ -296,8 +305,8 @@ namespace SnVerify.Tests.Services
             Assert.That(snapshot.LastResult, Is.EqualTo("FAIL"));
             Assert.That(snapshot.FailReason, Is.EqualTo("PARAMETER_NOT_CONFIGURED"));
 
-            _adbMock.Verify(
-                x => x.ReadDeviceInfoAsync(It.IsAny<ProjectProfile>()),
+            _deviceAccessMock.Verify(
+                x => x.ReadDeviceInfoAsync(It.IsAny<ProductProfile>()),
                 Times.Never,
                 "参数未配置时不应访问 ADB");
         }
@@ -312,8 +321,8 @@ namespace SnVerify.Tests.Services
                 .ReturnsAsync(parameter);
 
             var deviceInfo = CreateDeviceInfo(sn: StickerSn, chipId: ChipId, android: "A1", board: "B1", charge: "C1");
-            _adbMock
-                .Setup(x => x.ReadDeviceInfoAsync(It.IsAny<ProjectProfile>()))
+            _deviceAccessMock
+                .Setup(x => x.ReadDeviceInfoAsync(It.IsAny<ProductProfile>()))
                 .ReturnsAsync(deviceInfo);
 
             _storageMock
@@ -363,8 +372,8 @@ namespace SnVerify.Tests.Services
 
             // 设备 SN / ChipId 合法，但版本刻意设置为“不匹配”，因为没有 Expected，不应触发版本错误
             var deviceInfo = CreateDeviceInfo(sn: StickerSn, chipId: ChipId, android: "X-ANDROID", board: "X-BOARD", charge: "X-CHARGE");
-            _adbMock
-                .Setup(x => x.ReadDeviceInfoAsync(It.IsAny<ProjectProfile>()))
+            _deviceAccessMock
+                .Setup(x => x.ReadDeviceInfoAsync(It.IsAny<ProductProfile>()))
                 .ReturnsAsync(deviceInfo);
 
             _storageMock

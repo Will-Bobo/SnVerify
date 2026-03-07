@@ -74,7 +74,7 @@ namespace SnVerify.Tests.ViewModels
                     ProductCode = "SOLTAG25",
                     ProductName = "SOLTAG25",
                     Mode = VerificationMode.Legacy,
-                    AdbCommands = new DeviceInfoCommandSet()
+                    AdbConfig = null
                 });
 
             mock.Setup(r => r.Get("KM001"))
@@ -83,7 +83,7 @@ namespace SnVerify.Tests.ViewModels
                     ProductCode = "KM001",
                     ProductName = "KM001",
                     Mode = VerificationMode.Phase3,
-                    AdbCommands = new DeviceInfoCommandSet()
+                    AdbConfig = null
                 });
 
             mock.Setup(r => r.GetProductProfile(It.IsAny<string>()))

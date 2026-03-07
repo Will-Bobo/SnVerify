@@ -20,6 +20,7 @@ using SnVerify.Infrastructure.Product;
 using SnVerify.Services.Adb;
 using SnVerify.Services.Coordination;
 using SnVerify.Services.Logging;
+using SnVerify.Services.Parameter;
 using SnVerify.Services.Session;
 using SnVerify.Services.Storage;
 using SnVerify.Services.Ui;
@@ -53,6 +54,7 @@ namespace SnVerify.ViewModels
         private readonly IUserDialogService _dialogService;
         private readonly IVersionVerificationFlowService _versionVerificationFlowService;
         private readonly IProductRegistry _productRegistry;
+        private readonly IParameterService _parameterService;
         private readonly string _logDirectory;
         private readonly SynchronizationContext _uiContext;
 
@@ -756,7 +758,8 @@ namespace SnVerify.ViewModels
             IUserDialogService dialogService,
             IVersionVerificationFlowService versionVerificationFlowService,
             string logDirectory,
-            IProductRegistry productRegistry = null)
+            IProductRegistry productRegistry = null,
+            IParameterService parameterService = null)
         {
             _sessionLifecycleService = sessionLifecycleService ?? throw new ArgumentNullException(nameof(sessionLifecycleService));
             _flowServiceFactory = flowServiceFactory ?? throw new ArgumentNullException(nameof(flowServiceFactory));
@@ -769,6 +772,7 @@ namespace SnVerify.ViewModels
             _versionVerificationFlowService = versionVerificationFlowService ?? throw new ArgumentNullException(nameof(versionVerificationFlowService));
             _logDirectory = logDirectory ?? throw new ArgumentNullException(nameof(logDirectory));
             _productRegistry = productRegistry ?? new ProductRegistryAdapter();
+            _parameterService = parameterService;
             _uiContext = SynchronizationContext.Current ?? new SynchronizationContext();
 
             _verificationFlowService = _flowServiceFactory.Create("session_idle", null);
@@ -960,6 +964,16 @@ namespace SnVerify.ViewModels
                 var projectId = string.IsNullOrWhiteSpace(ProjectIdInput) ? null : ProjectIdInput.Trim();
                 var orderId = string.IsNullOrWhiteSpace(OrderIdInput) ? null : OrderIdInput.Trim();
 
+                // Phase3：当为 Phase3 产品且 ProjectId 未填写时，自动使用 SelectedProductCode 作为 ProjectId，
+                // 确保 ParameterService 与 ProductRegistry 使用统一键（如 KM001）。
+                if (IsPhase3Product &&
+                    string.IsNullOrWhiteSpace(projectId) &&
+                    !string.IsNullOrWhiteSpace(SelectedProductCode))
+                {
+                    projectId = SelectedProductCode.Trim();
+                    ProjectIdInput = projectId;
+                }
+
                 // 项目/订单均为必填，且订单需要通过命名校验（与项目挂钩）
                 if (string.IsNullOrWhiteSpace(projectId) || string.IsNullOrWhiteSpace(orderId))
                 {
@@ -982,10 +996,50 @@ namespace SnVerify.ViewModels
                     return;
                 }
 
+                // Phase3：目标版本至少填写一项，否则无法进行校验，提前提示并阻止开始测试。
+                if (IsPhase3Product)
+                {
+                    var expectedAndroid = ExpectedAndroidVersion?.Trim();
+                    var expectedBoard = ExpectedBoardVersion?.Trim();
+                    var expectedCharge = ExpectedChargeBoardVersion?.Trim();
+                    if (string.IsNullOrWhiteSpace(expectedAndroid) &&
+                        string.IsNullOrWhiteSpace(expectedBoard) &&
+                        string.IsNullOrWhiteSpace(expectedCharge))
+                    {
+                        _dialogService.ShowWarning("目标版本号不能为空，请查看输入（Android Version / Board Version / ChargeBoard Version）", "校验失败");
+                        return;
+                    }
+                }
+
+                // Phase3：当为 Phase3 产品时，将当前期望版本配置持久化为 VerificationParameter，供 Pipeline 读取。
+                if (IsPhase3Product && _parameterService != null)
+                {
+                    var expectedAndroid = ExpectedAndroidVersion?.Trim();
+                    var expectedBoard = ExpectedBoardVersion?.Trim();
+                    var expectedCharge = ExpectedChargeBoardVersion?.Trim();
+
+                    // 至少存在一个非空目标版本时才保存（上文已校验，此处恒为真，保留以保持语义清晰）。
+                    if (!string.IsNullOrWhiteSpace(expectedAndroid) ||
+                        !string.IsNullOrWhiteSpace(expectedBoard) ||
+                        !string.IsNullOrWhiteSpace(expectedCharge))
+                    {
+                        var parameter = new VerificationParameter
+                        {
+                            ProjectId = projectId,
+                            ExpectedAndroidVersion = expectedAndroid,
+                            ExpectedBoardVersion = expectedBoard,
+                            ExpectedChargeBoardVersion = expectedCharge
+                        };
+
+                        await _parameterService.SaveParameterAsync(parameter).ConfigureAwait(true);
+                    }
+                }
+
                 // 创建并开始 Session，并以 SessionName 启动会话日志
+                var productCode = (IsPhase3Product && !string.IsNullOrWhiteSpace(SelectedProductCode)) ? SelectedProductCode.Trim() : null;
                 var sessionId = await System.Threading.Tasks.Task.Run(() =>
                 {
-                    var sid = _sessionLifecycleService.CreateAndStartSession(orderId, orderId, projectId);
+                    var sid = _sessionLifecycleService.CreateAndStartSession(orderId, orderId, projectId, productCode);
                     _loggingService.StartSession(sid);
                     return sid;
                 });
@@ -1461,8 +1515,19 @@ namespace SnVerify.ViewModels
 
             try
             {
-                // 触发校验流程
-                await _verificationFlowService.StartVerificationAsync(sn.Trim());
+                var trimmedSn = sn.Trim();
+
+                // 根据产品模式选择 Legacy 或 Phase3 流程入口，UI 仅负责路由，不参与规则判断。
+                if (IsPhase3Product && !string.IsNullOrWhiteSpace(SelectedProductCode))
+                {
+                    await _verificationFlowService.StartPhase3VerificationAsync(trimmedSn, SelectedProductCode)
+                        .ConfigureAwait(true);
+                }
+                else
+                {
+                    await _verificationFlowService.StartVerificationAsync(trimmedSn)
+                        .ConfigureAwait(true);
+                }
                 
                 // 更新 Snapshot（轮询方式，实际应该通过事件）
                 VerificationSnapshot = _verificationFlowService.Snapshot;

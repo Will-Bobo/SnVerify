@@ -11,7 +11,12 @@ namespace SnVerify.Domain.Models
     public class VerificationParameter
     {
         /// <summary>
-        /// 项目标识（通常对应 ProductName / ProjectId）
+        /// 自增主键。
+        /// </summary>
+        public int Id { get; set; }
+
+        /// <summary>
+        /// 项目标识（项目个体名，与 Product.ProductName 一致）。
         /// </summary>
         public string ProjectId { get; set; }
 

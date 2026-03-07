@@ -15,6 +15,16 @@ using SnVerify.Services.Ui;
 using SnVerify.Ui;
 using System.Threading.Tasks;
 using SnVerify.Infrastructure.Product;
+using SnVerify.Services.Parameter;
+using SnVerify.Services.Verification;
+using SnVerify.Services.Rules;
+using SnVerify.Services.DeviceAccess;
+using SnVerify.Domain.DeviceAccess;
+using SnVerify.Infrastructure.DeviceAccess.Session;
+using SnVerify.Infrastructure.DeviceAccess.Command;
+using SnVerify.Infrastructure.DeviceAccess.Parser;
+using SnVerify.Infrastructure.DeviceAccess.Service;
+using System.Collections.Generic;
 
 namespace SnVerify.Infrastructure
 {
@@ -69,11 +79,33 @@ namespace SnVerify.Infrastructure
             
             var adbAccessService = new AdbAccessService(adbPath);
 
+            // DeviceAccess 子系统：Session / Command / Parser / Service（Phase3 设备读取）
+            var processRunner = new ProcessRunner();
+            var deviceSessionManager = new DeviceSessionManager(adbPath, processRunner);
+            var deviceCommandExecutor = new DeviceCommandExecutor(adbPath, processRunner);
+            var trimParser = new TrimParser();
+            var fieldParsers = new Dictionary<string, IDeviceInfoParser>(StringComparer.OrdinalIgnoreCase) { { ParserKeys.Field.Trim, trimParser } };
+            var parserFactory = new ParserFactory(fieldParsers, new Dictionary<string, IAggregateDeviceInfoParser>(StringComparer.OrdinalIgnoreCase));
+            var deviceAccessService = new AdbDeviceService(deviceSessionManager, deviceCommandExecutor, parserFactory);
+
             // 创建扫码输入服务
             var scanInputService = new ScanInputService();
 
+            // Phase3：版本参数服务 & 三版本强校验服务 & 规则执行器 & ProductRegistry
+            var parameterService = new ParameterService(storageService);
+            var versionVerificationService = new VersionVerificationService();
+            var productRegistry = new ProductRegistryAdapter();
+            var rulePipelineExecutor = new RulePipelineExecutor(storageService, deviceAccessService, versionVerificationService);
+
             // 校验流程服务工厂：按批次 ID 创建 ProcessCoordinator+VerificationFlowService
-            var flowServiceFactory = new VerificationFlowServiceFactory(storageService, adbAccessService, loggingService);
+            var flowServiceFactory = new VerificationFlowServiceFactory(
+                storageService,
+                adbAccessService,
+                loggingService,
+                parameterService,
+                versionVerificationService,
+                productRegistry,
+                rulePipelineExecutor);
 
             // 版本检验流程服务
             var versionVerificationFlowService = new VersionVerificationFlowService(adbAccessService, storageService);
@@ -99,7 +131,8 @@ namespace SnVerify.Infrastructure
                 dialogService,
                 versionVerificationFlowService,
                 logDirectory,
-                new ProductRegistryAdapter());
+                productRegistry,
+                parameterService);
 
             return viewModel;
         }

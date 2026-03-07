@@ -66,11 +66,11 @@ namespace SnVerify.Tests.ViewModels
 
             _productRegistryMock
                 .Setup(r => r.Get("SOLTAG25"))
-                .Returns(new ProductProfile { ProductCode = "SOLTAG25", Mode = VerificationMode.Legacy, AdbCommands = new DeviceInfoCommandSet() });
+                .Returns(new ProductProfile { ProductCode = "SOLTAG25", Mode = VerificationMode.Legacy, AdbConfig = null });
 
             _productRegistryMock
                 .Setup(r => r.Get("KM001"))
-                .Returns(new ProductProfile { ProductCode = "KM001", Mode = VerificationMode.Phase3, AdbCommands = new DeviceInfoCommandSet() });
+                .Returns(new ProductProfile { ProductCode = "KM001", Mode = VerificationMode.Phase3, AdbConfig = null });
 
             return new MainViewModel(
                 _sessionLifecycleServiceMock.Object,

@@ -13,6 +13,7 @@ using SnVerify.Domain.Enums;
 using SnVerify.Domain.Models;
 using SnVerify.Domain.State;
 using SnVerify.Domain.Validation;
+using SnVerify.Domain.Product;
 using SnVerify.Services.Adb;
 using SnVerify.Services.Coordination;
 using SnVerify.Services.Logging;
@@ -21,6 +22,8 @@ using SnVerify.Services.Session;
 using SnVerify.Services.Storage;
 using SnVerify.Services.Ui;
 using SnVerify.ViewModels;
+using SnVerify.Infrastructure.Product;
+using SnVerify.Services.Parameter;
 
 namespace SnVerify.Tests.ViewModels
 {
@@ -41,6 +44,7 @@ namespace SnVerify.Tests.ViewModels
         private Mock<IExportAggregationService> _exportAggregationServiceMock;
         private Mock<IOrderNameValidator> _orderNameValidatorMock;
         private Mock<IUserDialogService> _dialogServiceMock;
+        private Mock<IProductRegistry> _productRegistryMock;
 
         private static async Task WaitUntilAsync(Func<bool> predicate, int timeoutMs = 1500, int pollMs = 20)
         {
@@ -66,6 +70,7 @@ namespace SnVerify.Tests.ViewModels
             _exportAggregationServiceMock = new Mock<IExportAggregationService>();
             _orderNameValidatorMock = new Mock<IOrderNameValidator>();
             _dialogServiceMock = new Mock<IUserDialogService>();
+            _productRegistryMock = new Mock<IProductRegistry>();
 
             _sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Idle());
             _verificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
@@ -83,7 +88,8 @@ namespace SnVerify.Tests.ViewModels
                 _orderNameValidatorMock.Object,
                 _dialogServiceMock.Object,
                 _versionVerificationFlowServiceMock.Object,
-                Path.GetTempPath());
+                Path.GetTempPath(),
+                _productRegistryMock.Object);
         }
 
         [Test]
@@ -101,6 +107,85 @@ namespace SnVerify.Tests.ViewModels
                     _dialogServiceMock.Object,
                     _versionVerificationFlowServiceMock.Object,
                     null));
+        }
+
+        [Test]
+        public async Task StartBatchAsync_ForPhase3Product_ShouldPersistVerificationParameter()
+        {
+            // Arrange
+            var sessionLifecycleServiceMock = new Mock<ISessionLifecycleService>();
+            var flowServiceFactoryMock = new Mock<IVerificationFlowServiceFactory>();
+            var verificationFlowServiceMock = new Mock<IVerificationFlowService>();
+            var versionVerificationFlowServiceMock = new Mock<IVersionVerificationFlowService>();
+            var loggingServiceMock = new Mock<ILoggingService>();
+            var storageServiceMock = new Mock<IStorageService>();
+            var adbAccessServiceMock = new Mock<IAdbAccessService>();
+            var exportAggregationServiceMock = new Mock<IExportAggregationService>();
+            var orderNameValidatorMock = new Mock<IOrderNameValidator>();
+            var dialogServiceMock = new Mock<IUserDialogService>();
+            var productRegistryMock = new Mock<IProductRegistry>();
+            var parameterServiceMock = new Mock<IParameterService>();
+
+            sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Idle());
+            verificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
+            versionVerificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
+            flowServiceFactoryMock.Setup(f => f.Create(It.IsAny<string>(), It.IsAny<string>()))
+                                  .Returns(verificationFlowServiceMock.Object);
+            loggingServiceMock.Setup(m => m.Snapshot).Returns(LoggingSnapshot.Idle());
+
+            productRegistryMock.Setup(r => r.GetProductCodes())
+                .Returns(new[] { "KM001" });
+            productRegistryMock.Setup(r => r.Get("KM001"))
+                .Returns(new ProductProfile
+                {
+                    ProductCode = "KM001",
+                    Mode = VerificationMode.Phase3,
+                    AdbConfig = null
+                });
+
+            orderNameValidatorMock
+                .Setup(v => v.Validate(It.IsAny<string>(), out It.Ref<string>.IsAny))
+                .Returns(true);
+
+            var tcs = new TaskCompletionSource<bool>();
+            parameterServiceMock
+                .Setup(p => p.SaveParameterAsync(It.IsAny<VerificationParameter>()))
+                .Callback(() => tcs.TrySetResult(true))
+                .Returns(Task.CompletedTask);
+
+            var viewModel = new MainViewModel(
+                sessionLifecycleServiceMock.Object,
+                flowServiceFactoryMock.Object,
+                loggingServiceMock.Object,
+                storageServiceMock.Object,
+                adbAccessServiceMock.Object,
+                exportAggregationServiceMock.Object,
+                orderNameValidatorMock.Object,
+                dialogServiceMock.Object,
+                versionVerificationFlowServiceMock.Object,
+                Path.GetTempPath(),
+                productRegistryMock.Object,
+                parameterServiceMock.Object);
+
+            viewModel.SelectedProductCode = "KM001";
+            viewModel.ProjectIdInput = "";   // 触发用 SelectedProductCode 回填 ProjectId
+            viewModel.OrderIdInput = "ORDER001";
+            viewModel.ExpectedAndroidVersion = "A1";
+            viewModel.ExpectedBoardVersion = "B1";
+            viewModel.ExpectedChargeBoardVersion = "C1";
+
+            // Act
+            viewModel.StartBatchCommand.Execute(null);
+            await WaitUntilAsync(() => tcs.Task.IsCompleted);
+
+            // Assert
+            parameterServiceMock.Verify(p => p.SaveParameterAsync(
+                    It.Is<VerificationParameter>(vp =>
+                        vp.ProjectId == "KM001" &&
+                        vp.ExpectedAndroidVersion == "A1" &&
+                        vp.ExpectedBoardVersion == "B1" &&
+                        vp.ExpectedChargeBoardVersion == "C1")),
+                Times.Once);
         }
 
         [Test]
@@ -444,7 +529,7 @@ namespace SnVerify.Tests.ViewModels
 
             // Assert: 应弹窗提示，不调用 CreateAndStartSession
             _dialogServiceMock.Verify(d => d.ShowWarning(It.Is<string>(s => s != null && (s.Contains("目标版本") || s.Contains("版本号"))), It.IsAny<string>()), Times.Once);
-            _sessionLifecycleServiceMock.Verify(s => s.CreateAndStartSession(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _sessionLifecycleServiceMock.Verify(s => s.CreateAndStartSession(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
 
         [Test]
@@ -459,7 +544,7 @@ namespace SnVerify.Tests.ViewModels
             string validationMessage = null;
             _orderNameValidatorMock.Setup(v => v.Validate(orderId, out validationMessage)).Returns(true);
             _sessionLifecycleServiceMock
-                .Setup(s => s.CreateAndStartSession(orderId, orderId, projectId))
+                .Setup(s => s.CreateAndStartSession(orderId, orderId, projectId, It.IsAny<string>()))
                 .Returns(sessionId);
             _sessionLifecycleServiceMock
                 .SetupSequence(s => s.Snapshot)
@@ -476,7 +561,7 @@ namespace SnVerify.Tests.ViewModels
             await WaitUntilAsync(() => _viewModel.SessionSnapshot.IsActive, timeoutMs: 2000);
 
             // Assert
-            _sessionLifecycleServiceMock.Verify(s => s.CreateAndStartSession(orderId, orderId, projectId), Times.Once);
+            _sessionLifecycleServiceMock.Verify(s => s.CreateAndStartSession(orderId, orderId, projectId, It.IsAny<string>()), Times.Once);
             _flowServiceFactoryMock.Verify(f => f.Create(sessionId, orderId), Times.Once);
             _loggingServiceMock.Verify(l => l.StartSession(sessionId), Times.Once);
         }

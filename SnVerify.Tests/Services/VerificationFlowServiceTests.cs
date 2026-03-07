@@ -20,6 +20,7 @@ namespace SnVerify.Tests.Services
         private Mock<IProcessCoordinator> _processCoordinatorMock;
         private IVerificationFlowService _verificationFlowService;
         private const string TestSn = "ABC123";
+        private const string TestProjectId = "KM001";
 
         [SetUp]
         public void SetUp()
@@ -64,6 +65,23 @@ namespace SnVerify.Tests.Services
             // Assert
             _processCoordinatorMock.Verify(
                 x => x.StartVerificationAsync(TestSn),
+                Times.Once);
+        }
+
+        [Test]
+        public async Task StartPhase3VerificationAsync_ShouldDelegateToCoordinator()
+        {
+            // Arrange
+            _processCoordinatorMock
+                .Setup(x => x.ProcessScanAsync(TestSn, TestProjectId))
+                .Returns(Task.CompletedTask);
+
+            // Act
+            await _verificationFlowService.StartPhase3VerificationAsync(TestSn, TestProjectId);
+
+            // Assert
+            _processCoordinatorMock.Verify(
+                x => x.ProcessScanAsync(TestSn, TestProjectId),
                 Times.Once);
         }
 
@@ -266,6 +284,24 @@ namespace SnVerify.Tests.Services
             Assert.That(firstSnapshot.IsProcessing, Is.True);
             Assert.That(secondSnapshot.IsProcessing, Is.False);
             Assert.That(firstSnapshot, Is.Not.EqualTo(secondSnapshot));
+        }
+
+        [Test]
+        public void StartPhase3VerificationAsync_ShouldThrowArgumentException_WhenSnOrProjectIdIsEmpty()
+        {
+            Assert.ThrowsAsync<ArgumentException>(async () =>
+                await _verificationFlowService.StartPhase3VerificationAsync(null, TestProjectId));
+            Assert.ThrowsAsync<ArgumentException>(async () =>
+                await _verificationFlowService.StartPhase3VerificationAsync(string.Empty, TestProjectId));
+            Assert.ThrowsAsync<ArgumentException>(async () =>
+                await _verificationFlowService.StartPhase3VerificationAsync("   ", TestProjectId));
+
+            Assert.ThrowsAsync<ArgumentException>(async () =>
+                await _verificationFlowService.StartPhase3VerificationAsync(TestSn, null));
+            Assert.ThrowsAsync<ArgumentException>(async () =>
+                await _verificationFlowService.StartPhase3VerificationAsync(TestSn, string.Empty));
+            Assert.ThrowsAsync<ArgumentException>(async () =>
+                await _verificationFlowService.StartPhase3VerificationAsync(TestSn, "   "));
         }
     }
 }

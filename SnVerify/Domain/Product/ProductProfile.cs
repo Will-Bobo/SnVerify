@@ -1,8 +1,10 @@
 /// <author>AI Assistant</author>
 /// <remarks>
 /// Stage3：产品级 Profile 描述。
-/// 用于将 ProductCode 映射到校验模式、ADB 命令集与规则开关。
+/// 用于将 ProductCode 映射到校验模式、ADB 配置与规则开关。
 /// </remarks>
+
+using SnVerify.Domain.DeviceAccess;
 
 namespace SnVerify.Domain.Product
 {
@@ -27,9 +29,9 @@ namespace SnVerify.Domain.Product
         public VerificationMode Mode { get; set; }
 
         /// <summary>
-        /// ADB 设备信息读取命令集合。
+        /// 设备访问 ADB 配置（Bootstrap、聚合或字段命令）。Phase3 设备读取由此配置驱动；为 null 时视为未配置。
         /// </summary>
-        public DeviceInfoCommandSet AdbCommands { get; set; }
+        public DeviceAdbConfig AdbConfig { get; set; }
 
         /// <summary>
         /// 是否启用 ChipId 校验。

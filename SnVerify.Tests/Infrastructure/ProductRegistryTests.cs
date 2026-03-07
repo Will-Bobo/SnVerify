@@ -39,9 +39,7 @@ namespace SnVerify.Tests.Infrastructure
             Assert.That(profile.EnableBoardVersionCheck, Is.False);
             Assert.That(profile.EnableChargeBoardVersionCheck, Is.False);
 
-            Assert.That(profile.AdbCommands, Is.Not.Null);
-            Assert.That(profile.AdbCommands.ReadDeviceSn, Is.EqualTo("getprop sys.skyroam.osi.sn"));
-            Assert.That(profile.AdbCommands.ReadAndroidVersion, Is.EqualTo("getprop ro.build.display.id"));
+            Assert.That(profile.AdbConfig, Is.Null, "SOLTAG25 为 Legacy，无 ADB 配置");
         }
 
         [Test]
@@ -57,8 +55,11 @@ namespace SnVerify.Tests.Infrastructure
             Assert.That(profile.EnableBoardVersionCheck, Is.True);
             Assert.That(profile.EnableChargeBoardVersionCheck, Is.True);
 
-            Assert.That(profile.AdbCommands, Is.Not.Null);
-            // Phase3 允许 ADB 命令为空占位，这里只验证对象存在即可。
+            Assert.That(profile.AdbConfig, Is.Not.Null);
+            Assert.That(profile.AdbConfig.BootstrapCommandSpecs, Is.Not.Null);
+            Assert.That(profile.AdbConfig.BootstrapCommandSpecs.Count, Is.GreaterThan(0));
+            Assert.That(profile.AdbConfig.Commands, Is.Not.Null);
+            Assert.That(profile.AdbConfig.Commands.Count, Is.GreaterThan(0));
         }
 
         [Test]

@@ -203,6 +203,8 @@ CREATE TABLE IF NOT EXISTS VerificationParameter (
             // 先做表结构迁移（例如为旧库添加 ExpectedVersion / ActualVersion / ChipId 等列）
             await MigrateOrderToOrderNameProductIdUniqueAsync();
             await MigrateTestRecordAddColumnsAsync();
+            await MigrateProductAddProductCodeAsync();
+            await MigrateVerificationParameterAddIdAsync();
 
             // 再统一创建索引，确保引用的列已存在
             await ExecuteNonQueryAsync(createOrderNameProductUnique);
@@ -300,6 +302,50 @@ CREATE TABLE ""Order_new"" (
                     await ExecuteNonQueryAsync($"ALTER TABLE TestRecord ADD COLUMN {col} TEXT");
                 }
             }
+        }
+
+        /// <summary>
+        /// 迁移：Product 表增加 ProductCode 列（项目类型，如 KM001）。
+        /// </summary>
+        private async Task MigrateProductAddProductCodeAsync()
+        {
+            if (await ColumnExistsAsync("Product", "ProductCode"))
+                return;
+            await ExecuteNonQueryAsync("ALTER TABLE Product ADD COLUMN ProductCode TEXT");
+        }
+
+        /// <summary>
+        /// 迁移：VerificationParameter 表增加自增主键 Id，ProjectId 改为 UNIQUE。
+        /// </summary>
+        private async Task MigrateVerificationParameterAddIdAsync()
+        {
+            if (await ColumnExistsAsync("VerificationParameter", "Id"))
+                return;
+            await Task.Run(() =>
+            {
+                lock (_lockObject)
+                {
+                    if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        throw new InvalidOperationException("数据库连接未初始化或已关闭");
+                    const string createNew = @"
+CREATE TABLE VerificationParameter_new (
+    Id INTEGER PRIMARY KEY AUTOINCREMENT,
+    ProjectId TEXT NOT NULL UNIQUE,
+    ExpectedAndroidVersion TEXT,
+    ExpectedBoardVersion TEXT,
+    ExpectedChargeBoardVersion TEXT
+);";
+                    using (var c1 = new SQLiteCommand(createNew, _connection))
+                        c1.ExecuteNonQuery();
+                    using (var c2 = new SQLiteCommand(@"INSERT INTO VerificationParameter_new (ProjectId, ExpectedAndroidVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion)
+SELECT ProjectId, ExpectedAndroidVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion FROM VerificationParameter", _connection))
+                        c2.ExecuteNonQuery();
+                    using (var c3 = new SQLiteCommand("DROP TABLE VerificationParameter", _connection))
+                        c3.ExecuteNonQuery();
+                    using (var c4 = new SQLiteCommand("ALTER TABLE VerificationParameter_new RENAME TO VerificationParameter", _connection))
+                        c4.ExecuteNonQuery();
+                }
+            });
         }
 
         /// <summary>
@@ -604,8 +650,8 @@ CREATE TABLE ""Order_new"" (
             EnsureConnectionInitialized();
 
             var sql = @"
-                INSERT INTO Product (ProductName, Description, CreatedAt)
-                VALUES (@ProductName, @Description, @CreatedAt)";
+                INSERT INTO Product (ProductName, ProductCode, Description, CreatedAt)
+                VALUES (@ProductName, @ProductCode, @Description, @CreatedAt)";
 
             return await Task.Run(() =>
             {
@@ -616,6 +662,7 @@ CREATE TABLE ""Order_new"" (
                     using (var cmd = new SQLiteCommand(sql, _connection))
                     {
                         cmd.Parameters.AddWithValue("@ProductName", product.ProductName);
+                        cmd.Parameters.AddWithValue("@ProductCode", (object)product.ProductCode ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@Description", (object)product.Description ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@CreatedAt", (object)product.CreatedAt ?? DBNull.Value);
                         cmd.ExecuteNonQuery();
@@ -663,7 +710,7 @@ CREATE TABLE ""Order_new"" (
         public async Task<IReadOnlyList<Product>> GetAllProductsAsync()
         {
             EnsureConnectionInitialized();
-            var sql = @"SELECT Id, ProductName, Description, CreatedAt FROM Product ORDER BY CreatedAt DESC";
+            var sql = @"SELECT Id, ProductName, ProductCode, Description, CreatedAt FROM Product ORDER BY CreatedAt DESC";
             var list = await Task.Run(() =>
             {
                 lock (_lockObject)
@@ -680,8 +727,9 @@ CREATE TABLE ""Order_new"" (
                             {
                                 Id = r.GetInt32(0),
                                 ProductName = r.GetString(1),
-                                Description = r.IsDBNull(2) ? null : r.GetString(2),
-                                CreatedAt = r.IsDBNull(3) ? (DateTime?)null : r.GetDateTime(3)
+                                ProductCode = r.IsDBNull(2) ? null : r.GetString(2),
+                                Description = r.IsDBNull(3) ? null : r.GetString(3),
+                                CreatedAt = r.IsDBNull(4) ? (DateTime?)null : r.GetDateTime(4)
                             });
                         }
                     }
@@ -1448,7 +1496,7 @@ CREATE TABLE ""Order_new"" (
             EnsureConnectionInitialized();
 
             const string sql = @"
-                SELECT ProjectId, ExpectedAndroidVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion
+                SELECT Id, ProjectId, ExpectedAndroidVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion
                 FROM VerificationParameter
                 WHERE ProjectId = @ProjectId
                 LIMIT 1";
@@ -1473,10 +1521,11 @@ CREATE TABLE ""Order_new"" (
                             {
                                 parameter = new VerificationParameter
                                 {
-                                    ProjectId = reader.GetString(0),
-                                    ExpectedAndroidVersion = reader.IsDBNull(1) ? null : reader.GetString(1),
-                                    ExpectedBoardVersion = reader.IsDBNull(2) ? null : reader.GetString(2),
-                                    ExpectedChargeBoardVersion = reader.IsDBNull(3) ? null : reader.GetString(3)
+                                    Id = reader.GetInt32(0),
+                                    ProjectId = reader.GetString(1),
+                                    ExpectedAndroidVersion = reader.IsDBNull(2) ? null : reader.GetString(2),
+                                    ExpectedBoardVersion = reader.IsDBNull(3) ? null : reader.GetString(3),
+                                    ExpectedChargeBoardVersion = reader.IsDBNull(4) ? null : reader.GetString(4)
                                 };
                             }
                         }
@@ -1532,9 +1581,45 @@ CREATE TABLE ""Order_new"" (
                         cmd.Parameters.AddWithValue("@ExpectedBoardVersion", (object)parameter.ExpectedBoardVersion ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@ExpectedChargeBoardVersion", (object)parameter.ExpectedChargeBoardVersion ?? DBNull.Value);
                         cmd.ExecuteNonQuery();
+                        if (existingCount == 0)
+                        {
+                            using (var getId = new SQLiteCommand("SELECT last_insert_rowid()", _connection))
+                                parameter.Id = Convert.ToInt32(getId.ExecuteScalar());
+                        }
                     }
                 }
             });
+        }
+
+        /// <summary>
+        /// 根据当前 Session 名称解析所属项目个体名（Session → Order → Product → ProductName）。
+        /// </summary>
+        public async Task<string> GetProductNameBySessionNameAsync(string sessionName)
+        {
+            if (string.IsNullOrWhiteSpace(sessionName))
+                return null;
+            EnsureConnectionInitialized();
+            const string sql = @"
+                SELECT p.ProductName FROM TestSession s
+                INNER JOIN ""Order"" o ON s.OrderId = o.Id
+                INNER JOIN Product p ON o.ProductId = p.Id
+                WHERE s.SessionName = @SessionName
+                LIMIT 1";
+            var result = await Task.Run(() =>
+            {
+                lock (_lockObject)
+                {
+                    if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        return (string)null;
+                    using (var cmd = new SQLiteCommand(sql, _connection))
+                    {
+                        cmd.Parameters.AddWithValue("@SessionName", sessionName.Trim());
+                        var o = cmd.ExecuteScalar();
+                        return o == null || o == DBNull.Value ? null : Convert.ToString(o);
+                    }
+                }
+            });
+            return result;
         }
 
         /// <summary>

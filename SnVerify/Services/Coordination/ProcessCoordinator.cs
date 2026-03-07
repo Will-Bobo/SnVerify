@@ -16,8 +16,8 @@ using SnVerify.Services.Logging;
 using SnVerify.Services.Mes.Gate;
 using SnVerify.Services.Storage;
 using SnVerify.Services.Parameter;
-using SnVerify.Services.ProductProfiles;
 using SnVerify.Services.Verification;
+using SnVerify.Services.DeviceAccess;
 using SnVerify.Infrastructure.Product;
 using SnVerify.Services.Rules;
 
@@ -38,8 +38,8 @@ namespace SnVerify.Services.Coordination
         private readonly MesMode _mesMode;
         private readonly IParameterService _parameterService;
         private readonly IVersionVerificationService _versionVerificationService;
-        private readonly IProductProfileFactory _productProfileFactory;
         private readonly IProductRegistry _productRegistry;
+        private readonly IDeviceAccessService _deviceAccessService;
         private readonly IRulePipelineExecutor _rulePipelineExecutor;
         private readonly object _lockObject = new object();
         private VerificationSnapshot _snapshot;
@@ -88,9 +88,9 @@ namespace SnVerify.Services.Coordination
         /// <param name="orderId">订单 ID（可选，用于 MES 上下文与订单维度唯一性检查）</param>
         /// <param name="parameterService">版本参数服务（Phase 3：用于获取项目级版本目标配置，可选）</param>
         /// <param name="versionVerificationService">三版本强校验服务（Phase 3 Stage2：可选，未注入时使用默认实现）。</param>
-        /// <param name="productProfileFactory">Product / Project Profile 工厂（可选，未注入时使用调用方传入的 profile）。</param>
         /// <param name="productRegistry">ProductRegistry 读取接口（Stage3：唯一规则入口，可选；默认使用静态注册表适配器）。</param>
-        /// <param name="rulePipelineExecutor">规则链执行器（Stage3：可选；为空时使用默认实现）。</param>
+        /// <param name="deviceAccessService">设备访问服务（Stage3：当 rulePipelineExecutor 为 null 时用于构建默认规则执行器，可选）。</param>
+        /// <param name="rulePipelineExecutor">规则链执行器（Stage3：可选；为空且提供了 deviceAccessService 时使用默认实现）。</param>
         public ProcessCoordinator(
             string sessionId,
             IStorageService storageService,
@@ -102,8 +102,8 @@ namespace SnVerify.Services.Coordination
             string orderId = null,
             IParameterService parameterService = null,
             IVersionVerificationService versionVerificationService = null,
-            IProductProfileFactory productProfileFactory = null,
             IProductRegistry productRegistry = null,
+            IDeviceAccessService deviceAccessService = null,
             IRulePipelineExecutor rulePipelineExecutor = null)
         {
             _sessionId = sessionId ?? throw new ArgumentNullException(nameof(sessionId));
@@ -116,8 +116,8 @@ namespace SnVerify.Services.Coordination
             _mesMode = mesMode;
             _parameterService = parameterService;
             _versionVerificationService = versionVerificationService;
-            _productProfileFactory = productProfileFactory;
             _productRegistry = productRegistry ?? new ProductRegistryAdapter();
+            _deviceAccessService = deviceAccessService;
             _rulePipelineExecutor = rulePipelineExecutor;
             _snapshot = VerificationSnapshot.Idle(_sessionId);
         }
@@ -320,8 +320,7 @@ namespace SnVerify.Services.Coordination
         /// </summary>
         /// <param name="sn">扫码输入的 SN（StickerSN）</param>
         /// <param name="projectId">项目 ID（用于参数读取）</param>
-        /// <param name="projectProfile">项目 Profile（用于 ADB 读取命令配置，可为 null）</param>
-        public async Task ProcessScanAsync(string sn, string projectId, ProjectProfile projectProfile = null)
+        public async Task ProcessScanAsync(string sn, string projectId)
         {
             if (string.IsNullOrWhiteSpace(sn))
                 throw new ArgumentException("SN 不能为空", nameof(sn));
@@ -351,15 +350,16 @@ namespace SnVerify.Services.Coordination
 
             try
             {
-                // Step 1: 获取项目参数配置（ExpectedAndroidVersion / ExpectedBoardVersion / ExpectedChargeBoardVersion）
+                // Step 1: 按当前 Session 解析项目个体名，再取版本参数（Session → Order → Product → ProductName）
                 VerificationParameter parameter = null;
-                if (_parameterService != null)
+                if (_parameterService != null && _storageService != null)
                 {
-                    parameter = await _parameterService.GetParameterAsync(projectId).ConfigureAwait(false);
+                    var productName = await _storageService.GetProductNameBySessionNameAsync(_sessionId).ConfigureAwait(false);
+                    if (!string.IsNullOrWhiteSpace(productName))
+                        parameter = await _parameterService.GetParameterAsync(productName).ConfigureAwait(false);
                 }
 
-                // Stage3：规则判断全部外移到 RulePipelineExecutor。
-                // Profile 必须来自 ProductRegistry（唯一规则入口）。
+                // Stage3：规则判断全部外移到 RulePipelineExecutor；Profile 按产品类型（projectId = ProductCode）取。
                 var productProfile = _productRegistry.GetProductProfile(projectId);
                 if (productProfile == null)
                 {
@@ -370,10 +370,12 @@ namespace SnVerify.Services.Coordination
                     return;
                 }
 
-                var executor = _rulePipelineExecutor ?? new RulePipelineExecutor(
-                    _storageService,
-                    _adbAccessService,
-                    _versionVerificationService ?? new VersionVerificationService());
+                var executor = _rulePipelineExecutor ?? (_deviceAccessService != null
+                    ? new RulePipelineExecutor(
+                        _storageService,
+                        _deviceAccessService,
+                        _versionVerificationService ?? new VersionVerificationService())
+                    : throw new InvalidOperationException("Phase3 需要注入 IRulePipelineExecutor 或 IDeviceAccessService"));
 
                 var execResult = await executor
                     .ExecuteAsync(productProfile, deviceInfo: null, parameter, stickerSn: sn, orderId: _orderId)

@@ -44,15 +44,6 @@ namespace SnVerify.Services.Adb
         Task<AdbDeviceInfoResult> ReadDeviceInfoAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// 按项目配置读取设备信息（DeviceInfo），用于 Phase3 SN 校验流程。
-        /// 尝试一次性从 ADB 读取全部字段；若设备不支持，则允许分字段读取。
-        /// 默认超时 10 秒，最多重试 3 次，每次间隔 1 秒。
-        /// </summary>
-        /// <param name="profile">项目配置概要（包含 ADB 读取命令等信息）</param>
-        /// <returns>设备信息结构；读取失败时部分字段可能为 null。</returns>
-        Task<DeviceInfo> ReadDeviceInfoAsync(ProjectProfile profile);
-
-        /// <summary>
         /// 获取指定设备的 SN（Phase2 新增）
         /// </summary>
         /// <param name="deviceId">设备 ID（如果为 null，则使用第一个可用设备）</param>

@@ -43,15 +43,30 @@ namespace SnVerify.Services.Coordination
         }
 
         /// <summary>
-        /// 启动校验流程
+        /// 启动 Legacy SN 校验流程
         /// </summary>
         public async Task StartVerificationAsync(string sn)
         {
             if (string.IsNullOrWhiteSpace(sn))
                 throw new ArgumentException("SN 不能为空", nameof(sn));
 
-            // 委托给 ProcessCoordinator
+            // 委托给 ProcessCoordinator（Phase 2.5 冻结逻辑）
             await _processCoordinator.StartVerificationAsync(sn);
+        }
+
+        /// <summary>
+        /// 启动 Phase 3 SN 校验流程（基于 ProductProfile / RulePipelineExecutor）。
+        /// </summary>
+        /// <param name="sn">扫码输入的 SN（StickerSN）。</param>
+        /// <param name="projectId">项目 ID / 产品代码（例如 KM001，用于参数与产品规则选择）。</param>
+        public async Task StartPhase3VerificationAsync(string sn, string projectId)
+        {
+            if (string.IsNullOrWhiteSpace(sn))
+                throw new ArgumentException("SN 不能为空", nameof(sn));
+            if (string.IsNullOrWhiteSpace(projectId))
+                throw new ArgumentException("ProjectId 不能为空", nameof(projectId));
+
+            await _processCoordinator.ProcessScanAsync(sn, projectId).ConfigureAwait(false);
         }
 
         /// <summary>

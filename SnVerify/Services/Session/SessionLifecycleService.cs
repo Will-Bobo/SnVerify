@@ -54,7 +54,7 @@ namespace SnVerify.Services.Session
         }
 
         /// <inheritdoc />
-        public string CreateAndStartSession(string orderId, string orderName = null, string projectId = null)
+        public string CreateAndStartSession(string orderId, string orderName = null, string projectId = null, string productCode = null)
         {
             if (string.IsNullOrWhiteSpace(orderId))
             {
@@ -106,6 +106,7 @@ namespace SnVerify.Services.Session
                         var product = new Product
                         {
                             ProductName = projectId.Trim(),
+                            ProductCode = string.IsNullOrWhiteSpace(productCode) ? null : productCode.Trim(),
                             Description = null,
                             CreatedAt = at
                         };

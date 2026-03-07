@@ -19,9 +19,14 @@ namespace SnVerify.Domain.Models
         public int Id { get; set; }
 
         /// <summary>
-        /// 产品名称（型号），全局唯一。
+        /// 产品名称（项目个体名），全局唯一，与 UI「项目名」一致。
         /// </summary>
         public string ProductName { get; set; }
+
+        /// <summary>
+        /// 项目类型代码（如 KM001、SOLTAG25），与 ProductRegistry 的 key 一致；可空以兼容 Legacy。
+        /// </summary>
+        public string ProductCode { get; set; }
 
         /// <summary>
         /// 可选的产品描述。

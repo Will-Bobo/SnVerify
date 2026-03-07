@@ -9,6 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using SnVerify.Domain.Product;
+using SnVerify.Domain.DeviceAccess;
 
 namespace SnVerify.Infrastructure.Product
 {
@@ -31,11 +32,7 @@ namespace SnVerify.Infrastructure.Product
                         ProductCode = "SOLTAG25",
                         ProductName = "SOLTAG25",
                         Mode = VerificationMode.Legacy,
-                        AdbCommands = new DeviceInfoCommandSet
-                        {
-                            ReadDeviceSn = "getprop sys.skyroam.osi.sn",
-                            ReadAndroidVersion = "getprop ro.build.display.id"
-                        },
+                        AdbConfig = null,
                         EnableChipIdCheck = false,
                         EnableWifiMacCheck = false,
                         EnableBoardVersionCheck = false,
@@ -49,7 +46,41 @@ namespace SnVerify.Infrastructure.Product
                         ProductCode = "KM001",
                         ProductName = "KM001",
                         Mode = VerificationMode.Phase3,
-                        AdbCommands = new DeviceInfoCommandSet(),
+                        AdbConfig = new DeviceAdbConfig
+                        {
+                            BootstrapCommandSpecs = new List<BootstrapCommandSpec>
+                            {
+                                new BootstrapCommandSpec
+                                {
+                                    Command = "shell ylzero",
+                                    AcceptableExitCodes = new[] { 127, 255 },
+                                    TimeoutBehavior = BootstrapTimeoutBehavior.Ignore
+                                }
+                            },
+                            AggregateCommand = null,
+                            Commands = new List<DeviceInfoCommand>
+                            {
+                                new DeviceInfoCommand
+                                {
+                                    Field = DeviceInfoField.DeviceSn,
+                                    Command = "shell getprop ro.serialno",
+                                    ParserKey = ParserKeys.Field.Trim
+                                },
+                                new DeviceInfoCommand
+                                {
+                                    Field = DeviceInfoField.AndroidVersion,
+                                    Command = "shell getprop ro.build.display.id",
+                                    ParserKey = ParserKeys.Field.Trim
+                                }
+                                ,
+                                new DeviceInfoCommand
+                                {
+                                    Field = DeviceInfoField.ChipId,
+                                    Command = "shell getprop ro.build.display.id",
+                                    ParserKey = ParserKeys.Field.Trim
+                                }
+                            }
+                        },
                         EnableChipIdCheck = true,
                         EnableWifiMacCheck = true,
                         EnableBoardVersionCheck = true,

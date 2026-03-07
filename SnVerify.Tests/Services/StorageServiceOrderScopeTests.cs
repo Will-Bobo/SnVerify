@@ -142,6 +142,33 @@ namespace SnVerify.Tests.Services
             Assert.That(inOrderCA_F502, Is.False, "ORDER_CA 中 F502 仅有 FAIL，应返回 false");
             Assert.That(inOrderCB_F501, Is.True, "ORDER_CB 中 F501 为 PASS，应返回 true");
         }
+
+        /// <summary>
+        /// GetProductNameBySessionNameAsync：Session → Order → Product → ProductName。
+        /// </summary>
+        [Test]
+        public async Task GetProductNameBySessionNameAsync_ReturnsProductName_WhenSessionExists()
+        {
+            await _storage.InitializeAsync();
+
+            int productId = await _storage.CreateProductAsync(new Product { ProductName = "MyProject", CreatedAt = DateTime.Now });
+            int orderId = await _storage.CreateOrderAsync(new Order { ProductId = productId, OrderName = "O1", CreatedAt = DateTime.Now });
+            await _storage.CreateSessionAsync(new TestSession { OrderId = orderId, SessionName = "O1_20250101_120000", StartTime = DateTime.Now });
+
+            var productName = await _storage.GetProductNameBySessionNameAsync("O1_20250101_120000");
+
+            Assert.That(productName, Is.EqualTo("MyProject"));
+        }
+
+        [Test]
+        public async Task GetProductNameBySessionNameAsync_ReturnsNull_WhenSessionNotFound()
+        {
+            await _storage.InitializeAsync();
+
+            var productName = await _storage.GetProductNameBySessionNameAsync("NonExistent_Session");
+
+            Assert.That(productName, Is.Null);
+        }
     }
 }
 

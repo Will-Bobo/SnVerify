@@ -83,6 +83,11 @@ namespace SnVerify.Services.Storage
         Task<int?> GetProductIdByProductNameAsync(string productName);
 
         /// <summary>
+        /// 根据当前 Session 名称解析所属项目个体名（Session → Order → Product → ProductName）。
+        /// </summary>
+        Task<string> GetProductNameBySessionNameAsync(string sessionName);
+
+        /// <summary>
         /// 创建订单记录，返回自增 Id。
         /// </summary>
         /// <param name="order">订单实体</param>

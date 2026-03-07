@@ -30,9 +30,9 @@ namespace SnVerify.Services.Coordination
         event EventHandler<MesEventArgs> MesEventOccurred;
 
         /// <summary>
-        /// 启动校验流程（原子化执行）
+        /// 启动 Legacy SN 校验流程（原子化执行，Phase 2.5 冻结逻辑）。
         /// </summary>
-        /// <param name="sn">扫码输入的 SN</param>
+        /// <param name="sn">扫码输入的 SN。</param>
         /// <remarks>
         /// 流程步骤：
         /// 1. 检查是否正在处理（原子锁定）
@@ -44,6 +44,16 @@ namespace SnVerify.Services.Coordination
         /// 7. 释放锁定
         /// </remarks>
         Task StartVerificationAsync(string sn);
+
+        /// <summary>
+        /// Phase 3 SN 校验流程入口（扩展版）。
+        /// </summary>
+        /// <param name="sn">扫码输入的 SN（StickerSN）。</param>
+        /// <param name="projectId">项目 ID / 产品代码（用于参数读取与 ProductProfile 选择）。</param>
+        /// <remarks>
+        /// 内部按 projectId 从 ProductRegistry 取 ProductProfile，调用 RulePipelineExecutor 执行规则链，并由协调器统一负责结果落库与 Snapshot 更新。
+        /// </remarks>
+        Task ProcessScanAsync(string sn, string projectId);
 
         /// <summary>
         /// 重置流程状态，允许下一次扫描
