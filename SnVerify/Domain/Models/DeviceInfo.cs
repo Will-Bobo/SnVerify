@@ -39,6 +39,23 @@ namespace SnVerify.Domain.Models
         /// Android 系统版本号
         /// </summary>
         public string AndroidVersion { get; set; }
+
+        /// <summary>
+        /// 浅拷贝，用于 Snapshot 不可变语义。src 为 null 时返回 null。
+        /// </summary>
+        public static DeviceInfo Clone(DeviceInfo src)
+        {
+            if (src == null) return null;
+            return new DeviceInfo
+            {
+                DeviceSn = src.DeviceSn,
+                WifiMac = src.WifiMac,
+                ChipId = src.ChipId,
+                BoardVersion = src.BoardVersion,
+                ChargeBoardVersion = src.ChargeBoardVersion,
+                AndroidVersion = src.AndroidVersion
+            };
+        }
     }
 }
 

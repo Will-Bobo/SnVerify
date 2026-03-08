@@ -381,9 +381,10 @@ namespace SnVerify.Services.Coordination
                     .ExecuteAsync(productProfile, deviceInfo: null, parameter, stickerSn: sn, orderId: _orderId)
                     .ConfigureAwait(false);
 
-                var deviceSN = execResult?.DeviceInfo?.DeviceSn?.Trim();
+                var deviceInfo = execResult?.DeviceInfo;
+                var deviceSN = deviceInfo?.DeviceSn?.Trim() ?? execResult?.DeviceSn?.Trim();
                 await SavePhase3ResultAsync(sn.Trim(), execResult?.Result ?? "FAIL", execResult?.FailReason, execResult?.DeviceInfo, parameter).ConfigureAwait(false);
-                UpdateSnapshot(VerificationSnapshot.Completed(sn.Trim(), execResult?.Result ?? "FAIL", execResult?.FailReason, _sessionId, deviceSN));
+                UpdateSnapshot(VerificationSnapshot.Completed(sn.Trim(), execResult?.Result ?? "FAIL", execResult?.FailReason, _sessionId, deviceSN, deviceInfo));
             }
             catch (Exception ex)
             {

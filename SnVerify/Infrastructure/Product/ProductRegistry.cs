@@ -71,15 +71,26 @@ namespace SnVerify.Infrastructure.Product
                                     Field = DeviceInfoField.AndroidVersion,
                                     Command = "shell getprop ro.build.display.id",
                                     ParserKey = ParserKeys.Field.Trim
-                                }
-                                ,
+                                },
                                 new DeviceInfoCommand
                                 {
                                     Field = DeviceInfoField.ChipId,
                                     Command = "shell getprop ro.build.display.id",
                                     ParserKey = ParserKeys.Field.Trim
-                                }
-                            }
+                                },
+								new DeviceInfoCommand
+								{
+									Field = DeviceInfoField.ChargeBoardVersion,
+									Command = "shell getprop ro.build.display.id",
+									ParserKey = ParserKeys.Field.Trim
+								},
+								new DeviceInfoCommand
+								{
+									Field = DeviceInfoField.BoardVersion,
+									Command = "shell getprop ro.build.display.id",
+									ParserKey = ParserKeys.Field.Trim
+								}
+							}
                         },
                         EnableChipIdCheck = true,
                         EnableWifiMacCheck = true,

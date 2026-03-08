@@ -28,6 +28,11 @@ namespace SnVerify.Services.Rules
         /// </summary>
         public DeviceInfo DeviceInfo { get; }
 
+        /// <summary>
+        /// 设备 SN（来自 DeviceInfo；供 ProcessCoordinator 在 deviceSN fallback 时使用）。
+        /// </summary>
+        public string DeviceSn => DeviceInfo?.DeviceSn;
+
         private RuleExecutionResult(string result, string failReason, DeviceInfo deviceInfo)
         {
             Result = result;

@@ -183,7 +183,8 @@ Snapshot 对象（`VerificationSnapshot`、`SessionSnapshot`、`LoggingSnapshot`
 - `ExportRecordFilter` 作为数据过滤入口，可以区分：
   - SN 校验记录（`StickerSN != "-"`）。
   - 版本校验记录（`StickerSN == "-"`）。
-- `ExportAggregationService` 基于查询结果生成 Excel / TXT，并聚合日志文件生成 ZIP 包。
+- **按 ProductCode 的导出策略（Phase3 已落地）**：`ExportAggregationService` 对每个 Session 通过 `GetProductCodeBySessionIdAsync` 得到 ProductCode，经 `ISessionExporterFactory.GetExporter(productCode)` 选择 Exporter（如 Legacy、KM001），构造 `ExportContext`（SessionId、SessionName、OutputDirectory、Filter 等）后调用 `ISessionExporter.ExportAsync(context)`；扩展新产品只需新增 Exporter 实现并在工厂注册。
+- 聚合层基于各 Session 的导出结果生成 Excel，并聚合 Session 日志文件打 ZIP 包。
 
 ---
 

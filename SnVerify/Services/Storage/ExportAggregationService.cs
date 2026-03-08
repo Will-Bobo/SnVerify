@@ -16,25 +16,28 @@ using SnVerify.Services.Logging;
 namespace SnVerify.Services.Storage
 {
     /// <summary>
-    /// 导出聚合服务实现：按 OrderId/ProjectId 查 Session 列表，逐 Session 调用 IStorageService.ExportBySessionAsync。
+    /// 导出聚合服务实现：按 OrderId/ProjectId 查 Session 列表，逐 Session 按 ProductCode 选择 Exporter 导出。
     /// </summary>
     public class ExportAggregationService : IExportAggregationService
     {
         private readonly IStorageService _storage;
+        private readonly ISessionExporterFactory _exporterFactory;
         private readonly IFileLogger _logger;
         private readonly ILoggingService _loggingService;
 
         /// <summary>
         /// 初始化导出聚合服务
         /// </summary>
-        /// <param name="storage">存储服务（需提供 GetSessionsByOrderIdAsync、GetSessionsByProjectIdAsync）</param>
+        /// <param name="storage">存储服务（需提供 GetSessionsByOrderIdAsync、GetSessionsByProjectIdAsync、GetProductCodeBySessionIdAsync）</param>
         /// <param name="logger">日志（可选，仅用于记录导出过程）</param>
         /// <param name="loggingService">运行时日志服务（用于查询 Session 对应的日志文件路径）</param>
-        public ExportAggregationService(IStorageService storage, IFileLogger logger = null, ILoggingService loggingService = null)
+        /// <param name="exporterFactory">按 ProductCode 选择 Exporter 的工厂；null 时内部创建默认工厂</param>
+        public ExportAggregationService(IStorageService storage, IFileLogger logger = null, ILoggingService loggingService = null, ISessionExporterFactory exporterFactory = null)
         {
             _storage = storage ?? throw new ArgumentNullException(nameof(storage));
             _logger = logger ?? new NullFileLogger();
             _loggingService = loggingService;
+            _exporterFactory = exporterFactory ?? new SessionExporterFactory(storage);
         }
 
         /// <inheritdoc />
@@ -76,10 +79,19 @@ namespace SnVerify.Services.Storage
                         var safeSessionName = ToSafeFileName(s.SessionName);
                         bool sessionHadRecords = false;
 
-                        // 1) 先为当前 Session 生成结果表格（基于 StorageService / TestRecord）
+                        // 1) 按 ProductCode 选择 Exporter 生成结果表格
                         try
                         {
-                            await _storage.ExportBySessionAsync(s.Id, tempDir, filter);
+                            var productCode = await _storage.GetProductCodeBySessionIdAsync(s.Id).ConfigureAwait(false);
+                            var exporter = _exporterFactory.GetExporter(productCode);
+                            var context = new ExportContext
+                            {
+                                SessionId = s.Id,
+                                SessionName = s.SessionName,
+                                OutputDirectory = tempDir,
+                                Filter = filter
+                            };
+                            await exporter.ExportAsync(context).ConfigureAwait(false);
                             var excelPath = Path.Combine(tempDir, $"{s.Id}.xlsx");
                             if (File.Exists(excelPath))
                             {
@@ -90,7 +102,6 @@ namespace SnVerify.Services.Storage
                         }
                         catch (Exception ex)
                         {
-                            // 表格导出失败不影响其他 Session，记录错误后继续
                             _logger?.LogError($"按订单导出 Session={s.SessionName} 表格失败：{ex.Message}", ex);
                         }
 
@@ -165,10 +176,19 @@ namespace SnVerify.Services.Storage
                         var safeSessionName = ToSafeFileName(s.SessionName);
                         bool sessionHadRecords = false;
 
-                        // 1) 先为当前 Session 生成结果表格（基于 StorageService / TestRecord）
+                        // 1) 按 ProductCode 选择 Exporter 生成结果表格
                         try
                         {
-                            await _storage.ExportBySessionAsync(s.Id, tempDir, filter);
+                            var productCode = await _storage.GetProductCodeBySessionIdAsync(s.Id).ConfigureAwait(false);
+                            var exporter = _exporterFactory.GetExporter(productCode);
+                            var context = new ExportContext
+                            {
+                                SessionId = s.Id,
+                                SessionName = s.SessionName,
+                                OutputDirectory = tempDir,
+                                Filter = filter
+                            };
+                            await exporter.ExportAsync(context).ConfigureAwait(false);
                             var excelPath = Path.Combine(tempDir, $"{s.Id}.xlsx");
                             if (File.Exists(excelPath))
                             {

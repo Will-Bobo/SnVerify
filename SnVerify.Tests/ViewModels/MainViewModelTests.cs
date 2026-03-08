@@ -325,6 +325,31 @@ namespace SnVerify.Tests.ViewModels
         }
 
         [Test]
+        public void CurrentDeviceInfo_WhenSnapshotHasDeviceInfo_ReturnsFullDeviceInfo()
+        {
+            var deviceInfo = new DeviceInfo
+            {
+                DeviceSn = "SN1",
+                ChipId = "C1",
+                WifiMac = "W1",
+                AndroidVersion = "A1",
+                BoardVersion = "B1",
+                ChargeBoardVersion = "Ch1"
+            };
+            var snapshot = VerificationSnapshot.Completed("sticker", "PASS", null, null, "SN1", deviceInfo);
+
+            _viewModel.VerificationSnapshot = snapshot;
+
+            Assert.That(_viewModel.CurrentDeviceInfo, Is.Not.Null);
+            Assert.That(_viewModel.CurrentDeviceInfo.DeviceSn, Is.EqualTo("SN1"));
+            Assert.That(_viewModel.CurrentDeviceInfo.ChipId, Is.EqualTo("C1"));
+            Assert.That(_viewModel.CurrentDeviceInfo.WifiMac, Is.EqualTo("W1"));
+            Assert.That(_viewModel.CurrentDeviceInfo.AndroidVersion, Is.EqualTo("A1"));
+            Assert.That(_viewModel.CurrentDeviceInfo.BoardVersion, Is.EqualTo("B1"));
+            Assert.That(_viewModel.CurrentDeviceInfo.ChargeBoardVersion, Is.EqualTo("Ch1"));
+        }
+
+        [Test]
         public async Task HandleScanInputAsync_ShouldTriggerVerification_WhenValidInput()
         {
             // Arrange

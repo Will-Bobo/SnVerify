@@ -1,8 +1,9 @@
-/// <author>
+﻿/// <author>
 /// AI Assistant
 /// </author>
 
 using System;
+using SnVerify.Domain.Models;
 
 namespace SnVerify.Domain.State
 {
@@ -20,6 +21,11 @@ namespace SnVerify.Domain.State
         /// 设备SN（从ADB读取）
         /// </summary>
         public string DeviceSN { get; }
+
+        /// <summary>
+        /// 本次校验关联的完整设备信息（Phase3 可选；Snapshot 持有拷贝以保证不可变）。
+        /// </summary>
+        public DeviceInfo DeviceInfo { get; }
 
         /// <summary>
         /// 是否正在处理中
@@ -56,7 +62,7 @@ namespace SnVerify.Domain.State
         /// </summary>
         public static VerificationSnapshot Idle(string batchId = null)
         {
-            return new VerificationSnapshot(null, null, false, null, null, batchId, DateTime.Now);
+            return new VerificationSnapshot(null, null, false, null, null, batchId, DateTime.Now, null);
         }
 
         /// <summary>
@@ -64,24 +70,25 @@ namespace SnVerify.Domain.State
         /// </summary>
         public static VerificationSnapshot Processing(string currentSn, string batchId = null)
         {
-            return new VerificationSnapshot(currentSn, null, true, null, null, batchId, DateTime.Now);
+            return new VerificationSnapshot(currentSn, null, true, null, null, batchId, DateTime.Now, null);
         }
 
         /// <summary>
         /// 创建完成状态
         /// </summary>
-        public static VerificationSnapshot Completed(string currentSn, string result, string failReason = null, string batchId = null, string deviceSN = null)
+        public static VerificationSnapshot Completed(string currentSn, string result, string failReason = null, string batchId = null, string deviceSN = null, DeviceInfo deviceInfo = null)
         {
-            return new VerificationSnapshot(currentSn, deviceSN, false, result, failReason, batchId, DateTime.Now);
+            return new VerificationSnapshot(currentSn, deviceSN, false, result, failReason, batchId, DateTime.Now, DeviceInfo.Clone(deviceInfo));
         }
 
         /// <summary>
         /// 私有构造函数，确保不可变性
         /// </summary>
-        private VerificationSnapshot(string currentSn, string deviceSN, bool isProcessing, string lastResult, string failReason, string batchId, DateTime timestamp)
+        private VerificationSnapshot(string currentSn, string deviceSN, bool isProcessing, string lastResult, string failReason, string batchId, DateTime timestamp, DeviceInfo deviceInfo = null)
         {
             CurrentSn = currentSn;
             DeviceSN = deviceSN;
+            DeviceInfo = deviceInfo;
             IsProcessing = isProcessing;
             LastResult = lastResult;
             FailReason = failReason;

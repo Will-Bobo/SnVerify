@@ -1623,6 +1623,35 @@ SELECT ProjectId, ExpectedAndroidVersion, ExpectedBoardVersion, ExpectedChargeBo
         }
 
         /// <summary>
+        /// 根据 Session 内部 Id 解析所属 Product 的 ProductCode（Session → Order → Product → ProductCode）；无匹配或为空时返回 null。
+        /// </summary>
+        public async Task<string> GetProductCodeBySessionIdAsync(int sessionId)
+        {
+            EnsureConnectionInitialized();
+            const string sql = @"
+                SELECT p.ProductCode FROM TestSession s
+                INNER JOIN ""Order"" o ON s.OrderId = o.Id
+                INNER JOIN Product p ON o.ProductId = p.Id
+                WHERE s.Id = @SessionId
+                LIMIT 1";
+            var result = await Task.Run(() =>
+            {
+                lock (_lockObject)
+                {
+                    if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        return (string)null;
+                    using (var cmd = new SQLiteCommand(sql, _connection))
+                    {
+                        cmd.Parameters.AddWithValue("@SessionId", sessionId);
+                        var o = cmd.ExecuteScalar();
+                        return o == null || o == DBNull.Value ? null : Convert.ToString(o);
+                    }
+                }
+            });
+            return result;
+        }
+
+        /// <summary>
         /// 判断给定订单是否已存在（兼容旧接口名，语义等同于按订单名称检查）。
         /// </summary>
         public async Task<bool> OrderExistsAsync(string orderId)

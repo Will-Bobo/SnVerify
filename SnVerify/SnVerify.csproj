@@ -131,6 +131,7 @@
     <Compile Include="Domain\Validation\SessionIdGenerator.cs" />
     <Compile Include="Domain\Validation\IOrderNameValidator.cs" />
     <Compile Include="Domain\Validation\OrderNameValidator.cs" />
+    <Compile Include="Domain\Export\ExportContext.cs" />
     <Compile Include="Domain\Export\ExportRecordFilter.cs" />
     <Compile Include="Domain\Export\ExportRecordFilterDefaults.cs" />
     <Compile Include="Domain\State\AdbSnapshot.cs" />
@@ -188,6 +189,11 @@
     <Compile Include="Services\Mes\JekeMesPlugin.cs" />
     <Compile Include="Services\Storage\IStorageService.cs" />
     <Compile Include="Services\Storage\StorageService.cs" />
+    <Compile Include="Services\Storage\ISessionExporter.cs" />
+    <Compile Include="Services\Storage\LegacySessionExporter.cs" />
+    <Compile Include="Services\Storage\Phase3Km001SessionExporter.cs" />
+    <Compile Include="Services\Storage\ISessionExporterFactory.cs" />
+    <Compile Include="Services\Storage\SessionExporterFactory.cs" />
     <Compile Include="Services\Storage\IExportAggregationService.cs" />
     <Compile Include="Services\Storage\ExportAggregationService.cs" />
     <Compile Include="Services\Parameter\IParameterService.cs" />

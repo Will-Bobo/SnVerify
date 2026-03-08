@@ -82,7 +82,6 @@ namespace SnVerify.ViewModels
         // 当 Session 从 Active → Idle 时，允许下一次将 VerificationSnapshot 回退到 Idle（清屏/避免残留版本号）。
         private bool _allowIdleVerificationSnapshotOverwriteOnce;
 
-        private DeviceInfo _currentDeviceInfo;
         private string _expectedAndroidVersion;
         private string _expectedBoardVersion;
         private string _expectedChargeBoardVersion;
@@ -232,6 +231,7 @@ namespace SnVerify.ViewModels
                     OnPropertyChanged();
                     OnPropertyChanged(nameof(CurrentSn));
                     OnPropertyChanged(nameof(DeviceSN));
+                    OnPropertyChanged(nameof(CurrentDeviceInfo));
                     OnPropertyChanged(nameof(IsProcessing));
                     OnPropertyChanged(nameof(IsScanInputEnabled));
                     OnPropertyChanged(nameof(LastResult));
@@ -245,15 +245,6 @@ namespace SnVerify.ViewModels
                     StartBatchCommand?.RaiseCanExecuteChanged();
                     EndBatchCommand?.RaiseCanExecuteChanged();
                     ExportCommand?.RaiseCanExecuteChanged();
-
-                    // Phase3：从 Snapshot 更新当前设备信息的基础字段（DeviceSN）。
-                    if (_verificationSnapshot != null && !string.IsNullOrWhiteSpace(_verificationSnapshot.DeviceSN))
-                    {
-                        CurrentDeviceInfo = new DeviceInfo
-                        {
-                            DeviceSn = _verificationSnapshot.DeviceSN
-                        };
-                    }
                 }
             }
         }
@@ -508,18 +499,19 @@ namespace SnVerify.ViewModels
         public string DeviceSN => VerificationSnapshot?.DeviceSN ?? "";
 
         /// <summary>
-        /// 当前设备信息（Phase3：KM001 设备信息展示使用）。
+        /// 当前设备信息（Phase3：KM001 设备信息展示使用）。get-only，由 VerificationSnapshot 推导。
         /// </summary>
         public DeviceInfo CurrentDeviceInfo
         {
-            get => _currentDeviceInfo;
-            private set
+            get
             {
-                if (!ReferenceEquals(_currentDeviceInfo, value))
-                {
-                    _currentDeviceInfo = value;
-                    OnPropertyChanged();
-                }
+                if (_verificationSnapshot?.DeviceInfo != null)
+                    return _verificationSnapshot.DeviceInfo;
+
+                if (!string.IsNullOrWhiteSpace(_verificationSnapshot?.DeviceSN))
+                    return new DeviceInfo { DeviceSn = _verificationSnapshot.DeviceSN };
+
+                return new DeviceInfo();
             }
         }
 

@@ -54,7 +54,11 @@ namespace SnVerify.Tests.Services
                 .Setup(s => s.GetSessionsByOrderIdAsync(orderName))
                 .ReturnsAsync(sessions);
 
-            // 空 Session 优化：仅当 ExportBySessionAsync 生成 Excel 时才导出日志；Mock 需创建 Excel 文件
+            storageMock
+                .Setup(s => s.GetProductCodeBySessionIdAsync(It.IsAny<int>()))
+                .ReturnsAsync((string)null);
+
+            // 空 Session 优化：仅当 Exporter 生成 Excel 时才导出日志；LegacyExporter 会调 ExportBySessionAsync，Mock 需创建 Excel 文件
             storageMock
                 .Setup(s => s.ExportBySessionAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<ExportRecordFilter>()))
                 .Callback<int, string, ExportRecordFilter>((id, dir, _) =>
@@ -143,6 +147,10 @@ namespace SnVerify.Tests.Services
                 .ReturnsAsync(new[] { order1, order2 });
 
             storageMock
+                .Setup(s => s.GetProductCodeBySessionIdAsync(It.IsAny<int>()))
+                .ReturnsAsync((string)null);
+
+            storageMock
                 .Setup(s => s.ExportBySessionAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<ExportRecordFilter>()))
                 .Callback<int, string, ExportRecordFilter>((id, dir, _) =>
                 {
@@ -228,6 +236,10 @@ namespace SnVerify.Tests.Services
                 .ReturnsAsync(new[] { order });
 
             storageMock
+                .Setup(s => s.GetProductCodeBySessionIdAsync(It.IsAny<int>()))
+                .ReturnsAsync((string)null);
+
+            storageMock
                 .Setup(s => s.ExportBySessionAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<ExportRecordFilter>()))
                 .Callback<int, string, ExportRecordFilter>((id, dir, _) =>
                 {
@@ -297,6 +309,10 @@ namespace SnVerify.Tests.Services
             };
 
             storageMock.Setup(s => s.GetSessionsByOrderIdAsync(orderName)).ReturnsAsync(sessions);
+
+            storageMock
+                .Setup(s => s.GetProductCodeBySessionIdAsync(It.IsAny<int>()))
+                .ReturnsAsync((string)null);
 
             storageMock
                 .Setup(s => s.ExportBySessionAsync(It.IsAny<int>(), It.IsAny<string>(), It.IsAny<ExportRecordFilter>()))
