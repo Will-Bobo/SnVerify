@@ -111,7 +111,7 @@ namespace SnVerify.Services.Storage
 
         private static void WriteKm001SheetHeader(ExcelWorksheet sheet)
         {
-            var headers = new[] { "Id", "条形码SN", "设备SN", "WifiMac", "ChipId", "BoardVersion", "ChargeBoardVersion", "Result", "FailReason", "VerifyTime", "目标版本号", "设备版本号" };
+            var headers = new[] { "Id", "条形码SN", "设备SN", "WifiMac", "ChipId", "目标主板版本", "设备主板版本", "目标充电板版本", "设备充电板版本", "Result", "FailReason", "VerifyTime", "目标版本号", "设备版本号" };
             for (int c = 0; c < headers.Length; c++)
                 sheet.Cells[1, c + 1].Value = headers[c];
             using (var range = sheet.Cells[1, 1, 1, headers.Length])
@@ -133,13 +133,15 @@ namespace SnVerify.Services.Storage
                 sheet.Cells[row, 3].Value = r.DeviceSN ?? "";
                 sheet.Cells[row, 4].Value = r.WifiMac ?? "";
                 sheet.Cells[row, 5].Value = r.ChipId ?? "";
-                sheet.Cells[row, 6].Value = r.BoardVersion ?? "";
-                sheet.Cells[row, 7].Value = r.ChargeBoardVersion ?? "";
-                sheet.Cells[row, 8].Value = r.Result ?? "";
-                sheet.Cells[row, 9].Value = r.FailReason ?? "";
-                sheet.Cells[row, 10].Value = r.VerifyTime.ToString("yyyy年M月d日 HH:mm:ss");
-                sheet.Cells[row, 11].Value = r.ExpectedVersion ?? "";
-                sheet.Cells[row, 12].Value = r.ActualVersion ?? "";
+                sheet.Cells[row, 6].Value = r.ExpectedBoardVersion ?? "";
+                sheet.Cells[row, 7].Value = r.BoardVersion ?? "";
+                sheet.Cells[row, 8].Value = r.ExpectedChargeBoardVersion ?? "";
+                sheet.Cells[row, 9].Value = r.ChargeBoardVersion ?? "";
+                sheet.Cells[row, 10].Value = r.Result ?? "";
+                sheet.Cells[row, 11].Value = r.FailReason ?? "";
+                sheet.Cells[row, 12].Value = r.VerifyTime.ToString("yyyy年M月d日 HH:mm:ss");
+                sheet.Cells[row, 13].Value = r.ExpectedVersion ?? "";
+                sheet.Cells[row, 14].Value = r.ActualVersion ?? "";
             }
             if (records.Count > 0 && sheet.Dimension != null)
                 sheet.Cells[sheet.Dimension.Address].AutoFitColumns();

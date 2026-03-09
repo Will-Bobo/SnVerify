@@ -199,15 +199,15 @@ namespace SnVerify.Services.Storage
         Task UpdateTestRecordAsync(TestRecord record);
 
         /// <summary>
-        /// 获取指定 ProjectId 下配置的版本校验参数；不存在时返回 null。
+        /// 获取指定 SessionId 下配置的版本校验参数；不存在时返回 null。
         /// </summary>
-        /// <param name="projectId">项目 ID（与 VerificationParameter.ProjectId 对齐）</param>
-        Task<VerificationParameter> GetVerificationParameterAsync(string projectId);
+        /// <param name="sessionId">会话内部 Id（TestSession.Id）</param>
+        Task<VerificationParameter> GetVerificationParameterAsync(int sessionId);
 
         /// <summary>
-        /// 保存或更新指定 ProjectId 的版本校验参数。
+        /// 保存或更新指定 SessionId 的版本校验参数。
         /// </summary>
-        /// <param name="parameter">版本参数实体，ProjectId 为主键。</param>
+        /// <param name="parameter">版本参数实体，SessionId 为业务唯一键。</param>
         Task SaveVerificationParameterAsync(VerificationParameter parameter);
 
         /// <summary>

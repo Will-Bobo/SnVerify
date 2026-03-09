@@ -80,7 +80,7 @@ namespace SnVerify.Tests.Services
         {
             return new VerificationParameter
             {
-                ProjectId = ProjectId,
+                SessionId = InternalSessionId,
                 ExpectedAndroidVersion = android,
                 ExpectedBoardVersion = board,
                 ExpectedChargeBoardVersion = charge
@@ -109,7 +109,7 @@ namespace SnVerify.Tests.Services
         {
             // Arrange
             _parameterServiceMock
-                .Setup(x => x.GetParameterAsync(ProjectId))
+                .Setup(x => x.GetParameterAsync(InternalSessionId))
                 .ReturnsAsync(CreateParameter(android: "A1"));
 
             _deviceAccessMock
@@ -150,7 +150,7 @@ namespace SnVerify.Tests.Services
         {
             // Arrange
             _parameterServiceMock
-                .Setup(x => x.GetParameterAsync(ProjectId))
+                .Setup(x => x.GetParameterAsync(InternalSessionId))
                 .ReturnsAsync(CreateParameter(android: "A1"));
 
             _deviceAccessMock
@@ -181,7 +181,7 @@ namespace SnVerify.Tests.Services
         {
             // Arrange
             _parameterServiceMock
-                .Setup(x => x.GetParameterAsync(ProjectId))
+                .Setup(x => x.GetParameterAsync(InternalSessionId))
                 .ReturnsAsync(CreateParameter(android: "A1"));
 
             _deviceAccessMock
@@ -211,7 +211,7 @@ namespace SnVerify.Tests.Services
         {
             // Arrange
             _parameterServiceMock
-                .Setup(x => x.GetParameterAsync(ProjectId))
+                .Setup(x => x.GetParameterAsync(InternalSessionId))
                 .ReturnsAsync(CreateParameter(android: "A1"));
 
             _deviceAccessMock
@@ -240,7 +240,7 @@ namespace SnVerify.Tests.Services
         {
             // Arrange
             _parameterServiceMock
-                .Setup(x => x.GetParameterAsync(ProjectId))
+                .Setup(x => x.GetParameterAsync(InternalSessionId))
                 .ReturnsAsync(CreateParameter(android: "A1"));
 
             _deviceAccessMock
@@ -269,7 +269,7 @@ namespace SnVerify.Tests.Services
         {
             // Arrange
             _parameterServiceMock
-                .Setup(x => x.GetParameterAsync(ProjectId))
+                .Setup(x => x.GetParameterAsync(InternalSessionId))
                 .ReturnsAsync(CreateParameter(android: "A1"));
 
             _deviceAccessMock
@@ -294,7 +294,7 @@ namespace SnVerify.Tests.Services
         {
             // Arrange
             _parameterServiceMock
-                .Setup(x => x.GetParameterAsync(ProjectId))
+                .Setup(x => x.GetParameterAsync(InternalSessionId))
                 .ReturnsAsync((VerificationParameter)null);
 
             // Act
@@ -317,7 +317,7 @@ namespace SnVerify.Tests.Services
             // Arrange: Parameter 三个 Expected 都存在，设备信息全部匹配
             var parameter = CreateParameter(android: "A1", board: "B1", charge: "C1");
             _parameterServiceMock
-                .Setup(x => x.GetParameterAsync(ProjectId))
+                .Setup(x => x.GetParameterAsync(InternalSessionId))
                 .ReturnsAsync(parameter);
 
             var deviceInfo = CreateDeviceInfo(sn: StickerSn, chipId: ChipId, android: "A1", board: "B1", charge: "C1");
@@ -360,14 +360,14 @@ namespace SnVerify.Tests.Services
             // Arrange: Parameter 存在但三个 Expected 都为空，仍应继续流程，不以 PARAMETER_NOT_CONFIGURED 失败
             var parameter = new VerificationParameter
             {
-                ProjectId = ProjectId,
+                SessionId = InternalSessionId,
                 ExpectedAndroidVersion = null,
                 ExpectedBoardVersion = null,
                 ExpectedChargeBoardVersion = null
             };
 
             _parameterServiceMock
-                .Setup(x => x.GetParameterAsync(ProjectId))
+                .Setup(x => x.GetParameterAsync(InternalSessionId))
                 .ReturnsAsync(parameter);
 
             // 设备 SN / ChipId 合法，但版本刻意设置为“不匹配”，因为没有 Expected，不应触发版本错误

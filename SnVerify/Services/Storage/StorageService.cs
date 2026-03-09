@@ -143,19 +143,21 @@ CREATE TABLE IF NOT EXISTS TestSession (
 
             var createTestRecordTable = @"
 CREATE TABLE IF NOT EXISTS TestRecord (
-    Id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-    SessionId           INTEGER NOT NULL,
-    StickerSN           TEXT    NOT NULL,
-    DeviceSN            TEXT,
-    WifiMac             TEXT,
-    ChipId              TEXT,
-    BoardVersion        TEXT,
-    ChargeBoardVersion  TEXT,
-    Result              TEXT    NOT NULL,
-    FailReason          TEXT,
-    VerifyTime          DATETIME NOT NULL,
-    ExpectedVersion     TEXT,
-    ActualVersion       TEXT,
+    Id                        INTEGER PRIMARY KEY AUTOINCREMENT,
+    SessionId                 INTEGER NOT NULL,
+    StickerSN                 TEXT    NOT NULL,
+    DeviceSN                  TEXT,
+    WifiMac                   TEXT,
+    ChipId                    TEXT,
+    BoardVersion              TEXT,
+    ChargeBoardVersion        TEXT,
+    ExpectedBoardVersion      TEXT,
+    ExpectedChargeBoardVersion TEXT,
+    Result                    TEXT    NOT NULL,
+    FailReason                TEXT,
+    VerifyTime                DATETIME NOT NULL,
+    ExpectedVersion           TEXT,
+    ActualVersion             TEXT,
     FOREIGN KEY (SessionId) REFERENCES TestSession(Id)
 );";
 
@@ -187,10 +189,13 @@ CREATE INDEX IF NOT EXISTS idx_testrecord_chipid_result ON TestRecord(ChipId, Re
 
             var createVerificationParameterTable = @"
 CREATE TABLE IF NOT EXISTS VerificationParameter (
-    ProjectId                  TEXT PRIMARY KEY,
+    Id                         INTEGER PRIMARY KEY AUTOINCREMENT,
+    SessionId                  INTEGER NOT NULL UNIQUE,
     ExpectedAndroidVersion     TEXT,
     ExpectedBoardVersion       TEXT,
-    ExpectedChargeBoardVersion TEXT
+    ExpectedChargeBoardVersion TEXT,
+    CreatedAt                  DATETIME,
+    FOREIGN KEY (SessionId) REFERENCES TestSession(Id)
 );";
 
             // 建表顺序：先表结构（含迁移），再索引，保证外键与列依赖顺序
@@ -302,6 +307,15 @@ CREATE TABLE ""Order_new"" (
                     await ExecuteNonQueryAsync($"ALTER TABLE TestRecord ADD COLUMN {col} TEXT");
                 }
             }
+
+            // Phase3：主板/充电板目标版本（记录时固化，便于审计与导出）
+            foreach (var col in new[] { "ExpectedBoardVersion", "ExpectedChargeBoardVersion" })
+            {
+                if (!await ColumnExistsAsync("TestRecord", col))
+                {
+                    await ExecuteNonQueryAsync($"ALTER TABLE TestRecord ADD COLUMN {col} TEXT");
+                }
+            }
         }
 
         /// <summary>
@@ -315,11 +329,14 @@ CREATE TABLE ""Order_new"" (
         }
 
         /// <summary>
-        /// 迁移：VerificationParameter 表增加自增主键 Id，ProjectId 改为 UNIQUE。
+        /// 迁移：将 VerificationParameter 调整为 Session 级参数快照结构（SessionId 唯一）。
+        /// 由于历史数据仅用于开发，不做旧 ProjectId 维度数据迁移，直接重建空表。
         /// </summary>
         private async Task MigrateVerificationParameterAddIdAsync()
         {
-            if (await ColumnExistsAsync("VerificationParameter", "Id"))
+            var hasSessionId = await ColumnExistsAsync("VerificationParameter", "SessionId");
+            var hasCreatedAt = await ColumnExistsAsync("VerificationParameter", "CreatedAt");
+            if (hasSessionId && hasCreatedAt)
                 return;
             await Task.Run(() =>
             {
@@ -327,23 +344,21 @@ CREATE TABLE ""Order_new"" (
                 {
                     if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
                         throw new InvalidOperationException("数据库连接未初始化或已关闭");
+                    const string dropOld = "DROP TABLE IF EXISTS VerificationParameter";
                     const string createNew = @"
-CREATE TABLE VerificationParameter_new (
+CREATE TABLE VerificationParameter (
     Id INTEGER PRIMARY KEY AUTOINCREMENT,
-    ProjectId TEXT NOT NULL UNIQUE,
+    SessionId INTEGER NOT NULL UNIQUE,
     ExpectedAndroidVersion TEXT,
     ExpectedBoardVersion TEXT,
-    ExpectedChargeBoardVersion TEXT
+    ExpectedChargeBoardVersion TEXT,
+    CreatedAt DATETIME,
+    FOREIGN KEY (SessionId) REFERENCES TestSession(Id)
 );";
-                    using (var c1 = new SQLiteCommand(createNew, _connection))
+                    using (var c1 = new SQLiteCommand(dropOld, _connection))
                         c1.ExecuteNonQuery();
-                    using (var c2 = new SQLiteCommand(@"INSERT INTO VerificationParameter_new (ProjectId, ExpectedAndroidVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion)
-SELECT ProjectId, ExpectedAndroidVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion FROM VerificationParameter", _connection))
+                    using (var c2 = new SQLiteCommand(createNew, _connection))
                         c2.ExecuteNonQuery();
-                    using (var c3 = new SQLiteCommand("DROP TABLE VerificationParameter", _connection))
-                        c3.ExecuteNonQuery();
-                    using (var c4 = new SQLiteCommand("ALTER TABLE VerificationParameter_new RENAME TO VerificationParameter", _connection))
-                        c4.ExecuteNonQuery();
                 }
             });
         }
@@ -1022,8 +1037,8 @@ SELECT ProjectId, ExpectedAndroidVersion, ExpectedBoardVersion, ExpectedChargeBo
             EnsureConnectionInitialized();
 
             var sql = @"
-                INSERT INTO TestRecord (SessionId, StickerSN, DeviceSN, WifiMac, ChipId, BoardVersion, ChargeBoardVersion, Result, FailReason, VerifyTime, ExpectedVersion, ActualVersion)
-                VALUES (@SessionId, @StickerSN, @DeviceSN, @WifiMac, @ChipId, @BoardVersion, @ChargeBoardVersion, @Result, @FailReason, @VerifyTime, @ExpectedVersion, @ActualVersion)";
+                INSERT INTO TestRecord (SessionId, StickerSN, DeviceSN, WifiMac, ChipId, BoardVersion, ChargeBoardVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion, Result, FailReason, VerifyTime, ExpectedVersion, ActualVersion)
+                VALUES (@SessionId, @StickerSN, @DeviceSN, @WifiMac, @ChipId, @BoardVersion, @ChargeBoardVersion, @ExpectedBoardVersion, @ExpectedChargeBoardVersion, @Result, @FailReason, @VerifyTime, @ExpectedVersion, @ActualVersion)";
 
             await Task.Run(() =>
             {
@@ -1040,6 +1055,8 @@ SELECT ProjectId, ExpectedAndroidVersion, ExpectedBoardVersion, ExpectedChargeBo
                         cmd.Parameters.AddWithValue("@ChipId", (object)record.ChipId ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@BoardVersion", (object)record.BoardVersion ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@ChargeBoardVersion", (object)record.ChargeBoardVersion ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@ExpectedBoardVersion", (object)record.ExpectedBoardVersion ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@ExpectedChargeBoardVersion", (object)record.ExpectedChargeBoardVersion ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@Result", record.Result);
                         cmd.Parameters.AddWithValue("@FailReason", (object)record.FailReason ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@VerifyTime", record.VerifyTime);
@@ -1063,7 +1080,7 @@ SELECT ProjectId, ExpectedAndroidVersion, ExpectedBoardVersion, ExpectedChargeBo
             EnsureConnectionInitialized();
 
             var sql = @"
-                SELECT Id, SessionId, StickerSN, DeviceSN, WifiMac, ChipId, BoardVersion, ChargeBoardVersion, Result, FailReason, VerifyTime, ExpectedVersion, ActualVersion
+                SELECT Id, SessionId, StickerSN, DeviceSN, WifiMac, ChipId, BoardVersion, ChargeBoardVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion, Result, FailReason, VerifyTime, ExpectedVersion, ActualVersion
                 FROM TestRecord WHERE SessionId = @SessionId ORDER BY VerifyTime ASC";
 
             var list = await Task.Run(() =>
@@ -1090,11 +1107,13 @@ SELECT ProjectId, ExpectedAndroidVersion, ExpectedBoardVersion, ExpectedChargeBo
                                     ChipId = r.IsDBNull(5) ? null : r.GetString(5),
                                     BoardVersion = r.IsDBNull(6) ? null : r.GetString(6),
                                     ChargeBoardVersion = r.IsDBNull(7) ? null : r.GetString(7),
-                                    Result = r.GetString(8),
-                                    FailReason = r.IsDBNull(9) ? null : r.GetString(9),
-                                    VerifyTime = r.GetDateTime(10),
-                                    ExpectedVersion = r.IsDBNull(11) ? null : r.GetString(11),
-                                    ActualVersion = r.IsDBNull(12) ? null : r.GetString(12)
+                                    ExpectedBoardVersion = r.IsDBNull(8) ? null : r.GetString(8),
+                                    ExpectedChargeBoardVersion = r.IsDBNull(9) ? null : r.GetString(9),
+                                    Result = r.GetString(10),
+                                    FailReason = r.IsDBNull(11) ? null : r.GetString(11),
+                                    VerifyTime = r.GetDateTime(12),
+                                    ExpectedVersion = r.IsDBNull(13) ? null : r.GetString(13),
+                                    ActualVersion = r.IsDBNull(14) ? null : r.GetString(14)
                                 });
                             }
                         }
@@ -1232,7 +1251,7 @@ SELECT ProjectId, ExpectedAndroidVersion, ExpectedBoardVersion, ExpectedChargeBo
             EnsureConnectionInitialized();
 
             var sql = @"
-                SELECT Id, SessionId, StickerSN, DeviceSN, WifiMac, ChipId, BoardVersion, ChargeBoardVersion, Result, FailReason, VerifyTime, ExpectedVersion, ActualVersion
+                SELECT Id, SessionId, StickerSN, DeviceSN, WifiMac, ChipId, BoardVersion, ChargeBoardVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion, Result, FailReason, VerifyTime, ExpectedVersion, ActualVersion
                 FROM TestRecord WHERE SessionId = @SessionId AND StickerSN = @StickerSN ORDER BY VerifyTime DESC LIMIT 1";
 
             return await Task.Run(() =>
@@ -1258,11 +1277,13 @@ SELECT ProjectId, ExpectedAndroidVersion, ExpectedBoardVersion, ExpectedChargeBo
                                 ChipId = r.IsDBNull(5) ? null : r.GetString(5),
                                 BoardVersion = r.IsDBNull(6) ? null : r.GetString(6),
                                 ChargeBoardVersion = r.IsDBNull(7) ? null : r.GetString(7),
-                                Result = r.GetString(8),
-                                FailReason = r.IsDBNull(9) ? null : r.GetString(9),
-                                VerifyTime = r.GetDateTime(10),
-                                ExpectedVersion = r.IsDBNull(11) ? null : r.GetString(11),
-                                ActualVersion = r.IsDBNull(12) ? null : r.GetString(12)
+                                ExpectedBoardVersion = r.IsDBNull(8) ? null : r.GetString(8),
+                                ExpectedChargeBoardVersion = r.IsDBNull(9) ? null : r.GetString(9),
+                                Result = r.GetString(10),
+                                FailReason = r.IsDBNull(11) ? null : r.GetString(11),
+                                VerifyTime = r.GetDateTime(12),
+                                ExpectedVersion = r.IsDBNull(13) ? null : r.GetString(13),
+                                ActualVersion = r.IsDBNull(14) ? null : r.GetString(14)
                             };
                         }
                     }
@@ -1289,6 +1310,8 @@ SELECT ProjectId, ExpectedAndroidVersion, ExpectedBoardVersion, ExpectedChargeBo
                     ChipId = @ChipId,
                     BoardVersion = @BoardVersion,
                     ChargeBoardVersion = @ChargeBoardVersion,
+                    ExpectedBoardVersion = @ExpectedBoardVersion,
+                    ExpectedChargeBoardVersion = @ExpectedChargeBoardVersion,
                     Result = @Result,
                     FailReason = @FailReason,
                     VerifyTime = @VerifyTime
@@ -1308,6 +1331,8 @@ SELECT ProjectId, ExpectedAndroidVersion, ExpectedBoardVersion, ExpectedChargeBo
                         cmd.Parameters.AddWithValue("@ChipId", (object)record.ChipId ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@BoardVersion", (object)record.BoardVersion ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@ChargeBoardVersion", (object)record.ChargeBoardVersion ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@ExpectedBoardVersion", (object)record.ExpectedBoardVersion ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@ExpectedChargeBoardVersion", (object)record.ExpectedChargeBoardVersion ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@Result", record.Result);
                         cmd.Parameters.AddWithValue("@FailReason", (object)record.FailReason ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@VerifyTime", record.VerifyTime);
@@ -1484,21 +1509,21 @@ SELECT ProjectId, ExpectedAndroidVersion, ExpectedBoardVersion, ExpectedChargeBo
         }
 
         /// <summary>
-        /// 获取指定 ProjectId 下配置的版本校验参数；不存在时返回 null。
+        /// 获取指定 SessionId 下配置的版本校验参数；不存在时返回 null。
         /// </summary>
-        public async Task<VerificationParameter> GetVerificationParameterAsync(string projectId)
+        public async Task<VerificationParameter> GetVerificationParameterAsync(int sessionId)
         {
-            if (string.IsNullOrWhiteSpace(projectId))
+            if (sessionId <= 0)
             {
-                throw new ArgumentException("ProjectId 不能为空", nameof(projectId));
+                throw new ArgumentException("SessionId 必须大于 0", nameof(sessionId));
             }
 
             EnsureConnectionInitialized();
 
             const string sql = @"
-                SELECT Id, ProjectId, ExpectedAndroidVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion
+                SELECT Id, SessionId, ExpectedAndroidVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion, CreatedAt
                 FROM VerificationParameter
-                WHERE ProjectId = @ProjectId
+                WHERE SessionId = @SessionId
                 LIMIT 1";
 
             VerificationParameter parameter = null;
@@ -1514,7 +1539,7 @@ SELECT ProjectId, ExpectedAndroidVersion, ExpectedBoardVersion, ExpectedChargeBo
 
                     using (var cmd = new SQLiteCommand(sql, _connection))
                     {
-                        cmd.Parameters.AddWithValue("@ProjectId", projectId);
+                        cmd.Parameters.AddWithValue("@SessionId", sessionId);
                         using (var reader = cmd.ExecuteReader())
                         {
                             if (reader.Read())
@@ -1522,10 +1547,11 @@ SELECT ProjectId, ExpectedAndroidVersion, ExpectedBoardVersion, ExpectedChargeBo
                                 parameter = new VerificationParameter
                                 {
                                     Id = reader.GetInt32(0),
-                                    ProjectId = reader.GetString(1),
+                                    SessionId = reader.GetInt32(1),
                                     ExpectedAndroidVersion = reader.IsDBNull(2) ? null : reader.GetString(2),
                                     ExpectedBoardVersion = reader.IsDBNull(3) ? null : reader.GetString(3),
-                                    ExpectedChargeBoardVersion = reader.IsDBNull(4) ? null : reader.GetString(4)
+                                    ExpectedChargeBoardVersion = reader.IsDBNull(4) ? null : reader.GetString(4),
+                                    CreatedAt = reader.IsDBNull(5) ? DateTime.MinValue : reader.GetDateTime(5)
                                 };
                             }
                         }
@@ -1537,27 +1563,28 @@ SELECT ProjectId, ExpectedAndroidVersion, ExpectedBoardVersion, ExpectedChargeBo
         }
 
         /// <summary>
-        /// 保存或更新指定 ProjectId 的版本校验参数。
+        /// 保存或更新指定 SessionId 的版本校验参数。
         /// </summary>
         public async Task SaveVerificationParameterAsync(VerificationParameter parameter)
         {
             if (parameter == null)
                 throw new ArgumentNullException(nameof(parameter));
-            if (string.IsNullOrWhiteSpace(parameter.ProjectId))
-                throw new ArgumentException("ProjectId 不能为空", nameof(parameter));
+            if (parameter.SessionId <= 0)
+                throw new ArgumentException("SessionId 必须大于 0", nameof(parameter));
 
             EnsureConnectionInitialized();
 
-            const string selectSql = @"SELECT COUNT(1) FROM VerificationParameter WHERE ProjectId = @ProjectId";
+            const string selectSql = @"SELECT COUNT(1) FROM VerificationParameter WHERE SessionId = @SessionId";
             const string insertSql = @"
-                INSERT INTO VerificationParameter (ProjectId, ExpectedAndroidVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion)
-                VALUES (@ProjectId, @ExpectedAndroidVersion, @ExpectedBoardVersion, @ExpectedChargeBoardVersion)";
+                INSERT INTO VerificationParameter (SessionId, ExpectedAndroidVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion, CreatedAt)
+                VALUES (@SessionId, @ExpectedAndroidVersion, @ExpectedBoardVersion, @ExpectedChargeBoardVersion, @CreatedAt)";
             const string updateSql = @"
                 UPDATE VerificationParameter
                 SET ExpectedAndroidVersion = @ExpectedAndroidVersion,
                     ExpectedBoardVersion = @ExpectedBoardVersion,
-                    ExpectedChargeBoardVersion = @ExpectedChargeBoardVersion
-                WHERE ProjectId = @ProjectId";
+                    ExpectedChargeBoardVersion = @ExpectedChargeBoardVersion,
+                    CreatedAt = @CreatedAt
+                WHERE SessionId = @SessionId";
 
             await Task.Run(() =>
             {
@@ -1569,17 +1596,18 @@ SELECT ProjectId, ExpectedAndroidVersion, ExpectedBoardVersion, ExpectedChargeBo
                     int existingCount;
                     using (var cmd = new SQLiteCommand(selectSql, _connection))
                     {
-                        cmd.Parameters.AddWithValue("@ProjectId", parameter.ProjectId);
+                        cmd.Parameters.AddWithValue("@SessionId", parameter.SessionId);
                         existingCount = Convert.ToInt32(cmd.ExecuteScalar());
                     }
 
                     var sql = existingCount > 0 ? updateSql : insertSql;
                     using (var cmd = new SQLiteCommand(sql, _connection))
                     {
-                        cmd.Parameters.AddWithValue("@ProjectId", parameter.ProjectId);
+                        cmd.Parameters.AddWithValue("@SessionId", parameter.SessionId);
                         cmd.Parameters.AddWithValue("@ExpectedAndroidVersion", (object)parameter.ExpectedAndroidVersion ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@ExpectedBoardVersion", (object)parameter.ExpectedBoardVersion ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@ExpectedChargeBoardVersion", (object)parameter.ExpectedChargeBoardVersion ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@CreatedAt", parameter.CreatedAt == default(DateTime) ? DateTime.Now : parameter.CreatedAt);
                         cmd.ExecuteNonQuery();
                         if (existingCount == 0)
                         {

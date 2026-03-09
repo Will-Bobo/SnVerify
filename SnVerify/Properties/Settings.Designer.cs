@@ -71,5 +71,65 @@ namespace SnVerify.Properties
                 this["LastOrderId"] = value;
             }
         }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string LastProductCode
+        {
+            get
+            {
+                return ((string)(this["LastProductCode"]));
+            }
+            set
+            {
+                this["LastProductCode"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string LastExpectedAndroidVersion
+        {
+            get
+            {
+                return ((string)(this["LastExpectedAndroidVersion"]));
+            }
+            set
+            {
+                this["LastExpectedAndroidVersion"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string LastExpectedBoardVersion
+        {
+            get
+            {
+                return ((string)(this["LastExpectedBoardVersion"]));
+            }
+            set
+            {
+                this["LastExpectedBoardVersion"] = value;
+            }
+        }
+
+        [global::System.Configuration.UserScopedSettingAttribute()]
+        [global::System.Diagnostics.DebuggerNonUserCodeAttribute()]
+        [global::System.Configuration.DefaultSettingValueAttribute("")]
+        public string LastExpectedChargeBoardVersion
+        {
+            get
+            {
+                return ((string)(this["LastExpectedChargeBoardVersion"]));
+            }
+            set
+            {
+                this["LastExpectedChargeBoardVersion"] = value;
+            }
+        }
     }
 }

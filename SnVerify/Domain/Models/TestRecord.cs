@@ -58,6 +58,16 @@ namespace SnVerify.Domain.Models
         public string ChargeBoardVersion { get; set; }
 
         /// <summary>
+        /// 期望主板版本号（Phase3 引入；写录时从 VerificationParameter 固化，便于审计与导出）。
+        /// </summary>
+        public string ExpectedBoardVersion { get; set; }
+
+        /// <summary>
+        /// 期望充电板版本号（Phase3 引入；写录时从 VerificationParameter 固化，便于审计与导出）。
+        /// </summary>
+        public string ExpectedChargeBoardVersion { get; set; }
+
+        /// <summary>
         /// 校验结果：PASS / FAIL / TIMEOUT。
         /// </summary>
         public string Result { get; set; }

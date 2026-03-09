@@ -39,7 +39,7 @@ namespace SnVerify.Tests.Services
         }
 
         /// <summary>
-        /// 构造一个不包含 ChipId / WifiMac / BoardVersion / ChargeBoardVersion / ExpectedVersion / ActualVersion 的旧 TestRecord 结构，
+        /// 构造一个不包含 ChipId / WifiMac / BoardVersion / ChargeBoardVersion / ExpectedVersion / ActualVersion / ExpectedBoardVersion / ExpectedChargeBoardVersion 的旧 TestRecord 结构，
         /// 然后调用 InitializeAsync，验证迁移后列和索引均存在且不抛异常。
         /// </summary>
         [Test]
@@ -139,6 +139,8 @@ CREATE TABLE IF NOT EXISTS TestRecord (
                 Assert.That(columns, Does.Contain("ChargeBoardVersion"), "迁移后应包含 ChargeBoardVersion 列");
                 Assert.That(columns, Does.Contain("ExpectedVersion"), "迁移后应包含 ExpectedVersion 列");
                 Assert.That(columns, Does.Contain("ActualVersion"), "迁移后应包含 ActualVersion 列");
+                Assert.That(columns, Does.Contain("ExpectedBoardVersion"), "迁移后应包含 ExpectedBoardVersion 列（Phase3 目标主板版本）");
+                Assert.That(columns, Does.Contain("ExpectedChargeBoardVersion"), "迁移后应包含 ExpectedChargeBoardVersion 列（Phase3 目标充电板版本）");
 
                 // 索引检查：确保 ChipId 相关索引存在
                 var indexNames = new List<string>();

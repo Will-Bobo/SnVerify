@@ -103,6 +103,40 @@ namespace SnVerify.Tests.Services
             Assert.That(list[0].Result, Is.EqualTo("PASS"));
         }
 
+        /// <summary>
+        /// Phase3：ExpectedBoardVersion / ExpectedChargeBoardVersion 落库并读出。
+        /// </summary>
+        [Test]
+        public async Task SaveTestRecordAsync_ExpectedBoardChargeVersion_PersistedAndReadBack()
+        {
+            await _storage.InitializeAsync();
+
+            var productId = await _storage.CreateProductAsync(new Product { ProductName = "ProdBoard" });
+            var orderId = await _storage.CreateOrderAsync(new Order { ProductId = productId, OrderName = "OrderBoard", CreatedAt = DateTime.Now });
+            var sessionId = await _storage.CreateSessionAsync(new TestSession { OrderId = orderId, SessionName = "OrderBoard_20260126_150000", StartTime = DateTime.Now });
+
+            var rec = new TestRecord
+            {
+                SessionId = sessionId,
+                StickerSN = "STICK-B",
+                DeviceSN = "DEV-B",
+                BoardVersion = "B1.0",
+                ChargeBoardVersion = "C2.0",
+                ExpectedBoardVersion = "B1.0",
+                ExpectedChargeBoardVersion = "C2.0",
+                Result = "PASS",
+                VerifyTime = DateTime.Now
+            };
+            await _storage.SaveTestRecordAsync(rec);
+
+            var list = await _storage.GetTestRecordsBySessionAsync(sessionId);
+            Assert.That(list.Count, Is.EqualTo(1));
+            Assert.That(list[0].ExpectedBoardVersion, Is.EqualTo("B1.0"));
+            Assert.That(list[0].ExpectedChargeBoardVersion, Is.EqualTo("C2.0"));
+            Assert.That(list[0].BoardVersion, Is.EqualTo("B1.0"));
+            Assert.That(list[0].ChargeBoardVersion, Is.EqualTo("C2.0"));
+        }
+
         [Test]
         public async Task ExportBySessionAsync_PASS_AsIs_FAIL_DedupedByStickerDevice_KeepsFirst()
         {

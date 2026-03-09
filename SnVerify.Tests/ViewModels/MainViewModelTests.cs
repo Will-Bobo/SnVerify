@@ -24,6 +24,7 @@ using SnVerify.Services.Ui;
 using SnVerify.ViewModels;
 using SnVerify.Infrastructure.Product;
 using SnVerify.Services.Parameter;
+using SnVerify.Properties;
 
 namespace SnVerify.Tests.ViewModels
 {
@@ -45,6 +46,13 @@ namespace SnVerify.Tests.ViewModels
         private Mock<IOrderNameValidator> _orderNameValidatorMock;
         private Mock<IUserDialogService> _dialogServiceMock;
         private Mock<IProductRegistry> _productRegistryMock;
+        private string _backupLastProjectId;
+        private string _backupLastOrderId;
+        private string _backupLastExportFolder;
+        private string _backupLastProductCode;
+        private string _backupLastExpectedAndroidVersion;
+        private string _backupLastExpectedBoardVersion;
+        private string _backupLastExpectedChargeBoardVersion;
 
         private static async Task WaitUntilAsync(Func<bool> predicate, int timeoutMs = 1500, int pollMs = 20)
         {
@@ -60,6 +68,22 @@ namespace SnVerify.Tests.ViewModels
         [SetUp]
         public void SetUp()
         {
+            _backupLastProjectId = Settings.Default.LastProjectId;
+            _backupLastOrderId = Settings.Default.LastOrderId;
+            _backupLastExportFolder = Settings.Default.LastExportFolder;
+            _backupLastProductCode = Settings.Default.LastProductCode;
+            _backupLastExpectedAndroidVersion = Settings.Default.LastExpectedAndroidVersion;
+            _backupLastExpectedBoardVersion = Settings.Default.LastExpectedBoardVersion;
+            _backupLastExpectedChargeBoardVersion = Settings.Default.LastExpectedChargeBoardVersion;
+            Settings.Default.LastProjectId = "";
+            Settings.Default.LastOrderId = "";
+            Settings.Default.LastExportFolder = "";
+            Settings.Default.LastProductCode = "";
+            Settings.Default.LastExpectedAndroidVersion = "";
+            Settings.Default.LastExpectedBoardVersion = "";
+            Settings.Default.LastExpectedChargeBoardVersion = "";
+            Settings.Default.Save();
+
             _sessionLifecycleServiceMock = new Mock<ISessionLifecycleService>();
             _flowServiceFactoryMock = new Mock<IVerificationFlowServiceFactory>();
             _verificationFlowServiceMock = new Mock<IVerificationFlowService>();
@@ -90,6 +114,19 @@ namespace SnVerify.Tests.ViewModels
                 _versionVerificationFlowServiceMock.Object,
                 Path.GetTempPath(),
                 _productRegistryMock.Object);
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            Settings.Default.LastProjectId = _backupLastProjectId ?? "";
+            Settings.Default.LastOrderId = _backupLastOrderId ?? "";
+            Settings.Default.LastExportFolder = _backupLastExportFolder ?? "";
+            Settings.Default.LastProductCode = _backupLastProductCode ?? "";
+            Settings.Default.LastExpectedAndroidVersion = _backupLastExpectedAndroidVersion ?? "";
+            Settings.Default.LastExpectedBoardVersion = _backupLastExpectedBoardVersion ?? "";
+            Settings.Default.LastExpectedChargeBoardVersion = _backupLastExpectedChargeBoardVersion ?? "";
+            Settings.Default.Save();
         }
 
         [Test]
@@ -125,6 +162,8 @@ namespace SnVerify.Tests.ViewModels
             var dialogServiceMock = new Mock<IUserDialogService>();
             var productRegistryMock = new Mock<IProductRegistry>();
             var parameterServiceMock = new Mock<IParameterService>();
+            const string createdSessionId = "ORDER001_20260312_120000";
+            const int internalSessionId = 1001;
 
             sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Idle());
             verificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
@@ -146,6 +185,12 @@ namespace SnVerify.Tests.ViewModels
             orderNameValidatorMock
                 .Setup(v => v.Validate(It.IsAny<string>(), out It.Ref<string>.IsAny))
                 .Returns(true);
+            sessionLifecycleServiceMock
+                .Setup(s => s.CreateAndStartSession("ORDER001", "ORDER001", "KM001", "KM001"))
+                .Returns(createdSessionId);
+            storageServiceMock
+                .Setup(s => s.GetInternalSessionIdBySessionNameAsync(createdSessionId))
+                .ReturnsAsync(internalSessionId);
 
             var tcs = new TaskCompletionSource<bool>();
             parameterServiceMock
@@ -181,11 +226,178 @@ namespace SnVerify.Tests.ViewModels
             // Assert
             parameterServiceMock.Verify(p => p.SaveParameterAsync(
                     It.Is<VerificationParameter>(vp =>
-                        vp.ProjectId == "KM001" &&
+                        vp.SessionId == internalSessionId &&
                         vp.ExpectedAndroidVersion == "A1" &&
                         vp.ExpectedBoardVersion == "B1" &&
                         vp.ExpectedChargeBoardVersion == "C1")),
                 Times.Once);
+        }
+
+        [Test]
+        public void Constructor_ShouldRestoreLastProductCodeAndExpectedVersions_ForPhase3Product()
+        {
+            Settings.Default.LastProductCode = "KM001";
+            Settings.Default.LastExpectedAndroidVersion = "1.0.5";
+            Settings.Default.LastExpectedBoardVersion = "1.0.3";
+            Settings.Default.LastExpectedChargeBoardVersion = "2.0.1";
+            Settings.Default.Save();
+
+            var sessionLifecycleServiceMock = new Mock<ISessionLifecycleService>();
+            var flowServiceFactoryMock = new Mock<IVerificationFlowServiceFactory>();
+            var verificationFlowServiceMock = new Mock<IVerificationFlowService>();
+            var versionVerificationFlowServiceMock = new Mock<IVersionVerificationFlowService>();
+            var loggingServiceMock = new Mock<ILoggingService>();
+            var storageServiceMock = new Mock<IStorageService>();
+            var adbAccessServiceMock = new Mock<IAdbAccessService>();
+            var exportAggregationServiceMock = new Mock<IExportAggregationService>();
+            var orderNameValidatorMock = new Mock<IOrderNameValidator>();
+            var dialogServiceMock = new Mock<IUserDialogService>();
+            var productRegistryMock = new Mock<IProductRegistry>();
+            sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Idle());
+            verificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
+            versionVerificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
+            flowServiceFactoryMock.Setup(f => f.Create(It.IsAny<string>(), It.IsAny<string>()))
+                .Returns(verificationFlowServiceMock.Object);
+            loggingServiceMock.Setup(m => m.Snapshot).Returns(LoggingSnapshot.Idle());
+            productRegistryMock.Setup(r => r.GetProductCodes()).Returns(new[] { "SOLTAG25", "KM001" });
+            productRegistryMock.Setup(r => r.Get("KM001")).Returns(new ProductProfile
+            {
+                ProductCode = "KM001",
+                Mode = VerificationMode.Phase3
+            });
+            productRegistryMock.Setup(r => r.Get("SOLTAG25")).Returns(new ProductProfile
+            {
+                ProductCode = "SOLTAG25",
+                Mode = VerificationMode.Legacy
+            });
+
+            var viewModel = new MainViewModel(
+                sessionLifecycleServiceMock.Object,
+                flowServiceFactoryMock.Object,
+                loggingServiceMock.Object,
+                storageServiceMock.Object,
+                adbAccessServiceMock.Object,
+                exportAggregationServiceMock.Object,
+                orderNameValidatorMock.Object,
+                dialogServiceMock.Object,
+                versionVerificationFlowServiceMock.Object,
+                Path.GetTempPath(),
+                productRegistryMock.Object);
+
+            Assert.That(viewModel.SelectedProductCode, Is.EqualTo("KM001"));
+            Assert.That(viewModel.ExpectedAndroidVersion, Is.EqualTo("1.0.5"));
+            Assert.That(viewModel.ExpectedBoardVersion, Is.EqualTo("1.0.3"));
+            Assert.That(viewModel.ExpectedChargeBoardVersion, Is.EqualTo("2.0.1"));
+        }
+
+        [Test]
+        public async Task StartBatchAsync_ForPhase3Product_ShouldSaveExpectedVersionsToSettings()
+        {
+            // Arrange
+            var sessionId = "ORDER001_20260310_100000";
+            var projectId = "KM001";
+            var orderId = "ORDER001";
+            string validationMessage = null;
+            _orderNameValidatorMock.Setup(v => v.Validate(orderId, out validationMessage)).Returns(true);
+            _sessionLifecycleServiceMock
+                .Setup(s => s.CreateAndStartSession(orderId, orderId, projectId, projectId))
+                .Returns(sessionId);
+            _sessionLifecycleServiceMock
+                .SetupSequence(s => s.Snapshot)
+                .Returns(SessionSnapshot.Idle())
+                .Returns(SessionSnapshot.Active(sessionId, orderId, DateTime.Now));
+            _productRegistryMock.Setup(r => r.GetProductCodes()).Returns(new[] { "KM001" });
+            _productRegistryMock.Setup(r => r.Get("KM001")).Returns(new ProductProfile
+            {
+                ProductCode = "KM001",
+                Mode = VerificationMode.Phase3
+            });
+            var parameterServiceMock = new Mock<IParameterService>();
+            parameterServiceMock.Setup(p => p.SaveParameterAsync(It.IsAny<VerificationParameter>())).Returns(Task.CompletedTask);
+            _storageServiceMock
+                .Setup(s => s.GetInternalSessionIdBySessionNameAsync(sessionId))
+                .ReturnsAsync(101);
+            _viewModel = new MainViewModel(
+                _sessionLifecycleServiceMock.Object,
+                _flowServiceFactoryMock.Object,
+                _loggingServiceMock.Object,
+                _storageServiceMock.Object,
+                _adbAccessServiceMock.Object,
+                _exportAggregationServiceMock.Object,
+                _orderNameValidatorMock.Object,
+                _dialogServiceMock.Object,
+                _versionVerificationFlowServiceMock.Object,
+                Path.GetTempPath(),
+                _productRegistryMock.Object,
+                parameterServiceMock.Object);
+            _viewModel.SelectedProductCode = "KM001";
+            _viewModel.ProjectIdInput = projectId;
+            _viewModel.OrderIdInput = orderId;
+            _viewModel.ExpectedAndroidVersion = "A1";
+            _viewModel.ExpectedBoardVersion = "B1";
+            _viewModel.ExpectedChargeBoardVersion = "C1";
+
+            // Act
+            _viewModel.StartBatchCommand.Execute(null);
+            await Task.Delay(150);
+
+            // Assert
+            Assert.That(Settings.Default.LastProductCode, Is.EqualTo("KM001"));
+            Assert.That(Settings.Default.LastExpectedAndroidVersion, Is.EqualTo("A1"));
+            Assert.That(Settings.Default.LastExpectedBoardVersion, Is.EqualTo("B1"));
+            Assert.That(Settings.Default.LastExpectedChargeBoardVersion, Is.EqualTo("C1"));
+        }
+
+        [Test]
+        public async Task StartBatchAsync_ForLegacyProduct_ShouldNotOverwriteExpectedVersionSettings()
+        {
+            Settings.Default.LastExpectedAndroidVersion = "KEEP_A";
+            Settings.Default.LastExpectedBoardVersion = "KEEP_B";
+            Settings.Default.LastExpectedChargeBoardVersion = "KEEP_C";
+            Settings.Default.Save();
+
+            var sessionId = "ORDER_L_20260310_100000";
+            var projectId = "SOLTAG25";
+            var orderId = "ORDER_L";
+            string validationMessage = null;
+            _orderNameValidatorMock.Setup(v => v.Validate(orderId, out validationMessage)).Returns(true);
+            _sessionLifecycleServiceMock
+                .Setup(s => s.CreateAndStartSession(orderId, orderId, projectId, It.IsAny<string>()))
+                .Returns(sessionId);
+            _sessionLifecycleServiceMock
+                .SetupSequence(s => s.Snapshot)
+                .Returns(SessionSnapshot.Idle())
+                .Returns(SessionSnapshot.Active(sessionId, orderId, DateTime.Now));
+            _productRegistryMock.Setup(r => r.GetProductCodes()).Returns(new[] { "SOLTAG25" });
+            _productRegistryMock.Setup(r => r.Get("SOLTAG25")).Returns(new ProductProfile
+            {
+                ProductCode = "SOLTAG25",
+                Mode = VerificationMode.Legacy
+            });
+
+            _viewModel = new MainViewModel(
+                _sessionLifecycleServiceMock.Object,
+                _flowServiceFactoryMock.Object,
+                _loggingServiceMock.Object,
+                _storageServiceMock.Object,
+                _adbAccessServiceMock.Object,
+                _exportAggregationServiceMock.Object,
+                _orderNameValidatorMock.Object,
+                _dialogServiceMock.Object,
+                _versionVerificationFlowServiceMock.Object,
+                Path.GetTempPath(),
+                _productRegistryMock.Object);
+
+            _viewModel.SelectedProductCode = "SOLTAG25";
+            _viewModel.ProjectIdInput = projectId;
+            _viewModel.OrderIdInput = orderId;
+
+            _viewModel.StartBatchCommand.Execute(null);
+            await Task.Delay(150);
+
+            Assert.That(Settings.Default.LastExpectedAndroidVersion, Is.EqualTo("KEEP_A"));
+            Assert.That(Settings.Default.LastExpectedBoardVersion, Is.EqualTo("KEEP_B"));
+            Assert.That(Settings.Default.LastExpectedChargeBoardVersion, Is.EqualTo("KEEP_C"));
         }
 
         [Test]

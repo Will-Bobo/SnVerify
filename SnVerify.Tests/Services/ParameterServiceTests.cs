@@ -30,54 +30,54 @@ namespace SnVerify.Tests.Services
         [Test]
         public async Task GetParameterAsync_WhenNotInCache_LoadsFromStorage()
         {
-            var projectId = "P1";
+            var sessionId = 1;
             var parameter = new VerificationParameter
             {
-                ProjectId = projectId,
+                SessionId = sessionId,
                 ExpectedAndroidVersion = "A1",
                 ExpectedBoardVersion = "B1",
                 ExpectedChargeBoardVersion = "C1"
             };
 
             _storageMock
-                .Setup(x => x.GetVerificationParameterAsync(projectId))
+                .Setup(x => x.GetVerificationParameterAsync(sessionId))
                 .ReturnsAsync(parameter);
 
-            var result = await _service.GetParameterAsync(projectId);
+            var result = await _service.GetParameterAsync(sessionId);
 
             Assert.That(result, Is.Not.Null);
-            Assert.That(result.ProjectId, Is.EqualTo(projectId));
-            _storageMock.Verify(x => x.GetVerificationParameterAsync(projectId), Times.Once);
+            Assert.That(result.SessionId, Is.EqualTo(sessionId));
+            _storageMock.Verify(x => x.GetVerificationParameterAsync(sessionId), Times.Once);
         }
 
         [Test]
         public async Task GetParameterAsync_WhenInCache_DoesNotHitStorageAgain()
         {
-            var projectId = "P2";
+            var sessionId = 2;
             var parameter = new VerificationParameter
             {
-                ProjectId = projectId,
+                SessionId = sessionId,
                 ExpectedAndroidVersion = "A2"
             };
 
             _storageMock
-                .Setup(x => x.GetVerificationParameterAsync(projectId))
+                .Setup(x => x.GetVerificationParameterAsync(sessionId))
                 .ReturnsAsync(parameter);
 
-            var first = await _service.GetParameterAsync(projectId);
-            var second = await _service.GetParameterAsync(projectId);
+            var first = await _service.GetParameterAsync(sessionId);
+            var second = await _service.GetParameterAsync(sessionId);
 
             Assert.That(first, Is.SameAs(second));
-            _storageMock.Verify(x => x.GetVerificationParameterAsync(projectId), Times.Once);
+            _storageMock.Verify(x => x.GetVerificationParameterAsync(sessionId), Times.Once);
         }
 
         [Test]
         public async Task SaveParameterAsync_PersistsAndUpdatesCache()
         {
-            var projectId = "P3";
+            var sessionId = 3;
             var parameter = new VerificationParameter
             {
-                ProjectId = projectId,
+                SessionId = sessionId,
                 ExpectedAndroidVersion = "A3"
             };
 
@@ -89,10 +89,10 @@ namespace SnVerify.Tests.Services
 
             _storageMock.Verify(x => x.SaveVerificationParameterAsync(parameter), Times.Once);
 
-            var fromCache = await _service.GetParameterAsync(projectId);
+            var fromCache = await _service.GetParameterAsync(sessionId);
             Assert.That(fromCache, Is.Not.Null);
             Assert.That(fromCache.ExpectedAndroidVersion, Is.EqualTo("A3"));
-            _storageMock.Verify(x => x.GetVerificationParameterAsync(projectId), Times.Never);
+            _storageMock.Verify(x => x.GetVerificationParameterAsync(sessionId), Times.Never);
         }
     }
 }

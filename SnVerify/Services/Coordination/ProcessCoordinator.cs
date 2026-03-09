@@ -350,13 +350,13 @@ namespace SnVerify.Services.Coordination
 
             try
             {
-                // Step 1: 按当前 Session 解析项目个体名，再取版本参数（Session → Order → Product → ProductName）
+                // Step 1: 按当前 Session 直接读取版本参数快照（SessionId -> VerificationParameter）
                 VerificationParameter parameter = null;
                 if (_parameterService != null && _storageService != null)
                 {
-                    var productName = await _storageService.GetProductNameBySessionNameAsync(_sessionId).ConfigureAwait(false);
-                    if (!string.IsNullOrWhiteSpace(productName))
-                        parameter = await _parameterService.GetParameterAsync(productName).ConfigureAwait(false);
+                    var internalSessionId = await _storageService.GetInternalSessionIdBySessionNameAsync(_sessionId).ConfigureAwait(false);
+                    if (internalSessionId.HasValue)
+                        parameter = await _parameterService.GetParameterAsync(internalSessionId.Value).ConfigureAwait(false);
                 }
 
                 // Stage3：规则判断全部外移到 RulePipelineExecutor；Profile 按产品类型（projectId = ProductCode）取。
@@ -517,6 +517,8 @@ namespace SnVerify.Services.Coordination
                     ChipId = deviceInfo?.ChipId,
                     BoardVersion = deviceInfo?.BoardVersion,
                     ChargeBoardVersion = deviceInfo?.ChargeBoardVersion,
+                    ExpectedBoardVersion = parameter?.ExpectedBoardVersion ?? null,
+                    ExpectedChargeBoardVersion = parameter?.ExpectedChargeBoardVersion ?? null,
                     Result = result,
                     FailReason = failReason,
                     VerifyTime = DateTime.Now,

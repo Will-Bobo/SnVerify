@@ -46,7 +46,7 @@ namespace SnVerify.Tests.Services
         {
             return new VerificationParameter
             {
-                ProjectId = "KM001",
+                SessionId = 1,
                 ExpectedAndroidVersion = "A1",
                 ExpectedBoardVersion = "B1",
                 ExpectedChargeBoardVersion = "C1"

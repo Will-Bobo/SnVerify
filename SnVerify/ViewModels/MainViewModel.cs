@@ -782,6 +782,7 @@ namespace SnVerify.ViewModels
 
             // Stage3 Step2：产品列表从 ProductRegistry 初始化（禁止硬编码）。
             LoadAvailableProducts();
+            RestoreLastProductAndExpectedVersions();
 
             // 规则 3/5/8：自检期间禁用 Start/End/导出；检验中也禁用 Start/End/导出（防止重复点击/并发操作）。
             StartBatchCommand = new RelayCommand(async () => await StartBatchAsync(), () => CanExecuteStartBatch());
@@ -814,6 +815,26 @@ namespace SnVerify.ViewModels
             if (_availableProducts.Count == 0)
             {
                 CurrentProductDisplay = "--";
+            }
+        }
+
+        /// <summary>
+        /// 启动时恢复上次产品选择，并在 Phase3 产品下回填目标版本号默认值。
+        /// </summary>
+        private void RestoreLastProductAndExpectedVersions()
+        {
+            var lastProductCode = Settings.Default.LastProductCode;
+            if (!string.IsNullOrWhiteSpace(lastProductCode) &&
+                _availableProducts.Any(p => string.Equals(p, lastProductCode, StringComparison.OrdinalIgnoreCase)))
+            {
+                SelectedProductCode = lastProductCode;
+            }
+
+            if (IsPhase3Product && string.Equals(SelectedProductCode, Settings.Default.LastProductCode, StringComparison.OrdinalIgnoreCase))
+            {
+                ExpectedAndroidVersion = Settings.Default.LastExpectedAndroidVersion ?? "";
+                ExpectedBoardVersion = Settings.Default.LastExpectedBoardVersion ?? "";
+                ExpectedChargeBoardVersion = Settings.Default.LastExpectedChargeBoardVersion ?? "";
             }
         }
 
@@ -1003,30 +1024,6 @@ namespace SnVerify.ViewModels
                     }
                 }
 
-                // Phase3：当为 Phase3 产品时，将当前期望版本配置持久化为 VerificationParameter，供 Pipeline 读取。
-                if (IsPhase3Product && _parameterService != null)
-                {
-                    var expectedAndroid = ExpectedAndroidVersion?.Trim();
-                    var expectedBoard = ExpectedBoardVersion?.Trim();
-                    var expectedCharge = ExpectedChargeBoardVersion?.Trim();
-
-                    // 至少存在一个非空目标版本时才保存（上文已校验，此处恒为真，保留以保持语义清晰）。
-                    if (!string.IsNullOrWhiteSpace(expectedAndroid) ||
-                        !string.IsNullOrWhiteSpace(expectedBoard) ||
-                        !string.IsNullOrWhiteSpace(expectedCharge))
-                    {
-                        var parameter = new VerificationParameter
-                        {
-                            ProjectId = projectId,
-                            ExpectedAndroidVersion = expectedAndroid,
-                            ExpectedBoardVersion = expectedBoard,
-                            ExpectedChargeBoardVersion = expectedCharge
-                        };
-
-                        await _parameterService.SaveParameterAsync(parameter).ConfigureAwait(true);
-                    }
-                }
-
                 // 创建并开始 Session，并以 SessionName 启动会话日志
                 var productCode = (IsPhase3Product && !string.IsNullOrWhiteSpace(SelectedProductCode)) ? SelectedProductCode.Trim() : null;
                 var sessionId = await System.Threading.Tasks.Task.Run(() =>
@@ -1043,9 +1040,46 @@ namespace SnVerify.ViewModels
                 VerificationSnapshot = _verificationFlowService.Snapshot;
                 LoggingSnapshot = _loggingService.Snapshot;
 
+                // Phase3：先创建 Session，再按 SessionId 保存参数快照，确保批次语义一致。
+                if (IsPhase3Product && _parameterService != null)
+                {
+                    var expectedAndroid = ExpectedAndroidVersion?.Trim();
+                    var expectedBoard = ExpectedBoardVersion?.Trim();
+                    var expectedCharge = ExpectedChargeBoardVersion?.Trim();
+
+                    // 至少存在一个非空目标版本时才保存（上文已校验，此处恒为真，保留以保持语义清晰）。
+                    if (!string.IsNullOrWhiteSpace(expectedAndroid) ||
+                        !string.IsNullOrWhiteSpace(expectedBoard) ||
+                        !string.IsNullOrWhiteSpace(expectedCharge))
+                    {
+                        var internalSessionId = await _storageService.GetInternalSessionIdBySessionNameAsync(sessionId).ConfigureAwait(true);
+                        if (!internalSessionId.HasValue)
+                            throw new InvalidOperationException("未能解析 Session 内部 Id，无法保存版本参数快照");
+
+                        var parameter = new VerificationParameter
+                        {
+                            SessionId = internalSessionId.Value,
+                            ExpectedAndroidVersion = expectedAndroid,
+                            ExpectedBoardVersion = expectedBoard,
+                            ExpectedChargeBoardVersion = expectedCharge,
+                            CreatedAt = DateTime.Now
+                        };
+
+                        await _parameterService.SaveParameterAsync(parameter).ConfigureAwait(true);
+                    }
+                }
+
                 // 保存本次使用的项目名、订单号，下次启动时回填（与导出路径保存方式一致）
                 Settings.Default.LastProjectId = projectId;
                 Settings.Default.LastOrderId = orderId;
+                Settings.Default.LastProductCode = SelectedProductCode ?? "";
+                // 仅 Phase3 产品保存版本号默认值；Legacy 不覆盖，避免误清空用户可复用值。
+                if (IsPhase3Product)
+                {
+                    Settings.Default.LastExpectedAndroidVersion = ExpectedAndroidVersion ?? "";
+                    Settings.Default.LastExpectedBoardVersion = ExpectedBoardVersion ?? "";
+                    Settings.Default.LastExpectedChargeBoardVersion = ExpectedChargeBoardVersion ?? "";
+                }
                 Settings.Default.Save();
 
                 // 清除错误提示（Session 已开始）

@@ -44,12 +44,13 @@ namespace SnVerify.Services.Adb
         Task<AdbDeviceInfoResult> ReadDeviceInfoAsync(CancellationToken cancellationToken = default);
 
         /// <summary>
-        /// 获取指定设备的 SN（Phase2 新增）
+        /// 获取指定设备的 SN（Phase2 新增）。已废弃，请使用 ReadDeviceSnAsync。
         /// </summary>
         /// <param name="deviceId">设备 ID（如果为 null，则使用第一个可用设备）</param>
         /// <param name="batchId">批次 ID（可选）</param>
         /// <param name="cancellationToken">取消令牌</param>
         /// <returns>设备 SN，失败时返回 null</returns>
+        [Obsolete("Phase2 legacy method. Use ReadDeviceSnAsync instead.")]
         Task<string> GetDeviceSNAsync(string deviceId = null, string batchId = null, CancellationToken cancellationToken = default);
 
         /// <summary>

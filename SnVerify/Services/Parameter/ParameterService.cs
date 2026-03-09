@@ -16,8 +16,8 @@ namespace SnVerify.Services.Parameter
     public class ParameterService : IParameterService
     {
         private readonly IStorageService _storageService;
-        private readonly ConcurrentDictionary<string, VerificationParameter> _cache =
-            new ConcurrentDictionary<string, VerificationParameter>(StringComparer.OrdinalIgnoreCase);
+        private readonly ConcurrentDictionary<int, VerificationParameter> _cache =
+            new ConcurrentDictionary<int, VerificationParameter>();
 
         /// <summary>
         /// 初始化版本参数服务。
@@ -29,24 +29,24 @@ namespace SnVerify.Services.Parameter
         }
 
         /// <inheritdoc />
-        public async Task<VerificationParameter> GetParameterAsync(string projectId)
+        public async Task<VerificationParameter> GetParameterAsync(int sessionId)
         {
-            if (string.IsNullOrWhiteSpace(projectId))
+            if (sessionId <= 0)
             {
-                throw new ArgumentException("ProjectId 不能为空", nameof(projectId));
+                throw new ArgumentException("SessionId 必须大于 0", nameof(sessionId));
             }
 
             // 先查内存缓存
-            if (_cache.TryGetValue(projectId, out var cached))
+            if (_cache.TryGetValue(sessionId, out var cached))
             {
                 return cached;
             }
 
             // 惰性从存储加载
-            var parameter = await _storageService.GetVerificationParameterAsync(projectId).ConfigureAwait(false);
+            var parameter = await _storageService.GetVerificationParameterAsync(sessionId).ConfigureAwait(false);
             if (parameter != null)
             {
-                _cache[projectId] = parameter;
+                _cache[sessionId] = parameter;
             }
 
             return parameter;
@@ -60,15 +60,15 @@ namespace SnVerify.Services.Parameter
                 throw new ArgumentNullException(nameof(parameter));
             }
 
-            if (string.IsNullOrWhiteSpace(parameter.ProjectId))
+            if (parameter.SessionId <= 0)
             {
-                throw new ArgumentException("ProjectId 不能为空", nameof(parameter));
+                throw new ArgumentException("SessionId 必须大于 0", nameof(parameter));
             }
 
             await _storageService.SaveVerificationParameterAsync(parameter).ConfigureAwait(false);
 
             // 更新缓存
-            _cache[parameter.ProjectId] = parameter;
+            _cache[parameter.SessionId] = parameter;
         }
     }
 }
