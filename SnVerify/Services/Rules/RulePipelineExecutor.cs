@@ -54,7 +54,7 @@ namespace SnVerify.Services.Rules
             // ① Parameter 非空检查（最优先，Fail Fast，禁止访问 ADB）
             if (parameter == null)
             {
-                return RuleExecutionResult.Fail("PARAMETER_NOT_CONFIGURED");
+                return RuleExecutionResult.Fail(RuleFailReasonCodes.ParameterNotConfigured);
             }
 
             var sticker = stickerSn.Trim();
@@ -69,25 +69,25 @@ namespace SnVerify.Services.Rules
                 }
                 catch (InvalidOperationException ex) when (ex.Message?.Contains("ADB 命令") == true || ex.Message?.Contains("ADB 命令未配置") == true)
                 {
-                    return RuleExecutionResult.Fail("ADB 命令为空", null);
+                    return RuleExecutionResult.Fail(RuleFailReasonCodes.AdbCommandEmpty, null);
                 }
                 catch (AggregateProtocolException ex)
                 {
                     Debug.WriteLine($"[RulePipelineExecutor] ADB protocol invalid: {ex.Message}");
                     _logger?.LogWarning($"[RulePipelineExecutor] ADB protocol invalid: {ex.Message}");
-                    return RuleExecutionResult.Fail("ADB_PROTOCOL_INVALID", null);
+                    return RuleExecutionResult.Fail(RuleFailReasonCodes.AdbProtocolInvalid, null);
                 }
                 catch (FormatException ex)
                 {
                     Debug.WriteLine($"[RulePipelineExecutor] ADB protocol invalid: {ex.Message}");
                     _logger?.LogWarning($"[RulePipelineExecutor] ADB protocol invalid: {ex.Message}");
-                    return RuleExecutionResult.Fail("ADB_PROTOCOL_INVALID", null);
+                    return RuleExecutionResult.Fail(RuleFailReasonCodes.AdbProtocolInvalid, null);
                 }
             }
 
             if (di == null || string.IsNullOrWhiteSpace(di.DeviceSn))
             {
-                const string failReason = "ADB_READ_FAIL";
+                const string failReason = RuleFailReasonCodes.AdbReadFail;
                 return RuleExecutionResult.Fail(failReason, di);
             }
 
@@ -96,7 +96,7 @@ namespace SnVerify.Services.Rules
             // ③ StickerSN 与 DeviceSN 物理匹配
             if (!string.Equals(sticker, deviceSn, StringComparison.Ordinal))
             {
-                const string failReason = "SN_NOT_MATCH";
+                const string failReason = RuleFailReasonCodes.SnNotMatch;
                 return RuleExecutionResult.Fail(failReason, di);
             }
 
@@ -104,7 +104,7 @@ namespace SnVerify.Services.Rules
             var snExists = await _storageService.IsStickerSnPassedInOrderAsync(orderId, sticker).ConfigureAwait(false);
             if (snExists)
             {
-                const string failReason = "SN_DUPLICATE";
+                const string failReason = RuleFailReasonCodes.SnDuplicate;
                 return RuleExecutionResult.Fail(failReason, di);
             }
 
@@ -112,7 +112,7 @@ namespace SnVerify.Services.Rules
             var chipIdValue = di.ChipId;
             if (string.IsNullOrWhiteSpace(chipIdValue) || !chipIdValue.StartsWith("F50", StringComparison.OrdinalIgnoreCase))
             {
-                const string failReason = "CHIPID_INVALID";
+                const string failReason = RuleFailReasonCodes.ChipIdInvalid;
                 return RuleExecutionResult.Fail(failReason, di);
             }
 
@@ -120,7 +120,7 @@ namespace SnVerify.Services.Rules
             var chipExists = await _storageService.IsChipIdPassedInOrderAsync(orderId, chipIdValue).ConfigureAwait(false);
             if (chipExists)
             {
-                const string failReason = "CHIPID_DUPLICATE";
+                const string failReason = RuleFailReasonCodes.ChipIdDuplicate;
                 return RuleExecutionResult.Fail(failReason, di);
             }
 

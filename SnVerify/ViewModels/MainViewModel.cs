@@ -23,6 +23,7 @@ using SnVerify.Services.Coordination;
 using SnVerify.Services.DeviceAccess;
 using SnVerify.Services.Logging;
 using SnVerify.Services.Parameter;
+using SnVerify.Services.Rules;
 using SnVerify.Services.Session;
 using SnVerify.Services.Storage;
 using SnVerify.Services.Ui;
@@ -148,6 +149,13 @@ namespace SnVerify.ViewModels
                 }
             }
         }
+
+        public string DeviceSnLabel => GetFieldLabel(DeviceInfoField.DeviceSn, "Label_DeviceSn", "设备SN");
+        public string AndroidVersionLabel => GetFieldLabel(DeviceInfoField.AndroidVersion, "Label_AndroidVersionNo", "Android版本号");
+        public string BoardVersionLabel => GetFieldLabel(DeviceInfoField.BoardVersion, "Label_BoardVersionDefault", "Board版本");
+        public string ChargeBoardVersionLabel => GetFieldLabel(DeviceInfoField.ChargeBoardVersion, "Label_ChargeBoardVersion", "充电板版本号");
+        public string ChipIdLabel => GetFieldLabel(DeviceInfoField.ChipId, "Label_ChipId", "芯片ID");
+        public string WifiMacLabel => GetFieldLabel(DeviceInfoField.WifiMac, "Label_MacAddress", "MAC地址");
 
         /// <summary>
         /// ProductCode 下拉框是否可用（Session 未启动时可选，启动后禁用）。
@@ -623,7 +631,7 @@ namespace SnVerify.ViewModels
                 // C1.6：重复「设备SN已存在」UI也要显示错误信息（不跳过）
                 // （始终显示 "设备SN已存在"，不管是否与上次相同）
                 _lastFailReason = currentFailReason;
-                return currentFailReason;
+                return FailReasonTextResolver.Resolve(currentFailReason);
             }
         }
 
@@ -851,6 +859,7 @@ namespace SnVerify.ViewModels
                 CurrentProductDisplay = "--";
                 IsLegacyProduct = false;
                 IsPhase3Product = false;
+                RaiseFieldLabelChanged();
                 return;
             }
 
@@ -860,6 +869,7 @@ namespace SnVerify.ViewModels
                 CurrentProductDisplay = $"{SelectedProductCode} [未知]";
                 IsLegacyProduct = false;
                 IsPhase3Product = false;
+                RaiseFieldLabelChanged();
                 return;
             }
 
@@ -868,6 +878,30 @@ namespace SnVerify.ViewModels
 
              IsLegacyProduct = _currentProductProfile.Mode == VerificationMode.Legacy;
              IsPhase3Product = _currentProductProfile.Mode == VerificationMode.Phase3;
+            RaiseFieldLabelChanged();
+        }
+
+        private void RaiseFieldLabelChanged()
+        {
+            OnPropertyChanged(nameof(DeviceSnLabel));
+            OnPropertyChanged(nameof(AndroidVersionLabel));
+            OnPropertyChanged(nameof(BoardVersionLabel));
+            OnPropertyChanged(nameof(ChargeBoardVersionLabel));
+            OnPropertyChanged(nameof(ChipIdLabel));
+            OnPropertyChanged(nameof(WifiMacLabel));
+        }
+
+        private string GetFieldLabel(DeviceInfoField field, string resourceKey, string fallback)
+        {
+            if (_currentProductProfile?.FieldLabels != null &&
+                _currentProductProfile.FieldLabels.TryGetValue(field, out var label) &&
+                !string.IsNullOrWhiteSpace(label))
+            {
+                return label;
+            }
+
+            var defaultText = Resources.ResourceManager.GetString(resourceKey, Resources.Culture);
+            return string.IsNullOrWhiteSpace(defaultText) ? fallback : defaultText;
         }
 
         /// <summary>

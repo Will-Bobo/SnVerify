@@ -354,6 +354,60 @@ namespace SnVerify.Tests.ViewModels
         }
 
         [Test]
+        public void ProductFieldLabels_WhenKm001Configured_ShouldUseConfiguredLabels()
+        {
+            // Arrange
+            _productRegistryMock.Setup(r => r.Get("KM001")).Returns(new ProductProfile
+            {
+                ProductCode = "KM001",
+                Mode = VerificationMode.Phase3,
+                FieldLabels = new Dictionary<DeviceInfoField, string>
+                {
+                    { DeviceInfoField.DeviceSn, "设备SN" },
+                    { DeviceInfoField.AndroidVersion, "Android版本号" },
+                    { DeviceInfoField.BoardVersion, "芯片版本号" },
+                    { DeviceInfoField.ChargeBoardVersion, "充电板版本号" },
+                    { DeviceInfoField.ChipId, "芯片ID" },
+                    { DeviceInfoField.WifiMac, "MAC地址" }
+                }
+            });
+
+            // Act
+            _viewModel.SelectedProductCode = "KM001";
+
+            // Assert
+            Assert.That(_viewModel.DeviceSnLabel, Is.EqualTo("设备SN"));
+            Assert.That(_viewModel.AndroidVersionLabel, Is.EqualTo("Android版本号"));
+            Assert.That(_viewModel.BoardVersionLabel, Is.EqualTo("芯片版本号"));
+            Assert.That(_viewModel.ChargeBoardVersionLabel, Is.EqualTo("充电板版本号"));
+            Assert.That(_viewModel.ChipIdLabel, Is.EqualTo("芯片ID"));
+            Assert.That(_viewModel.WifiMacLabel, Is.EqualTo("MAC地址"));
+        }
+
+        [Test]
+        public void ProductFieldLabels_WhenNotConfigured_ShouldFallbackToDefaultLabels()
+        {
+            // Arrange
+            _productRegistryMock.Setup(r => r.Get("SOLTAG25")).Returns(new ProductProfile
+            {
+                ProductCode = "SOLTAG25",
+                Mode = VerificationMode.Legacy,
+                FieldLabels = null
+            });
+
+            // Act
+            _viewModel.SelectedProductCode = "SOLTAG25";
+
+            // Assert
+            Assert.That(_viewModel.DeviceSnLabel, Is.EqualTo("设备SN"));
+            Assert.That(_viewModel.AndroidVersionLabel, Is.EqualTo("Android版本号"));
+            Assert.That(_viewModel.BoardVersionLabel, Is.EqualTo("Board版本"));
+            Assert.That(_viewModel.ChargeBoardVersionLabel, Is.EqualTo("充电板版本号"));
+            Assert.That(_viewModel.ChipIdLabel, Is.EqualTo("芯片ID"));
+            Assert.That(_viewModel.WifiMacLabel, Is.EqualTo("MAC地址"));
+        }
+
+        [Test]
         public async Task StartBatchAsync_ForLegacyProduct_ShouldNotOverwriteExpectedVersionSettings()
         {
             Settings.Default.LastExpectedAndroidVersion = "KEEP_A";

@@ -5,6 +5,7 @@
 /// </remarks>
 
 using SnVerify.Domain.DeviceAccess;
+using System.Collections.Generic;
 
 namespace SnVerify.Domain.Product
 {
@@ -52,6 +53,12 @@ namespace SnVerify.Domain.Product
         /// 是否启用充电板版本校验。
         /// </summary>
         public bool EnableChargeBoardVersionCheck { get; set; }
+
+        /// <summary>
+        /// 字段显示标签映射（按产品差异化语义定义）。
+        /// 例如：KM001 的 BoardVersion 可映射为“芯片版本号”。
+        /// </summary>
+        public Dictionary<DeviceInfoField, string> FieldLabels { get; set; }
     }
 }
 

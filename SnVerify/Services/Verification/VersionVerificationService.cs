@@ -8,6 +8,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using SnVerify.Domain.Models;
+using SnVerify.Services.Rules;
 
 namespace SnVerify.Services.Verification
 {
@@ -26,7 +27,7 @@ namespace SnVerify.Services.Verification
 
             if (parameter == null)
             {
-                return Task.FromResult((false, "PARAMETER_NOT_CONFIGURED"));
+                return Task.FromResult((false, RuleFailReasonCodes.ParameterNotConfigured));
             }
 
             var androidExpected = parameter.ExpectedAndroidVersion?.Trim();
@@ -42,19 +43,19 @@ namespace SnVerify.Services.Verification
             if (!string.IsNullOrWhiteSpace(androidExpected) &&
                 !string.Equals(androidExpected, androidActual, StringComparison.OrdinalIgnoreCase))
             {
-                return Task.FromResult((false, "ANDROID_VERSION_MISMATCH"));
+                return Task.FromResult((false, RuleFailReasonCodes.AndroidVersionMismatch));
             }
 
             if (!string.IsNullOrWhiteSpace(boardExpected) &&
                 !string.Equals(boardExpected, boardActual, StringComparison.OrdinalIgnoreCase))
             {
-                return Task.FromResult((false, "BOARD_VERSION_MISMATCH"));
+                return Task.FromResult((false, RuleFailReasonCodes.BoardVersionMismatch));
             }
 
             if (!string.IsNullOrWhiteSpace(chargeExpected) &&
                 !string.Equals(chargeExpected, chargeActual, StringComparison.OrdinalIgnoreCase))
             {
-                return Task.FromResult((false, "CHARGE_BOARD_VERSION_MISMATCH"));
+                return Task.FromResult((false, RuleFailReasonCodes.ChargeBoardVersionMismatch));
             }
 
             // 所有已配置字段均匹配（或均未配置）→ PASS。

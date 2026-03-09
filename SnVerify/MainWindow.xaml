@@ -672,17 +672,17 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="Android Version：" Margin="0,2,8,2" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding AndroidVersionLabel, StringFormat={}{0}：}" Margin="0,2,8,2" VerticalAlignment="Center"/>
                             <TextBox Grid.Row="0" Grid.Column="1" Height="24" Margin="0,2,0,2"
                                      Text="{Binding ExpectedAndroidVersion, UpdateSourceTrigger=PropertyChanged}"
                                      IsEnabled="{Binding IsVersionInputEnabled}"/>
 
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="Board Version：" Margin="0,2,8,2" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding BoardVersionLabel, StringFormat={}{0}：}" Margin="0,2,8,2" VerticalAlignment="Center"/>
                             <TextBox Grid.Row="1" Grid.Column="1" Height="24" Margin="0,2,0,2"
                                      Text="{Binding ExpectedBoardVersion, UpdateSourceTrigger=PropertyChanged}"
                                      IsEnabled="{Binding IsVersionInputEnabled}"/>
 
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="ChargeBoard Version：" Margin="0,2,8,2" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="{Binding ChargeBoardVersionLabel, StringFormat={}{0}：}" Margin="0,2,8,2" VerticalAlignment="Center"/>
                             <TextBox Grid.Row="2" Grid.Column="1" Height="24" Margin="0,2,0,2"
                                      Text="{Binding ExpectedChargeBoardVersion, UpdateSourceTrigger=PropertyChanged}"
                                      IsEnabled="{Binding IsVersionInputEnabled}"/>
@@ -707,27 +707,27 @@
                                 <RowDefinition Height="Auto"/>
                             </Grid.RowDefinitions>
 
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="DeviceSN：" Margin="0,2,8,2" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding DeviceSnLabel, StringFormat={}{0}：}" Margin="0,2,8,2" VerticalAlignment="Center"/>
                             <TextBlock Grid.Row="0" Grid.Column="1" Margin="0,2,0,2"
                                        Text="{Binding CurrentDeviceInfo.DeviceSn}" />
 
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="ChipId：" Margin="0,2,8,2" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding ChipIdLabel, StringFormat={}{0}：}" Margin="0,2,8,2" VerticalAlignment="Center"/>
                             <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,2,0,2"
                                        Text="{Binding CurrentDeviceInfo.ChipId}" />
 
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="WifiMac：" Margin="0,2,8,2" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="2" Grid.Column="0" Text="{Binding WifiMacLabel, StringFormat={}{0}：}" Margin="0,2,8,2" VerticalAlignment="Center"/>
                             <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,2,0,2"
                                        Text="{Binding CurrentDeviceInfo.WifiMac}" />
 
-                            <TextBlock Grid.Row="3" Grid.Column="0" Text="AndroidVersion：" Margin="0,2,8,2" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="3" Grid.Column="0" Text="{Binding AndroidVersionLabel, StringFormat={}{0}：}" Margin="0,2,8,2" VerticalAlignment="Center"/>
                             <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,2,0,2"
                                        Text="{Binding CurrentDeviceInfo.AndroidVersion}" />
 
-                            <TextBlock Grid.Row="4" Grid.Column="0" Text="BoardVersion：" Margin="0,2,8,2" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="4" Grid.Column="0" Text="{Binding BoardVersionLabel, StringFormat={}{0}：}" Margin="0,2,8,2" VerticalAlignment="Center"/>
                             <TextBlock Grid.Row="4" Grid.Column="1" Margin="0,2,0,2"
                                        Text="{Binding CurrentDeviceInfo.BoardVersion}" />
 
-                            <TextBlock Grid.Row="5" Grid.Column="0" Text="ChargeBoardVersion：" Margin="0,2,8,2" VerticalAlignment="Center"/>
+                            <TextBlock Grid.Row="5" Grid.Column="0" Text="{Binding ChargeBoardVersionLabel, StringFormat={}{0}：}" Margin="0,2,8,2" VerticalAlignment="Center"/>
                             <TextBlock Grid.Row="5" Grid.Column="1" Margin="0,2,0,2"
                                        Text="{Binding CurrentDeviceInfo.ChargeBoardVersion}" />
                         </Grid>

@@ -77,6 +77,14 @@ namespace SnVerify.Tests.Infrastructure
             Assert.That(profile.AdbConfig.AggregateCommand.Command, Is.EqualTo("shell dumpsys window getmcuversion"));
             Assert.That(profile.AdbConfig.AggregateCommand.ParserKey, Is.EqualTo(ParserKeys.Aggregate.Km001McuVersion));
             Assert.That(profile.AdbConfig.Commands, Is.Null, "聚合命令与字段命令不可混配");
+
+            Assert.That(profile.FieldLabels, Is.Not.Null, "KM001 需配置字段标签映射");
+            Assert.That(profile.FieldLabels.ContainsKey(DeviceInfoField.BoardVersion), Is.True);
+            Assert.That(profile.FieldLabels[DeviceInfoField.BoardVersion], Is.EqualTo("芯片版本号"));
+            Assert.That(profile.FieldLabels[DeviceInfoField.AndroidVersion], Is.EqualTo("Android版本号"));
+            Assert.That(profile.FieldLabels[DeviceInfoField.ChargeBoardVersion], Is.EqualTo("充电板版本号"));
+            Assert.That(profile.FieldLabels[DeviceInfoField.ChipId], Is.EqualTo("芯片ID"));
+            Assert.That(profile.FieldLabels[DeviceInfoField.WifiMac], Is.EqualTo("MAC地址"));
         }
 
         [Test]

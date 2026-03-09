@@ -6,6 +6,7 @@
 using System.Threading.Tasks;
 using NUnit.Framework;
 using SnVerify.Domain.Models;
+using SnVerify.Services.Rules;
 using SnVerify.Services.Verification;
 
 namespace SnVerify.Tests.Services
@@ -70,7 +71,7 @@ namespace SnVerify.Tests.Services
             var (success, failReason) = await _service.VerifyAsync(device, parameter);
 
             Assert.That(success, Is.False);
-            Assert.That(failReason, Is.EqualTo("ANDROID_VERSION_MISMATCH"));
+            Assert.That(failReason, Is.EqualTo(RuleFailReasonCodes.AndroidVersionMismatch));
         }
 
         [Test]
@@ -93,7 +94,7 @@ namespace SnVerify.Tests.Services
             var (success, failReason) = await _service.VerifyAsync(device, parameter);
 
             Assert.That(success, Is.False);
-            Assert.That(failReason, Is.EqualTo("BOARD_VERSION_MISMATCH"));
+            Assert.That(failReason, Is.EqualTo(RuleFailReasonCodes.BoardVersionMismatch));
         }
 
         [Test]
@@ -116,7 +117,7 @@ namespace SnVerify.Tests.Services
             var (success, failReason) = await _service.VerifyAsync(device, parameter);
 
             Assert.That(success, Is.False);
-            Assert.That(failReason, Is.EqualTo("CHARGE_BOARD_VERSION_MISMATCH"));
+            Assert.That(failReason, Is.EqualTo(RuleFailReasonCodes.ChargeBoardVersionMismatch));
         }
 
         [Test]
@@ -132,7 +133,7 @@ namespace SnVerify.Tests.Services
             var (success, failReason) = await _service.VerifyAsync(device, null);
 
             Assert.That(success, Is.False);
-            Assert.That(failReason, Is.EqualTo("PARAMETER_NOT_CONFIGURED"));
+            Assert.That(failReason, Is.EqualTo(RuleFailReasonCodes.ParameterNotConfigured));
         }
     }
 }

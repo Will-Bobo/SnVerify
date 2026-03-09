@@ -10,6 +10,7 @@ using System.Collections.Generic;
 using System.Linq;
 using SnVerify.Domain.Product;
 using SnVerify.Domain.DeviceAccess;
+using SnVerify.Properties;
 
 namespace SnVerify.Infrastructure.Product
 {
@@ -60,6 +61,7 @@ namespace SnVerify.Infrastructure.Product
                                 }
                             }
                         },
+                        FieldLabels = null,
                         EnableChipIdCheck = false,
                         EnableWifiMacCheck = false,
                         EnableBoardVersionCheck = false,
@@ -83,6 +85,15 @@ namespace SnVerify.Infrastructure.Product
                             },
                             Commands = null
                         },
+                        FieldLabels = new Dictionary<DeviceInfoField, string>
+                        {
+                            { DeviceInfoField.DeviceSn, GetResource("Label_DeviceSn", "设备SN") },
+                            { DeviceInfoField.AndroidVersion, GetResource("Label_AndroidVersionNo", "Android版本号") },
+                            { DeviceInfoField.BoardVersion, GetResource("Label_ChipVersion", "芯片版本号") },
+                            { DeviceInfoField.ChargeBoardVersion, GetResource("Label_ChargeBoardVersion", "充电板版本号") },
+                            { DeviceInfoField.ChipId, GetResource("Label_ChipId", "芯片ID") },
+                            { DeviceInfoField.WifiMac, GetResource("Label_MacAddress", "MAC地址") }
+                        },
                         EnableChipIdCheck = true,
                         EnableWifiMacCheck = true,
                         EnableBoardVersionCheck = true,
@@ -92,6 +103,12 @@ namespace SnVerify.Infrastructure.Product
             };
 
             Profiles = dict;
+        }
+
+        private static string GetResource(string key, string fallback)
+        {
+            var value = Resources.ResourceManager.GetString(key, Resources.Culture);
+            return string.IsNullOrWhiteSpace(value) ? fallback : value;
         }
 
         /// <summary>

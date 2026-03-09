@@ -1,4 +1,4 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
+<?xml version="1.0" encoding="utf-8"?>
 <root>
   <!-- 
     Microsoft ResX Schema 
@@ -114,4 +114,58 @@
   <resheader name="writer">
     <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=2.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
   </resheader>
+  <data name="Label_DeviceSn" xml:space="preserve">
+    <value>设备SN</value>
+  </data>
+  <data name="Label_AndroidVersionNo" xml:space="preserve">
+    <value>Android版本号</value>
+  </data>
+  <data name="Label_BoardVersionDefault" xml:space="preserve">
+    <value>Board版本</value>
+  </data>
+  <data name="Label_ChipVersion" xml:space="preserve">
+    <value>芯片版本号</value>
+  </data>
+  <data name="Label_ChargeBoardVersion" xml:space="preserve">
+    <value>充电板版本号</value>
+  </data>
+  <data name="Label_ChipId" xml:space="preserve">
+    <value>芯片ID</value>
+  </data>
+  <data name="Label_MacAddress" xml:space="preserve">
+    <value>MAC地址</value>
+  </data>
+  <data name="Err_AdbCommandEmpty" xml:space="preserve">
+    <value>ADB命令为空</value>
+  </data>
+  <data name="Err_AdbProtocolInvalid" xml:space="preserve">
+    <value>ADB读取内容解析无效</value>
+  </data>
+  <data name="Err_AdbReadFail" xml:space="preserve">
+    <value>ADB读取数据错误或者为空</value>
+  </data>
+  <data name="Err_SnNotMatch" xml:space="preserve">
+    <value>设备SN与扫码SN不匹配</value>
+  </data>
+  <data name="Err_SnDuplicate" xml:space="preserve">
+    <value>设备SN已经检验</value>
+  </data>
+  <data name="Err_ChipIdInvalid" xml:space="preserve">
+    <value>芯片ID为空或者不是F50开头的ID</value>
+  </data>
+  <data name="Err_ChipIdDuplicate" xml:space="preserve">
+    <value>芯片ID已经储存</value>
+  </data>
+  <data name="Err_ParameterNotConfigured" xml:space="preserve">
+    <value>目标参数值未设定</value>
+  </data>
+  <data name="Err_AndroidVersionMismatch" xml:space="preserve">
+    <value>设备Android版本号与目标值不匹配</value>
+  </data>
+  <data name="Err_BoardVersionMismatch" xml:space="preserve">
+    <value>芯片版本号与目标值不匹配</value>
+  </data>
+  <data name="Err_ChargeBoardVersionMismatch" xml:space="preserve">
+    <value>充电板版本号与目标值不匹配</value>
+  </data>
 </root>

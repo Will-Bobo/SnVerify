@@ -119,7 +119,7 @@ namespace SnVerify.Tests.Services
             var result = await _executor.ExecuteAsync(profile, null, parameter, "SN001", OrderId);
 
             Assert.That(result.Result, Is.EqualTo("FAIL"));
-            Assert.That(result.FailReason, Is.EqualTo("SN_DUPLICATE"));
+            Assert.That(result.FailReason, Is.EqualTo(RuleFailReasonCodes.SnDuplicate));
 
             // 按 Stage3 Frozen Pipeline：Parameter → ADB → SN 匹配 → SN 历史 PASS，
             // 即使 SN 已在订单内 PASS，仍会先读取设备信息并做物理 SN 匹配。
@@ -140,7 +140,7 @@ namespace SnVerify.Tests.Services
             var result = await _executor.ExecuteAsync(profile, null, parameter, "SN001", OrderId);
 
             Assert.That(result.Result, Is.EqualTo("FAIL"));
-            Assert.That(result.FailReason, Is.EqualTo("ADB_READ_FAIL"));
+            Assert.That(result.FailReason, Is.EqualTo(RuleFailReasonCodes.AdbReadFail));
             _storageMock.Verify(s => s.SaveTestRecordAsync(It.IsAny<TestRecord>()), Times.Never);
         }
 
@@ -157,7 +157,7 @@ namespace SnVerify.Tests.Services
             var result = await _executor.ExecuteAsync(profile, null, parameter, "SN001", OrderId);
 
             Assert.That(result.Result, Is.EqualTo("FAIL"));
-            Assert.That(result.FailReason, Is.EqualTo("ADB_PROTOCOL_INVALID"));
+            Assert.That(result.FailReason, Is.EqualTo(RuleFailReasonCodes.AdbProtocolInvalid));
             _loggerMock.Verify(
                 x => x.LogWarning(It.Is<string>(msg => msg.Contains("ADB protocol invalid"))),
                 Times.Once);
@@ -176,7 +176,7 @@ namespace SnVerify.Tests.Services
             var result = await _executor.ExecuteAsync(profile, null, parameter, "SN001", OrderId);
 
             Assert.That(result.Result, Is.EqualTo("FAIL"));
-            Assert.That(result.FailReason, Is.EqualTo("CHIPID_INVALID"));
+            Assert.That(result.FailReason, Is.EqualTo(RuleFailReasonCodes.ChipIdInvalid));
 
             _storageMock.Verify(s => s.IsChipIdPassedInOrderAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
             _storageMock.Verify(s => s.SaveTestRecordAsync(It.IsAny<TestRecord>()), Times.Never);
@@ -199,7 +199,7 @@ namespace SnVerify.Tests.Services
             var result = await _executor.ExecuteAsync(profile, null, parameter, "SN001", OrderId);
 
             Assert.That(result.Result, Is.EqualTo("FAIL"));
-            Assert.That(result.FailReason, Is.EqualTo("CHIPID_DUPLICATE"));
+            Assert.That(result.FailReason, Is.EqualTo(RuleFailReasonCodes.ChipIdDuplicate));
             _storageMock.Verify(s => s.SaveTestRecordAsync(It.IsAny<TestRecord>()), Times.Never);
         }
 
@@ -215,12 +215,12 @@ namespace SnVerify.Tests.Services
 
             _versionMock
                 .Setup(v => v.VerifyAsync(It.IsAny<DeviceInfo>(), It.IsAny<VerificationParameter>(), default))
-                .ReturnsAsync((false, "ANDROID_VERSION_MISMATCH"));
+                .ReturnsAsync((false, RuleFailReasonCodes.AndroidVersionMismatch));
 
             var result = await _executor.ExecuteAsync(profile, null, parameter, "SN001", OrderId);
 
             Assert.That(result.Result, Is.EqualTo("FAIL"));
-            Assert.That(result.FailReason, Is.EqualTo("ANDROID_VERSION_MISMATCH"));
+            Assert.That(result.FailReason, Is.EqualTo(RuleFailReasonCodes.AndroidVersionMismatch));
             _storageMock.Verify(s => s.SaveTestRecordAsync(It.IsAny<TestRecord>()), Times.Never);
         }
 
@@ -250,7 +250,7 @@ namespace SnVerify.Tests.Services
             var result = await _executor.ExecuteAsync(profile, null, parameter: null, stickerSn: "SN001", orderId: OrderId);
 
             Assert.That(result.Result, Is.EqualTo("FAIL"));
-            Assert.That(result.FailReason, Is.EqualTo("PARAMETER_NOT_CONFIGURED"));
+            Assert.That(result.FailReason, Is.EqualTo(RuleFailReasonCodes.ParameterNotConfigured));
 
             _deviceAccessMock.Verify(a => a.ReadDeviceInfoAsync(It.IsAny<ProductProfile>()), Times.Never);
             _storageMock.Verify(s => s.SaveTestRecordAsync(It.IsAny<TestRecord>()), Times.Never);

@@ -203,6 +203,8 @@
     <Compile Include="Services\Verification\IVersionVerificationService.cs" />
     <Compile Include="Services\Verification\VersionVerificationService.cs" />
     <Compile Include="Services\Rules\RuleExecutionResult.cs" />
+    <Compile Include="Services\Rules\RuleFailReasonCodes.cs" />
+    <Compile Include="Services\Rules\FailReasonTextResolver.cs" />
     <Compile Include="Services\Rules\IRulePipelineExecutor.cs" />
     <Compile Include="Services\Rules\RulePipelineExecutor.cs" />
     <Compile Include="Services\Ui\IUserDialogService.cs" />
