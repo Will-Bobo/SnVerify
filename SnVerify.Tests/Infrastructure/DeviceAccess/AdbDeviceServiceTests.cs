@@ -81,5 +81,72 @@ namespace SnVerify.Tests.Infrastructure.DeviceAccess
             Assert.That(result, Is.Not.Null);
             Assert.That(result.DeviceSn, Is.EqualTo("SN001"));
         }
+
+        [Test]
+        public async Task ReadDeviceInfoAsync_ForSoltag25Profile_ShouldRunBootstrapAndTwoCommands()
+        {
+            var processRunnerMock = new Mock<IProcessRunner>();
+            var executedArgs = new List<string>();
+
+            processRunnerMock
+                .Setup(p => p.RunAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<int>(), It.IsAny<System.Threading.CancellationToken>()))
+                .Callback<string, string, int, System.Threading.CancellationToken>((_, args, __, ___) => executedArgs.Add(args))
+                .ReturnsAsync((string _, string args, int __, System.Threading.CancellationToken ___) =>
+                {
+                    if (args == "shell getprop sys.skyroam.osi.sn") return ProcessExecutionResult.Success(" SN_SOL ");
+                    if (args == "shell getprop ro.build.display.id") return ProcessExecutionResult.Success(" VER_SOL ");
+                    return ProcessExecutionResult.Success(string.Empty);
+                });
+
+            var session = new DeviceSessionManager("adb", processRunnerMock.Object);
+            var command = new DeviceCommandExecutor("adb", processRunnerMock.Object);
+            var trimParser = new TrimParser();
+            var fieldParsers = new Dictionary<string, IDeviceInfoParser>(System.StringComparer.OrdinalIgnoreCase) { { ParserKeys.Field.Trim, trimParser } };
+            var parserFactory = new ParserFactory(fieldParsers, null);
+
+            var profile = new ProductProfile
+            {
+                ProductCode = "SOLTAG25",
+                Mode = VerificationMode.Legacy,
+                AdbConfig = new DeviceAdbConfig
+                {
+                    BootstrapCommandSpecs = new List<BootstrapCommandSpec>
+                    {
+                        new BootstrapCommandSpec
+                        {
+                            Command = "shell ylzero",
+                            AcceptableExitCodes = new[] { 127, 255 },
+                            TimeoutBehavior = BootstrapTimeoutBehavior.Fail
+                        }
+                    },
+                    AggregateCommand = null,
+                    Commands = new List<DeviceInfoCommand>
+                    {
+                        new DeviceInfoCommand
+                        {
+                            Field = DeviceInfoField.DeviceSn,
+                            Command = "shell getprop sys.skyroam.osi.sn",
+                            ParserKey = ParserKeys.Field.Trim
+                        },
+                        new DeviceInfoCommand
+                        {
+                            Field = DeviceInfoField.AndroidVersion,
+                            Command = "shell getprop ro.build.display.id",
+                            ParserKey = ParserKeys.Field.Trim
+                        }
+                    }
+                }
+            };
+
+            var service = new AdbDeviceService(session, command, parserFactory);
+            var result = await service.ReadDeviceInfoAsync(profile);
+
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result.DeviceSn, Is.EqualTo("SN_SOL"));
+            Assert.That(result.AndroidVersion, Is.EqualTo("VER_SOL"));
+            Assert.That(executedArgs, Does.Contain("shell ylzero"));
+            Assert.That(executedArgs, Does.Contain("shell getprop sys.skyroam.osi.sn"));
+            Assert.That(executedArgs, Does.Contain("shell getprop ro.build.display.id"));
+        }
     }
 }

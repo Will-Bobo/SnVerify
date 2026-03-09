@@ -6,10 +6,13 @@
 /// </remarks>
 
 using System;
+using System.Diagnostics;
 using System.Threading.Tasks;
+using SnVerify.Domain.DeviceAccess;
 using SnVerify.Domain.Models;
 using SnVerify.Domain.Product;
 using SnVerify.Services.DeviceAccess;
+using SnVerify.Services.Logging;
 using SnVerify.Services.Storage;
 using SnVerify.Services.Verification;
 
@@ -23,15 +26,18 @@ namespace SnVerify.Services.Rules
         private readonly IStorageService _storageService;
         private readonly IDeviceAccessService _deviceAccessService;
         private readonly IVersionVerificationService _versionVerificationService;
+        private readonly IFileLogger _logger;
 
         public RulePipelineExecutor(
             IStorageService storageService,
             IDeviceAccessService deviceAccessService,
-            IVersionVerificationService versionVerificationService)
+            IVersionVerificationService versionVerificationService,
+            IFileLogger logger = null)
         {
             _storageService = storageService ?? throw new ArgumentNullException(nameof(storageService));
             _deviceAccessService = deviceAccessService ?? throw new ArgumentNullException(nameof(deviceAccessService));
             _versionVerificationService = versionVerificationService ?? throw new ArgumentNullException(nameof(versionVerificationService));
+            _logger = logger;
         }
 
         public async Task<RuleExecutionResult> ExecuteAsync(
@@ -64,6 +70,18 @@ namespace SnVerify.Services.Rules
                 catch (InvalidOperationException ex) when (ex.Message?.Contains("ADB 命令") == true || ex.Message?.Contains("ADB 命令未配置") == true)
                 {
                     return RuleExecutionResult.Fail("ADB 命令为空", null);
+                }
+                catch (AggregateProtocolException ex)
+                {
+                    Debug.WriteLine($"[RulePipelineExecutor] ADB protocol invalid: {ex.Message}");
+                    _logger?.LogWarning($"[RulePipelineExecutor] ADB protocol invalid: {ex.Message}");
+                    return RuleExecutionResult.Fail("ADB_PROTOCOL_INVALID", null);
+                }
+                catch (FormatException ex)
+                {
+                    Debug.WriteLine($"[RulePipelineExecutor] ADB protocol invalid: {ex.Message}");
+                    _logger?.LogWarning($"[RulePipelineExecutor] ADB protocol invalid: {ex.Message}");
+                    return RuleExecutionResult.Fail("ADB_PROTOCOL_INVALID", null);
                 }
             }
 

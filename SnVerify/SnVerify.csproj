@@ -121,6 +121,7 @@
     <Compile Include="Domain\DeviceAccess\IDeviceInfoParser.cs" />
     <Compile Include="Domain\DeviceAccess\IAggregateDeviceInfoParser.cs" />
     <Compile Include="Domain\DeviceAccess\Parsing\ParserKeys.cs" />
+    <Compile Include="Domain\DeviceAccess\Parsing\AggregateProtocolException.cs" />
     <Compile Include="Domain\DeviceAccess\IParserFactory.cs" />
     <Compile Include="Domain\Product\ProductProfile.cs" />
     <Compile Include="Domain\Models\DeviceInfo.cs" />
@@ -153,6 +154,7 @@
     <Compile Include="Infrastructure\DeviceAccess\Session\DeviceSessionManager.cs" />
     <Compile Include="Infrastructure\DeviceAccess\Command\DeviceCommandExecutor.cs" />
     <Compile Include="Infrastructure\DeviceAccess\Parser\TrimParser.cs" />
+    <Compile Include="Infrastructure\DeviceAccess\Parser\Km001McuVersionAggregateParser.cs" />
     <Compile Include="Infrastructure\DeviceAccess\Parser\ParserFactory.cs" />
     <Compile Include="Infrastructure\DeviceAccess\Service\AdbDeviceService.cs" />
     <Compile Include="Services\DeviceAccess\IDeviceAccessService.cs" />

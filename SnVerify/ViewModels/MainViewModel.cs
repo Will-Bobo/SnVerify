@@ -13,12 +13,14 @@ using System.Threading;
 using System.Windows.Input;
 using SnVerify.Domain.Enums;
 using SnVerify.Domain.Models;
+using SnVerify.Domain.DeviceAccess;
 using SnVerify.Domain.Product;
 using SnVerify.Domain.State;
 using SnVerify.Domain.Validation;
 using SnVerify.Infrastructure.Product;
 using SnVerify.Services.Adb;
 using SnVerify.Services.Coordination;
+using SnVerify.Services.DeviceAccess;
 using SnVerify.Services.Logging;
 using SnVerify.Services.Parameter;
 using SnVerify.Services.Session;
@@ -55,6 +57,7 @@ namespace SnVerify.ViewModels
         private readonly IVersionVerificationFlowService _versionVerificationFlowService;
         private readonly IProductRegistry _productRegistry;
         private readonly IParameterService _parameterService;
+        private readonly IDeviceAccessService _deviceAccessService;
         private readonly string _logDirectory;
         private readonly SynchronizationContext _uiContext;
 
@@ -751,7 +754,8 @@ namespace SnVerify.ViewModels
             IVersionVerificationFlowService versionVerificationFlowService,
             string logDirectory,
             IProductRegistry productRegistry = null,
-            IParameterService parameterService = null)
+            IParameterService parameterService = null,
+            IDeviceAccessService deviceAccessService = null)
         {
             _sessionLifecycleService = sessionLifecycleService ?? throw new ArgumentNullException(nameof(sessionLifecycleService));
             _flowServiceFactory = flowServiceFactory ?? throw new ArgumentNullException(nameof(flowServiceFactory));
@@ -765,6 +769,7 @@ namespace SnVerify.ViewModels
             _logDirectory = logDirectory ?? throw new ArgumentNullException(nameof(logDirectory));
             _productRegistry = productRegistry ?? new ProductRegistryAdapter();
             _parameterService = parameterService;
+            _deviceAccessService = deviceAccessService;
             _uiContext = SynchronizationContext.Current ?? new SynchronizationContext();
 
             _verificationFlowService = _flowServiceFactory.Create("session_idle", null);
@@ -1296,7 +1301,7 @@ namespace SnVerify.ViewModels
         /// 自检：ADB 设备/多机检测、MES 占位；结果只写日志，不写校验表、不改变批次。
         /// </summary>
         /// <remarks>
-        /// 将所有 ADB 相关操作（CheckMultipleDevices、ReadDeviceSnAsync）都放到后台线程执行，避免阻塞 UI 线程。
+        /// 将所有设备访问操作（CheckMultipleDevices、ReadDeviceInfoAsync）都放到后台线程执行，避免阻塞 UI 线程。
         /// 自检期间禁用自检按钮，防止重复点击。
         /// </remarks>
         private async System.Threading.Tasks.Task SelfCheckAsync()
@@ -1310,7 +1315,7 @@ namespace SnVerify.ViewModels
                 _loggingService.LogInfo("自检开始");
                 LoggingSnapshot = _loggingService.Snapshot;
 
-                // 所有 ADB 操作都在后台线程执行，避免阻塞 UI
+                // 所有设备访问操作都在后台线程执行，避免阻塞 UI
                 await System.Threading.Tasks.Task.Run(async () =>
                 {
                     // 多设备检测（可能调用同步阻塞的 GetAwaiter().GetResult()）
@@ -1324,18 +1329,59 @@ namespace SnVerify.ViewModels
                         }, null);
                     }
 
-                    // ADB SN 读取（耗时操作）
-                    var adbResult = await _adbAccessService.ReadDeviceSnAsync().ConfigureAwait(false);
-
-                    // 回到 UI 线程更新日志（规则 12：不使用 Dispatcher）
-                    _uiContext.Post(_ =>
+                    var profile = _currentProductProfile;
+                    if (profile == null)
                     {
-                        if (adbResult.IsSuccess)
-                            _loggingService.LogInfo("自检: ADB 设备 SN 读取正常");
-                        else
-                            _loggingService.LogWarning("自检: ADB 无法读取 SN: " + (adbResult.ErrorReason ?? "未知"));
-                        LoggingSnapshot = _loggingService.Snapshot;
-                    }, null);
+                        _uiContext.Post(_ =>
+                        {
+                            _loggingService.LogWarning("自检: 未选择或未识别产品，无法执行设备读取");
+                            LoggingSnapshot = _loggingService.Snapshot;
+                        }, null);
+                        return;
+                    }
+
+                    if (_deviceAccessService == null)
+                    {
+                        _uiContext.Post(_ =>
+                        {
+                            _loggingService.LogWarning($"自检: 设备访问服务未注入，无法按产品协议执行（Product={profile.ProductCode ?? "Unknown"}）");
+                            LoggingSnapshot = _loggingService.Snapshot;
+                        }, null);
+                        return;
+                    }
+
+                    // 按产品 Profile 执行统一设备读取（Aggregate/Field 由 DeviceAccessService 内部决定）
+                    try
+                    {
+                        var deviceInfo = await _deviceAccessService.ReadDeviceInfoAsync(profile).ConfigureAwait(false);
+
+                        _uiContext.Post(_ =>
+                        {
+                            var sn = deviceInfo?.DeviceSn?.Trim();
+                            var version = deviceInfo?.AndroidVersion?.Trim();
+                            if (!string.IsNullOrWhiteSpace(sn))
+                                _loggingService.LogInfo($"[SelfCheck][{profile.ProductCode}][DeviceAccess] SN读取成功: {sn}, Version: {(string.IsNullOrWhiteSpace(version) ? "-" : version)}");
+                            else
+                                _loggingService.LogWarning($"[SelfCheck][{profile.ProductCode}][DeviceAccess] 读取失败：SN为空");
+                            LoggingSnapshot = _loggingService.Snapshot;
+                        }, null);
+                    }
+                    catch (AggregateProtocolException ex)
+                    {
+                        _uiContext.Post(_ =>
+                        {
+                            _loggingService.LogWarning($"[SelfCheck][{profile.ProductCode}][Aggregate] 协议错误: {ex.Message}");
+                            LoggingSnapshot = _loggingService.Snapshot;
+                        }, null);
+                    }
+                    catch (Exception ex)
+                    {
+                        _uiContext.Post(_ =>
+                        {
+                            _loggingService.LogWarning($"[SelfCheck][{profile.ProductCode}][DeviceAccess] 读取异常: {ex.Message}");
+                            LoggingSnapshot = _loggingService.Snapshot;
+                        }, null);
+                    }
                 }).ConfigureAwait(true);
 
                 // 回到 UI 线程后继续

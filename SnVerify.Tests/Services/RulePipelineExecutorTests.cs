@@ -7,9 +7,11 @@ using System;
 using System.Threading.Tasks;
 using Moq;
 using NUnit.Framework;
+using SnVerify.Domain.DeviceAccess;
 using SnVerify.Domain.Models;
 using SnVerify.Domain.Product;
 using SnVerify.Services.DeviceAccess;
+using SnVerify.Services.Logging;
 using SnVerify.Services.Rules;
 using SnVerify.Services.Storage;
 using SnVerify.Services.Verification;
@@ -25,6 +27,7 @@ namespace SnVerify.Tests.Services
         private Mock<IStorageService> _storageMock;
         private Mock<IDeviceAccessService> _deviceAccessMock;
         private Mock<IVersionVerificationService> _versionMock;
+        private Mock<IFileLogger> _loggerMock;
         private IRulePipelineExecutor _executor;
 
         private static ProductProfile CreatePhase3Profile()
@@ -76,6 +79,7 @@ namespace SnVerify.Tests.Services
             _storageMock = new Mock<IStorageService>();
             _deviceAccessMock = new Mock<IDeviceAccessService>();
             _versionMock = new Mock<IVersionVerificationService>();
+            _loggerMock = new Mock<IFileLogger>();
 
             _storageMock
                 .Setup(s => s.IsStickerSnPassedInOrderAsync(It.IsAny<string>(), It.IsAny<string>()))
@@ -93,7 +97,7 @@ namespace SnVerify.Tests.Services
                 .Setup(v => v.VerifyAsync(It.IsAny<DeviceInfo>(), It.IsAny<VerificationParameter>(), default))
                 .ReturnsAsync((true, (string)null));
 
-            _executor = new RulePipelineExecutor(_storageMock.Object, _deviceAccessMock.Object, _versionMock.Object);
+            _executor = new RulePipelineExecutor(_storageMock.Object, _deviceAccessMock.Object, _versionMock.Object, _loggerMock.Object);
         }
 
         [Test]
@@ -138,6 +142,25 @@ namespace SnVerify.Tests.Services
             Assert.That(result.Result, Is.EqualTo("FAIL"));
             Assert.That(result.FailReason, Is.EqualTo("ADB_READ_FAIL"));
             _storageMock.Verify(s => s.SaveTestRecordAsync(It.IsAny<TestRecord>()), Times.Never);
+        }
+
+        [Test]
+        public async Task ExecuteAsync_WhenAdbProtocolInvalid_ShouldFailWithAdbProtocolInvalid()
+        {
+            var profile = CreatePhase3Profile();
+            var parameter = CreateParameter();
+
+            _deviceAccessMock
+                .Setup(a => a.ReadDeviceInfoAsync(It.IsAny<ProductProfile>()))
+                .ThrowsAsync(new AggregateProtocolException("聚合协议错误：第二行字段不足6列"));
+
+            var result = await _executor.ExecuteAsync(profile, null, parameter, "SN001", OrderId);
+
+            Assert.That(result.Result, Is.EqualTo("FAIL"));
+            Assert.That(result.FailReason, Is.EqualTo("ADB_PROTOCOL_INVALID"));
+            _loggerMock.Verify(
+                x => x.LogWarning(It.Is<string>(msg => msg.Contains("ADB protocol invalid"))),
+                Times.Once);
         }
 
         [Test]

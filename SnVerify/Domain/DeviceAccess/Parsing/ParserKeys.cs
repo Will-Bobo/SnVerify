@@ -29,8 +29,10 @@ namespace SnVerify.Domain.DeviceAccess
         /// </summary>
         public static class Aggregate
         {
-            // 示例（未来扩展）
-            // public const string Soltag = "Soltag";
+            /// <summary>
+            /// KM001 MCU 版本聚合输出解析器。
+            /// </summary>
+            public const string Km001McuVersion = "Km001McuVersion";
         }
     }
 }

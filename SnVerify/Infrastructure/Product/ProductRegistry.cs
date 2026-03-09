@@ -32,7 +32,34 @@ namespace SnVerify.Infrastructure.Product
                         ProductCode = "SOLTAG25",
                         ProductName = "SOLTAG25",
                         Mode = VerificationMode.Legacy,
-                        AdbConfig = null,
+                        AdbConfig = new DeviceAdbConfig
+                        {
+                            BootstrapCommandSpecs = new List<BootstrapCommandSpec>
+                            {
+                                new BootstrapCommandSpec
+                                {
+                                    Command = "shell ylzero",
+                                    AcceptableExitCodes = new[] { 127, 255 },
+                                    TimeoutBehavior = BootstrapTimeoutBehavior.Fail
+                                }
+                            },
+                            AggregateCommand = null,
+                            Commands = new List<DeviceInfoCommand>
+                            {
+                                new DeviceInfoCommand
+                                {
+                                    Field = DeviceInfoField.DeviceSn,
+                                    Command = "shell getprop sys.skyroam.osi.sn",
+                                    ParserKey = ParserKeys.Field.Trim
+                                },
+                                new DeviceInfoCommand
+                                {
+                                    Field = DeviceInfoField.AndroidVersion,
+                                    Command = "shell getprop ro.build.display.id",
+                                    ParserKey = ParserKeys.Field.Trim
+                                }
+                            }
+                        },
                         EnableChipIdCheck = false,
                         EnableWifiMacCheck = false,
                         EnableBoardVersionCheck = false,
@@ -48,49 +75,13 @@ namespace SnVerify.Infrastructure.Product
                         Mode = VerificationMode.Phase3,
                         AdbConfig = new DeviceAdbConfig
                         {
-                            BootstrapCommandSpecs = new List<BootstrapCommandSpec>
+                            BootstrapCommandSpecs = null,
+                            AggregateCommand = new AggregateDeviceInfoCommand
                             {
-                                new BootstrapCommandSpec
-                                {
-                                    Command = "shell ylzero",
-                                    AcceptableExitCodes = new[] { 127, 255 },
-                                    TimeoutBehavior = BootstrapTimeoutBehavior.Ignore
-                                }
+                                Command = "shell dumpsys window getmcuversion",
+                                ParserKey = ParserKeys.Aggregate.Km001McuVersion
                             },
-                            AggregateCommand = null,
-                            Commands = new List<DeviceInfoCommand>
-                            {
-                                new DeviceInfoCommand
-                                {
-                                    Field = DeviceInfoField.DeviceSn,
-                                    Command = "shell getprop ro.serialno",
-                                    ParserKey = ParserKeys.Field.Trim
-                                },
-                                new DeviceInfoCommand
-                                {
-                                    Field = DeviceInfoField.AndroidVersion,
-                                    Command = "shell getprop ro.build.display.id",
-                                    ParserKey = ParserKeys.Field.Trim
-                                },
-                                new DeviceInfoCommand
-                                {
-                                    Field = DeviceInfoField.ChipId,
-                                    Command = "shell getprop ro.build.display.id",
-                                    ParserKey = ParserKeys.Field.Trim
-                                },
-								new DeviceInfoCommand
-								{
-									Field = DeviceInfoField.ChargeBoardVersion,
-									Command = "shell getprop ro.build.display.id",
-									ParserKey = ParserKeys.Field.Trim
-								},
-								new DeviceInfoCommand
-								{
-									Field = DeviceInfoField.BoardVersion,
-									Command = "shell getprop ro.build.display.id",
-									ParserKey = ParserKeys.Field.Trim
-								}
-							}
+                            Commands = null
                         },
                         EnableChipIdCheck = true,
                         EnableWifiMacCheck = true,

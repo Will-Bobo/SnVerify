@@ -13,9 +13,11 @@ using SnVerify.Domain.Enums;
 using SnVerify.Domain.Models;
 using SnVerify.Domain.State;
 using SnVerify.Domain.Validation;
+using SnVerify.Domain.DeviceAccess;
 using SnVerify.Domain.Product;
 using SnVerify.Services.Adb;
 using SnVerify.Services.Coordination;
+using SnVerify.Services.DeviceAccess;
 using SnVerify.Services.Logging;
 using SnVerify.Services.Mes.Gate;
 using SnVerify.Services.Session;
@@ -42,6 +44,7 @@ namespace SnVerify.Tests.ViewModels
         private Mock<ILoggingService> _loggingServiceMock;
         private Mock<IStorageService> _storageServiceMock;
         private Mock<IAdbAccessService> _adbAccessServiceMock;
+        private Mock<IDeviceAccessService> _deviceAccessServiceMock;
         private Mock<IExportAggregationService> _exportAggregationServiceMock;
         private Mock<IOrderNameValidator> _orderNameValidatorMock;
         private Mock<IUserDialogService> _dialogServiceMock;
@@ -91,6 +94,7 @@ namespace SnVerify.Tests.ViewModels
             _loggingServiceMock = new Mock<ILoggingService>();
             _storageServiceMock = new Mock<IStorageService>();
             _adbAccessServiceMock = new Mock<IAdbAccessService>();
+            _deviceAccessServiceMock = new Mock<IDeviceAccessService>();
             _exportAggregationServiceMock = new Mock<IExportAggregationService>();
             _orderNameValidatorMock = new Mock<IOrderNameValidator>();
             _dialogServiceMock = new Mock<IUserDialogService>();
@@ -113,7 +117,8 @@ namespace SnVerify.Tests.ViewModels
                 _dialogServiceMock.Object,
                 _versionVerificationFlowServiceMock.Object,
                 Path.GetTempPath(),
-                _productRegistryMock.Object);
+                _productRegistryMock.Object,
+                deviceAccessService: _deviceAccessServiceMock.Object);
         }
 
         [TearDown]
@@ -663,16 +668,26 @@ namespace SnVerify.Tests.ViewModels
             var testSn = "TEST_SN_001";
             var sessionId = "ORDER001_20250126_143000";
             var orderId = "ORDER001";
+            var tcs = new TaskCompletionSource<DeviceInfo>();
+            var readStartedTcs = new TaskCompletionSource<bool>();
+            _adbAccessServiceMock.Setup(m => m.CheckMultipleDevices(out It.Ref<List<string>>.IsAny))
+                .Returns(false);
+            _productRegistryMock.Setup(r => r.Get("KM001")).Returns(new ProductProfile
+            {
+                ProductCode = "KM001",
+                Mode = VerificationMode.Phase3
+            });
+            _viewModel.SelectedProductCode = "KM001";
+            _deviceAccessServiceMock
+                .Setup(m => m.ReadDeviceInfoAsync(It.IsAny<ProductProfile>()))
+                .Callback(() => readStartedTcs.TrySetResult(true))
+                .Returns(tcs.Task);
             _sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Active(sessionId, orderId, DateTime.Now));
             _viewModel.SessionSnapshot = _sessionLifecycleServiceMock.Object.Snapshot;
 
-            var tcs = new TaskCompletionSource<AdbSnReadResult>();
-            _adbAccessServiceMock.Setup(m => m.ReadDeviceSnAsync(default)).Returns(tcs.Task);
-            _adbAccessServiceMock.Setup(m => m.CheckMultipleDevices(out It.Ref<List<string>>.IsAny))
-                .Returns(false);
-
             // Act: start self-check and wait until VM enters self-checking state
             _viewModel.SelfCheckCommand.Execute(null);
+            await WaitUntilAsync(() => readStartedTcs.Task.IsCompleted, timeoutMs: 2000);
             await WaitUntilAsync(() => _viewModel.IsSelfChecking);
 
             await _viewModel.HandleScanInputAsync(testSn);
@@ -681,7 +696,7 @@ namespace SnVerify.Tests.ViewModels
             _verificationFlowServiceMock.Verify(m => m.StartVerificationAsync(It.IsAny<string>()), Times.Never);
 
             // Cleanup: end self-check
-            tcs.SetResult(AdbSnReadResult.Success("DEVICE_SN"));
+            tcs.SetResult(new DeviceInfo { DeviceSn = "DEVICE_SN" });
             await WaitUntilAsync(() => !_viewModel.IsSelfChecking);
         }
 
@@ -689,10 +704,16 @@ namespace SnVerify.Tests.ViewModels
         public async Task Commands_ShouldBeDisabled_WhenIsSelfChecking()
         {
             // Arrange
-            var tcs = new TaskCompletionSource<AdbSnReadResult>();
-            _adbAccessServiceMock.Setup(m => m.ReadDeviceSnAsync(default)).Returns(tcs.Task);
+            var tcs = new TaskCompletionSource<DeviceInfo>();
             _adbAccessServiceMock.Setup(m => m.CheckMultipleDevices(out It.Ref<List<string>>.IsAny))
                 .Returns(false);
+            _productRegistryMock.Setup(r => r.Get("KM001")).Returns(new ProductProfile
+            {
+                ProductCode = "KM001",
+                Mode = VerificationMode.Phase3
+            });
+            _viewModel.SelectedProductCode = "KM001";
+            _deviceAccessServiceMock.Setup(m => m.ReadDeviceInfoAsync(It.IsAny<ProductProfile>())).Returns(tcs.Task);
 
             // Act
             _viewModel.SelfCheckCommand.Execute(null);
@@ -706,8 +727,112 @@ namespace SnVerify.Tests.ViewModels
             Assert.That(_viewModel.ExportCommand.CanExecute(null), Is.True);
 
             // Cleanup
-            tcs.SetResult(AdbSnReadResult.Success("DEVICE_SN"));
+            tcs.SetResult(new DeviceInfo { DeviceSn = "DEVICE_SN" });
             await WaitUntilAsync(() => !_viewModel.IsSelfChecking);
+        }
+
+        [Test]
+        public async Task SelfCheckAsync_ForKm001_ShouldUseDeviceAccessService()
+        {
+            // Arrange
+            _adbAccessServiceMock.Setup(m => m.CheckMultipleDevices(out It.Ref<List<string>>.IsAny)).Returns(false);
+            _productRegistryMock.Setup(r => r.Get("KM001")).Returns(new ProductProfile
+            {
+                ProductCode = "KM001",
+                Mode = VerificationMode.Phase3
+            });
+            _viewModel.SelectedProductCode = "KM001";
+            _deviceAccessServiceMock
+                .Setup(m => m.ReadDeviceInfoAsync(It.IsAny<ProductProfile>()))
+                .ReturnsAsync(new DeviceInfo { DeviceSn = "SN_KM001", AndroidVersion = "V_KM001" });
+
+            // Act
+            _viewModel.SelfCheckCommand.Execute(null);
+            await WaitUntilAsync(() => !_viewModel.IsSelfChecking, timeoutMs: 2000);
+
+            // Assert
+            _deviceAccessServiceMock.Verify(m => m.ReadDeviceInfoAsync(It.IsAny<ProductProfile>()), Times.Once);
+            _adbAccessServiceMock.Verify(m => m.ReadDeviceSnAsync(default), Times.Never);
+            _loggingServiceMock.Verify(
+                m => m.LogInfo(It.Is<string>(s => s != null && s.Contains("SN_KM001") && s.Contains("V_KM001"))),
+                Times.AtLeastOnce);
+        }
+
+        [Test]
+        public async Task SelfCheckAsync_ForSoltag25_ShouldUseDeviceAccessService_AndLogSn()
+        {
+            // Arrange
+            _adbAccessServiceMock.Setup(m => m.CheckMultipleDevices(out It.Ref<List<string>>.IsAny)).Returns(false);
+            _productRegistryMock.Setup(r => r.Get("SOLTAG25")).Returns(new ProductProfile
+            {
+                ProductCode = "SOLTAG25",
+                Mode = VerificationMode.Legacy
+            });
+            _viewModel.SelectedProductCode = "SOLTAG25";
+            _deviceAccessServiceMock
+                .Setup(m => m.ReadDeviceInfoAsync(It.IsAny<ProductProfile>()))
+                .ReturnsAsync(new DeviceInfo { DeviceSn = "SN_SOL", AndroidVersion = "VER_SOL" });
+
+            // Act
+            _viewModel.SelfCheckCommand.Execute(null);
+            await WaitUntilAsync(() => !_viewModel.IsSelfChecking, timeoutMs: 2000);
+
+            // Assert
+            _deviceAccessServiceMock.Verify(m => m.ReadDeviceInfoAsync(It.IsAny<ProductProfile>()), Times.Once);
+            _loggingServiceMock.Verify(
+                m => m.LogInfo(It.Is<string>(s => s != null && s.Contains("SN_SOL") && s.Contains("VER_SOL"))),
+                Times.AtLeastOnce);
+        }
+
+        [Test]
+        public async Task SelfCheckAsync_WhenAggregateProtocolInvalid_ShouldLogProtocolError()
+        {
+            // Arrange
+            _adbAccessServiceMock.Setup(m => m.CheckMultipleDevices(out It.Ref<List<string>>.IsAny)).Returns(false);
+            _productRegistryMock.Setup(r => r.Get("KM001")).Returns(new ProductProfile
+            {
+                ProductCode = "KM001",
+                Mode = VerificationMode.Phase3
+            });
+            _viewModel.SelectedProductCode = "KM001";
+            _deviceAccessServiceMock
+                .Setup(m => m.ReadDeviceInfoAsync(It.IsAny<ProductProfile>()))
+                .ThrowsAsync(new AggregateProtocolException("协议字段数量错误"));
+
+            // Act
+            _viewModel.SelfCheckCommand.Execute(null);
+            await WaitUntilAsync(() => !_viewModel.IsSelfChecking, timeoutMs: 2000);
+
+            // Assert
+            _loggingServiceMock.Verify(
+                m => m.LogWarning(It.Is<string>(s => s != null && s.Contains("协议错误"))),
+                Times.Once);
+        }
+
+        [Test]
+        public async Task SelfCheckAsync_WhenMultipleDevices_ShouldLogWarning()
+        {
+            // Arrange
+            var devices = new List<string> { "A", "B" };
+            _adbAccessServiceMock.Setup(m => m.CheckMultipleDevices(out devices)).Returns(true);
+            _productRegistryMock.Setup(r => r.Get("KM001")).Returns(new ProductProfile
+            {
+                ProductCode = "KM001",
+                Mode = VerificationMode.Phase3
+            });
+            _viewModel.SelectedProductCode = "KM001";
+            _deviceAccessServiceMock
+                .Setup(m => m.ReadDeviceInfoAsync(It.IsAny<ProductProfile>()))
+                .ReturnsAsync(new DeviceInfo { DeviceSn = "SN_OK" });
+
+            // Act
+            _viewModel.SelfCheckCommand.Execute(null);
+            await WaitUntilAsync(() => !_viewModel.IsSelfChecking, timeoutMs: 2000);
+
+            // Assert
+            _loggingServiceMock.As<SnVerify.Services.Logging.IFileLogger>().Verify(
+                m => m.LogWarning(It.Is<string>(s => s != null && s.Contains("多台 ADB 设备"))),
+                Times.Once);
         }
 
         [Test]
@@ -1206,9 +1331,15 @@ namespace SnVerify.Tests.ViewModels
             var sessionId = "ORDER001_20250126_143000";
             var orderId = "ORDER001";
             _viewModel.SessionSnapshot = SessionSnapshot.Active(sessionId, orderId, DateTime.Now);
-            var tcs = new TaskCompletionSource<AdbSnReadResult>();
-            _adbAccessServiceMock.Setup(m => m.ReadDeviceSnAsync(default)).Returns(tcs.Task);
+            var tcs = new TaskCompletionSource<DeviceInfo>();
             _adbAccessServiceMock.Setup(m => m.CheckMultipleDevices(out It.Ref<List<string>>.IsAny)).Returns(false);
+            _productRegistryMock.Setup(r => r.Get("KM001")).Returns(new ProductProfile
+            {
+                ProductCode = "KM001",
+                Mode = VerificationMode.Phase3
+            });
+            _viewModel.SelectedProductCode = "KM001";
+            _deviceAccessServiceMock.Setup(m => m.ReadDeviceInfoAsync(It.IsAny<ProductProfile>())).Returns(tcs.Task);
 
             // Act
             _viewModel.SelfCheckCommand.Execute(null);
@@ -1218,7 +1349,7 @@ namespace SnVerify.Tests.ViewModels
             Assert.That(canExecute, Is.False);
 
             // Cleanup
-            tcs.SetResult(AdbSnReadResult.Success("DEVICE_SN"));
+            tcs.SetResult(new DeviceInfo { DeviceSn = "DEVICE_SN" });
         }
 
         [Test]

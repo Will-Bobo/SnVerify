@@ -84,8 +84,13 @@ namespace SnVerify.Infrastructure
             var deviceSessionManager = new DeviceSessionManager(adbPath, processRunner);
             var deviceCommandExecutor = new DeviceCommandExecutor(adbPath, processRunner);
             var trimParser = new TrimParser();
+            var km001AggregateParser = new Km001McuVersionAggregateParser();
             var fieldParsers = new Dictionary<string, IDeviceInfoParser>(StringComparer.OrdinalIgnoreCase) { { ParserKeys.Field.Trim, trimParser } };
-            var parserFactory = new ParserFactory(fieldParsers, new Dictionary<string, IAggregateDeviceInfoParser>(StringComparer.OrdinalIgnoreCase));
+            var aggregateParsers = new Dictionary<string, IAggregateDeviceInfoParser>(StringComparer.OrdinalIgnoreCase)
+            {
+                { ParserKeys.Aggregate.Km001McuVersion, km001AggregateParser }
+            };
+            var parserFactory = new ParserFactory(fieldParsers, aggregateParsers);
             var deviceAccessService = new AdbDeviceService(deviceSessionManager, deviceCommandExecutor, parserFactory);
 
             // 创建扫码输入服务
@@ -95,7 +100,7 @@ namespace SnVerify.Infrastructure
             var parameterService = new ParameterService(storageService);
             var versionVerificationService = new VersionVerificationService();
             var productRegistry = new ProductRegistryAdapter();
-            var rulePipelineExecutor = new RulePipelineExecutor(storageService, deviceAccessService, versionVerificationService);
+            var rulePipelineExecutor = new RulePipelineExecutor(storageService, deviceAccessService, versionVerificationService, loggingService);
 
             // 校验流程服务工厂：按批次 ID 创建 ProcessCoordinator+VerificationFlowService
             var flowServiceFactory = new VerificationFlowServiceFactory(
@@ -132,7 +137,8 @@ namespace SnVerify.Infrastructure
                 versionVerificationFlowService,
                 logDirectory,
                 productRegistry,
-                parameterService);
+                parameterService,
+                deviceAccessService);
 
             return viewModel;
         }

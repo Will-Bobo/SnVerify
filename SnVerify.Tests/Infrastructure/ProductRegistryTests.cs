@@ -5,6 +5,7 @@
 /// </remarks>
 
 using NUnit.Framework;
+using SnVerify.Domain.DeviceAccess;
 using SnVerify.Domain.Product;
 using SnVerify.Infrastructure.Product;
 
@@ -39,7 +40,22 @@ namespace SnVerify.Tests.Infrastructure
             Assert.That(profile.EnableBoardVersionCheck, Is.False);
             Assert.That(profile.EnableChargeBoardVersionCheck, Is.False);
 
-            Assert.That(profile.AdbConfig, Is.Null, "SOLTAG25 为 Legacy，无 ADB 配置");
+            Assert.That(profile.AdbConfig, Is.Not.Null, "SOLTAG25 需要显式 ADB 配置用于自检");
+            Assert.That(profile.AdbConfig.AggregateCommand, Is.Null);
+            Assert.That(profile.AdbConfig.BootstrapCommandSpecs, Is.Not.Null);
+            Assert.That(profile.AdbConfig.BootstrapCommandSpecs.Count, Is.EqualTo(1));
+            Assert.That(profile.AdbConfig.BootstrapCommandSpecs[0].Command, Is.EqualTo("shell ylzero"));
+            Assert.That(profile.AdbConfig.BootstrapCommandSpecs[0].TimeoutBehavior, Is.EqualTo(BootstrapTimeoutBehavior.Fail));
+            Assert.That(profile.AdbConfig.BootstrapCommandSpecs[0].AcceptableExitCodes, Is.EqualTo(new[] { 127, 255 }));
+
+            Assert.That(profile.AdbConfig.Commands, Is.Not.Null);
+            Assert.That(profile.AdbConfig.Commands.Count, Is.EqualTo(2));
+            Assert.That(profile.AdbConfig.Commands[0].Field, Is.EqualTo(DeviceInfoField.DeviceSn));
+            Assert.That(profile.AdbConfig.Commands[0].Command, Is.EqualTo("shell getprop sys.skyroam.osi.sn"));
+            Assert.That(profile.AdbConfig.Commands[0].ParserKey, Is.EqualTo(ParserKeys.Field.Trim));
+            Assert.That(profile.AdbConfig.Commands[1].Field, Is.EqualTo(DeviceInfoField.AndroidVersion));
+            Assert.That(profile.AdbConfig.Commands[1].Command, Is.EqualTo("shell getprop ro.build.display.id"));
+            Assert.That(profile.AdbConfig.Commands[1].ParserKey, Is.EqualTo(ParserKeys.Field.Trim));
         }
 
         [Test]
@@ -56,10 +72,11 @@ namespace SnVerify.Tests.Infrastructure
             Assert.That(profile.EnableChargeBoardVersionCheck, Is.True);
 
             Assert.That(profile.AdbConfig, Is.Not.Null);
-            Assert.That(profile.AdbConfig.BootstrapCommandSpecs, Is.Not.Null);
-            Assert.That(profile.AdbConfig.BootstrapCommandSpecs.Count, Is.GreaterThan(0));
-            Assert.That(profile.AdbConfig.Commands, Is.Not.Null);
-            Assert.That(profile.AdbConfig.Commands.Count, Is.GreaterThan(0));
+            Assert.That(profile.AdbConfig.BootstrapCommandSpecs, Is.Null, "KM001 已切换为单聚合命令，不再执行 bootstrap");
+            Assert.That(profile.AdbConfig.AggregateCommand, Is.Not.Null, "KM001 应配置聚合命令");
+            Assert.That(profile.AdbConfig.AggregateCommand.Command, Is.EqualTo("shell dumpsys window getmcuversion"));
+            Assert.That(profile.AdbConfig.AggregateCommand.ParserKey, Is.EqualTo(ParserKeys.Aggregate.Km001McuVersion));
+            Assert.That(profile.AdbConfig.Commands, Is.Null, "聚合命令与字段命令不可混配");
         }
 
         [Test]

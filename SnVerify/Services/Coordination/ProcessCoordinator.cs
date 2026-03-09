@@ -374,7 +374,8 @@ namespace SnVerify.Services.Coordination
                     ? new RulePipelineExecutor(
                         _storageService,
                         _deviceAccessService,
-                        _versionVerificationService ?? new VersionVerificationService())
+                        _versionVerificationService ?? new VersionVerificationService(),
+                        _loggingService)
                     : throw new InvalidOperationException("Phase3 需要注入 IRulePipelineExecutor 或 IDeviceAccessService"));
 
                 var execResult = await executor
