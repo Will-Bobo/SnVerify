@@ -168,4 +168,70 @@
   <data name="Err_ChargeBoardVersionMismatch" xml:space="preserve">
     <value>充电板版本号与目标值不匹配</value>
   </data>
+  <data name="Export_Km001_RowNumber" xml:space="preserve">
+    <value>序号</value>
+  </data>
+  <data name="Export_Km001_StickerSn" xml:space="preserve">
+    <value>条形码SN</value>
+  </data>
+  <data name="Export_Km001_DeviceSn" xml:space="preserve">
+    <value>设备SN</value>
+  </data>
+  <data name="Export_Km001_WifiMac" xml:space="preserve">
+    <value>WifiMac</value>
+  </data>
+  <data name="Export_Km001_ChipId" xml:space="preserve">
+    <value>芯片ID</value>
+  </data>
+  <data name="Export_Km001_ExpectedBoardVersion" xml:space="preserve">
+    <value>目标芯片版本</value>
+  </data>
+  <data name="Export_Km001_ActualBoardVersion" xml:space="preserve">
+    <value>设备芯片版本</value>
+  </data>
+  <data name="Export_Km001_ExpectedChargeBoardVersion" xml:space="preserve">
+    <value>目标充电板版本</value>
+  </data>
+  <data name="Export_Km001_ActualChargeBoardVersion" xml:space="preserve">
+    <value>设备充电板版本</value>
+  </data>
+  <data name="Export_Km001_Result" xml:space="preserve">
+    <value>Result</value>
+  </data>
+  <data name="Export_Km001_ErrorDetail" xml:space="preserve">
+    <value>错误详细</value>
+  </data>
+  <data name="Export_Km001_VerificationTime" xml:space="preserve">
+    <value>验证时间</value>
+  </data>
+  <data name="Export_Km001_ExpectedVersion" xml:space="preserve">
+    <value>Android目标版本号</value>
+  </data>
+  <data name="Export_Km001_ActualVersion" xml:space="preserve">
+    <value>Android实际版本号</value>
+  </data>
+  <data name="Export_Summary_SessionId" xml:space="preserve">
+    <value>SessionId</value>
+  </data>
+  <data name="Export_Summary_SessionName" xml:space="preserve">
+    <value>SessionName</value>
+  </data>
+  <data name="Export_Summary_Total" xml:space="preserve">
+    <value>Total</value>
+  </data>
+  <data name="Export_Summary_Pass" xml:space="preserve">
+    <value>Pass</value>
+  </data>
+  <data name="Export_Summary_Fail" xml:space="preserve">
+    <value>Fail</value>
+  </data>
+  <data name="Export_Summary_PassRate" xml:space="preserve">
+    <value>PassRate</value>
+  </data>
+  <data name="Export_Summary_FailRate" xml:space="preserve">
+    <value>FailRate</value>
+  </data>
+  <data name="Export_Summary_ExportTime" xml:space="preserve">
+    <value>ExportTime</value>
+  </data>
 </root>

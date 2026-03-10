@@ -27,6 +27,7 @@ using SnVerify.Services.Rules;
 using SnVerify.Services.Session;
 using SnVerify.Services.Storage;
 using SnVerify.Services.Ui;
+using SnVerify.Domain.Export;
 using SnVerify.Properties;
 
 namespace SnVerify.ViewModels
@@ -219,6 +220,7 @@ namespace SnVerify.ViewModels
                     OnPropertyChanged(nameof(IsSessionActive));
                     OnPropertyChanged(nameof(IsVerificationTypeComboBoxEnabled));
                     OnPropertyChanged(nameof(IsProductCodeComboBoxEnabled));
+                    OnPropertyChanged(nameof(IsVersionInputEnabled));
                     StartBatchCommand?.RaiseCanExecuteChanged();
                     EndBatchCommand?.RaiseCanExecuteChanged();
                     ExportCommand?.RaiseCanExecuteChanged();
@@ -1185,12 +1187,21 @@ namespace SnVerify.ViewModels
             }
 
             // Step 2: 选择导出内容类型（SN 检验 / 版本检验 / 全部），默认根据当前 VerificationType 勾选
-            var exportFilter = _dialogService.ChooseExportRecordFilter(new[] { CurrentVerificationType });
-            if (exportFilter == null)
+            // Phase3 产品（如 KM001）：Session 导出逻辑始终为全量导出，忽略 Filter，此处直接使用 All，跳过内容类型选择页。
+            ExportRecordFilter exportFilter;
+            if (_currentProductProfile?.Mode == VerificationMode.Phase3)
             {
-                _loggingService.LogInfo("导出已取消");
-                LoggingSnapshot = _loggingService.Snapshot;
-                return;
+                exportFilter = ExportRecordFilter.All;
+            }
+            else
+            {
+                exportFilter = _dialogService.ChooseExportRecordFilter(new[] { CurrentVerificationType });
+                if (exportFilter == null)
+                {
+                    _loggingService.LogInfo("导出已取消");
+                    LoggingSnapshot = _loggingService.Snapshot;
+                    return;
+                }
             }
 
             // Step 3: 选择具体项目或订单

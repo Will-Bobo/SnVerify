@@ -1,7 +1,9 @@
 /// <author>AI Assistant</author>
-/// <remarks>Phase3 按 ProductCode 选择 Exporter；内部使用 string.Equals(..., OrdinalIgnoreCase)。</remarks>
+/// <remarks>按 ProductCode 选择 Exporter；内部使用 string.Equals(..., OrdinalIgnoreCase)。</remarks>
 
 using System;
+using SnVerify.Infrastructure.Export;
+using SnVerify.Services.Storage.Export;
 
 namespace SnVerify.Services.Storage
 {
@@ -13,11 +15,16 @@ namespace SnVerify.Services.Storage
         private readonly ISessionExporter _legacyExporter;
         private readonly ISessionExporter _km001Exporter;
 
-        public SessionExporterFactory(IStorageService storage)
+        /// <summary>
+        /// 使用存储服务与导出配置、值解析器创建工厂；KM001 使用 Km001SessionExporter。
+        /// </summary>
+        public SessionExporterFactory(IStorageService storage, IProductExportRegistry exportRegistry, IExportValueResolver valueResolver)
         {
             if (storage == null) throw new ArgumentNullException(nameof(storage));
+            if (exportRegistry == null) throw new ArgumentNullException(nameof(exportRegistry));
+            if (valueResolver == null) throw new ArgumentNullException(nameof(valueResolver));
             _legacyExporter = new LegacySessionExporter(storage);
-            _km001Exporter = new Phase3Km001SessionExporter(storage);
+            _km001Exporter = new Km001SessionExporter(storage, exportRegistry, valueResolver);
         }
 
         /// <inheritdoc />

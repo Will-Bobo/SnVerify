@@ -11,7 +11,9 @@ using System.Linq;
 using System.Threading.Tasks;
 using SnVerify.Domain.Export;
 using SnVerify.Domain.Models;
+using SnVerify.Infrastructure.Export;
 using SnVerify.Services.Logging;
+using SnVerify.Services.Storage.Export;
 
 namespace SnVerify.Services.Storage
 {
@@ -37,7 +39,7 @@ namespace SnVerify.Services.Storage
             _storage = storage ?? throw new ArgumentNullException(nameof(storage));
             _logger = logger ?? new NullFileLogger();
             _loggingService = loggingService;
-            _exporterFactory = exporterFactory ?? new SessionExporterFactory(storage);
+            _exporterFactory = exporterFactory ?? new SessionExporterFactory(storage, new ProductExportRegistry(), new DefaultExportValueResolver());
         }
 
         /// <inheritdoc />

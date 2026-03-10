@@ -135,6 +135,9 @@
     <Compile Include="Domain\Export\ExportContext.cs" />
     <Compile Include="Domain\Export\ExportRecordFilter.cs" />
     <Compile Include="Domain\Export\ExportRecordFilterDefaults.cs" />
+    <Compile Include="Domain\Export\ExportFieldId.cs" />
+    <Compile Include="Domain\Export\ExportColumnDefinition.cs" />
+    <Compile Include="Domain\Export\ProductExportProfile.cs" />
     <Compile Include="Domain\State\AdbSnapshot.cs" />
     <Compile Include="Domain\State\LoggingSnapshot.cs" />
     <Compile Include="Domain\State\SessionSnapshot.cs" />
@@ -151,6 +154,8 @@
     <Compile Include="Infrastructure\Product\ProductRegistry.cs" />
     <Compile Include="Infrastructure\Product\IProductRegistry.cs" />
     <Compile Include="Infrastructure\Product\ProductRegistryAdapter.cs" />
+    <Compile Include="Infrastructure\Export\IProductExportRegistry.cs" />
+    <Compile Include="Infrastructure\Export\ProductExportRegistry.cs" />
     <Compile Include="Infrastructure\DeviceAccess\Session\DeviceSessionManager.cs" />
     <Compile Include="Infrastructure\DeviceAccess\Command\DeviceCommandExecutor.cs" />
     <Compile Include="Infrastructure\DeviceAccess\Parser\TrimParser.cs" />
@@ -193,7 +198,9 @@
     <Compile Include="Services\Storage\StorageService.cs" />
     <Compile Include="Services\Storage\ISessionExporter.cs" />
     <Compile Include="Services\Storage\LegacySessionExporter.cs" />
-    <Compile Include="Services\Storage\Phase3Km001SessionExporter.cs" />
+    <Compile Include="Services\Storage\Export\IExportValueResolver.cs" />
+    <Compile Include="Services\Storage\Export\DefaultExportValueResolver.cs" />
+    <Compile Include="Services\Storage\Km001SessionExporter.cs" />
     <Compile Include="Services\Storage\ISessionExporterFactory.cs" />
     <Compile Include="Services\Storage\SessionExporterFactory.cs" />
     <Compile Include="Services\Storage\IExportAggregationService.cs" />

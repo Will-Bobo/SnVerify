@@ -118,6 +118,7 @@ namespace SnVerify.Tests.ViewModels
                 _versionVerificationFlowServiceMock.Object,
                 Path.GetTempPath(),
                 _productRegistryMock.Object,
+                parameterService: null,
                 deviceAccessService: _deviceAccessServiceMock.Object);
         }
 
@@ -983,6 +984,21 @@ namespace SnVerify.Tests.ViewModels
         }
 
         [Test]
+        public void IsVersionInputEnabled_ShouldBeFalse_WhenSessionBecomesActive()
+        {
+            // Arrange
+            var sessionId = "ORDER001_20250126_143000";
+            var orderId = "ORDER001";
+            _viewModel.SessionSnapshot = SessionSnapshot.Idle();
+
+            // Act
+            _viewModel.SessionSnapshot = SessionSnapshot.Active(sessionId, orderId, DateTime.Now);
+
+            // Assert
+            Assert.That(_viewModel.IsVersionInputEnabled, Is.False);
+        }
+
+        [Test]
         public void Commands_ShouldBeDisabled_WhenSessionIsActive()
         {
             // Arrange
@@ -1010,6 +1026,7 @@ namespace SnVerify.Tests.ViewModels
             {
                 var order = new Order { Id = 1, OrderName = "OrderX", ProductId = 1 };
 
+                // 默认构造的 MainViewModel 使用的是空 ProductProfile（非 Phase3），因此应走 Legacy 路径并弹出内容类型选择页
                 _dialogServiceMock.Setup(d => d.ChooseExportDimension())
                     .Returns(ExportDimension.ByOrder);
 
@@ -1039,6 +1056,7 @@ namespace SnVerify.Tests.ViewModels
                 await WaitUntilAsync(() => tcs.Task.IsCompleted);
 
                 // Assert
+                _dialogServiceMock.Verify(d => d.ChooseExportRecordFilter(It.IsAny<IReadOnlyList<VerificationType>>()), Times.Once);
                 _dialogServiceMock.Verify(d => d.ConfirmOverwrite(It.IsAny<string>()), Times.Never);
                 _exportAggregationServiceMock.Verify(s => s.ExportByOrderIdAsync("OrderX", exportRoot, It.IsAny<SnVerify.Domain.Export.ExportRecordFilter>()), Times.Once);
             }
@@ -1064,6 +1082,7 @@ namespace SnVerify.Tests.ViewModels
             {
                 var order = new Order { Id = 1, OrderName = "OrderY", ProductId = 1 };
 
+                // 默认构造的 MainViewModel 使用的是空 ProductProfile（非 Phase3），因此应走 Legacy 路径并弹出内容类型选择页
                 _dialogServiceMock.Setup(d => d.ChooseExportDimension())
                     .Returns(ExportDimension.ByOrder);
 
@@ -1088,6 +1107,7 @@ namespace SnVerify.Tests.ViewModels
                 await Task.Delay(100);
 
                 // Assert
+                _dialogServiceMock.Verify(d => d.ChooseExportRecordFilter(It.IsAny<IReadOnlyList<VerificationType>>()), Times.Once);
                 _exportAggregationServiceMock.Verify(s => s.ExportByOrderIdAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<SnVerify.Domain.Export.ExportRecordFilter>()), Times.Never);
                 _loggingServiceMock.Verify(l => l.LogInfo(It.Is<string>(m => m.Contains("导出已取消"))), Times.AtLeastOnce);
                 Assert.That(File.Exists(zipPath), Is.True, "当用户取消覆盖时，原 ZIP 文件应保持不变");
@@ -1611,6 +1631,7 @@ namespace SnVerify.Tests.ViewModels
             {
                 var order = new Order { Id = 1, OrderName = "OrderZ", ProductId = 1 };
 
+                // 默认构造的 MainViewModel 使用的是空 ProductProfile（非 Phase3），因此应走 Legacy 路径并弹出内容类型选择页
                 _dialogServiceMock.Setup(d => d.ChooseExportDimension())
                     .Returns(ExportDimension.ByOrder);
 
@@ -1648,8 +1669,100 @@ namespace SnVerify.Tests.ViewModels
                 await WaitUntilAsync(() => tcs.Task.IsCompleted);
 
                 // Assert
+                _dialogServiceMock.Verify(d => d.ChooseExportRecordFilter(It.IsAny<IReadOnlyList<VerificationType>>()), Times.Once);
                 _dialogServiceMock.Verify(d => d.ConfirmOverwrite(It.IsAny<string>()), Times.Once);
                 _exportAggregationServiceMock.Verify(s => s.ExportByOrderIdAsync("OrderZ", exportRoot, It.IsAny<SnVerify.Domain.Export.ExportRecordFilter>()), Times.Once);
+            }
+            finally
+            {
+                if (Directory.Exists(exportRoot))
+                {
+                    Directory.Delete(exportRoot, true);
+                }
+            }
+        }
+
+        [Test]
+        public async Task ExportAsync_ForPhase3Product_ShouldSkipRecordFilterDialog_AndUseAllFilter()
+        {
+            // Arrange
+            var exportRoot = Path.Combine(Path.GetTempPath(), "SnVerify_Export_Test_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(exportRoot);
+
+            try
+            {
+                var order = new Order { Id = 1, OrderName = "OrderKM", ProductId = 1 };
+
+                // 配置当前产品为 Phase3（例如 KM001）
+                var phase3Profile = new ProductProfile
+                {
+                    ProductCode = "KM001",
+                    ProductName = "KM001",
+                    Mode = VerificationMode.Phase3
+                };
+                _productRegistryMock.Setup(r => r.GetProductCodes()).Returns(new[] { "KM001" });
+                _productRegistryMock.Setup(r => r.Get("KM001")).Returns(phase3Profile);
+
+                // 重新构造 ViewModel，让其加载 Phase3 产品配置
+                _viewModel = new MainViewModel(
+                    _sessionLifecycleServiceMock.Object,
+                    _flowServiceFactoryMock.Object,
+                    _loggingServiceMock.Object,
+                    _storageServiceMock.Object,
+                    _adbAccessServiceMock.Object,
+                    _exportAggregationServiceMock.Object,
+                    _orderNameValidatorMock.Object,
+                    _dialogServiceMock.Object,
+                    _versionVerificationFlowServiceMock.Object,
+                    Path.GetTempPath(),
+                    _productRegistryMock.Object,
+                    parameterService: null,
+                    deviceAccessService: _deviceAccessServiceMock.Object);
+
+                _viewModel.SelectedProductCode = "KM001";
+
+                _dialogServiceMock.Setup(d => d.ChooseExportDimension())
+                    .Returns(ExportDimension.ByOrder);
+
+                // Phase3 场景下应跳过 ChooseExportRecordFilter，这里如果被调用会抛异常以暴露错误
+                _dialogServiceMock
+                    .Setup(d => d.ChooseExportRecordFilter(It.IsAny<IReadOnlyList<VerificationType>>()))
+                    .Throws(new Exception("ChooseExportRecordFilter should not be called for Phase3 product"));
+
+                _storageServiceMock.Setup(s => s.GetAllOrdersAsync())
+                    .ReturnsAsync(new[] { order });
+
+                _dialogServiceMock.Setup(d => d.ChooseOrder(It.IsAny<IReadOnlyList<Order>>()))
+                    .Returns(order);
+
+                _dialogServiceMock.Setup(d => d.ChooseFolder(It.IsAny<string>(), It.IsAny<string>()))
+                    .Returns(exportRoot);
+
+                var tcs = new TaskCompletionSource<bool>();
+                _exportAggregationServiceMock
+                    .Setup(s => s.ExportByOrderIdAsync(
+                        "OrderKM",
+                        exportRoot,
+                        It.Is<SnVerify.Domain.Export.ExportRecordFilter>(f => f == SnVerify.Domain.Export.ExportRecordFilter.All)))
+                    .Returns(() =>
+                    {
+                        tcs.TrySetResult(true);
+                        return Task.CompletedTask;
+                    });
+
+                // Act
+                _viewModel.ExportCommand.Execute(null);
+                await WaitUntilAsync(() => tcs.Task.IsCompleted);
+
+                // Assert
+                _dialogServiceMock.Verify(d => d.ChooseExportDimension(), Times.Once);
+                _dialogServiceMock.Verify(d => d.ChooseExportRecordFilter(It.IsAny<IReadOnlyList<VerificationType>>()), Times.Never);
+                _exportAggregationServiceMock.Verify(
+                    s => s.ExportByOrderIdAsync(
+                        "OrderKM",
+                        exportRoot,
+                        It.Is<SnVerify.Domain.Export.ExportRecordFilter>(f => f == SnVerify.Domain.Export.ExportRecordFilter.All)),
+                    Times.Once);
             }
             finally
             {
