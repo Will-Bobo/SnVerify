@@ -5,7 +5,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:local="clr-namespace:SnVerify"
         mc:Ignorable="d"
-        Title="Smartke SN校验程序" Height="800" Width="1300"
+        Title="Smartke SN校验程序" Height="900" Width="1300"
         WindowStartupLocation="CenterScreen">
     <Window.Resources>
         <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
@@ -92,173 +92,150 @@
             
             <!-- 测试控制区（Phase 2.5：ProjectId + OrderId 输入 + 本次测试标识只读展示） -->
             <Border Grid.Column="0" BorderBrush="#CCCCCC" BorderThickness="1" Padding="10" Background="#F5F5F5">
+                <!-- 测试控制区：单行布局（项目类型 + 项目信息 + 检验类型 + 操作按钮） -->
                 <Grid>
                     <Grid.RowDefinitions>
                         <RowDefinition Height="Auto"/>
-                        <RowDefinition Height="Auto"/>
                     </Grid.RowDefinitions>
                     <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="140"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="140"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="180"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="130"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
-                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
                     </Grid.ColumnDefinitions>
-                    
-                    <!-- 产品选择与显示（Stage3 Step2） -->
-                    <Grid Grid.Row="0" Margin="0,0,0,8">
-                        <Grid.ColumnDefinitions>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="220"/>
-                            <ColumnDefinition Width="Auto"/>
-                            <ColumnDefinition Width="160"/>
-                        </Grid.ColumnDefinitions>
 
-                        <TextBlock Grid.Column="0" Text="本次测试产品：" Style="{StaticResource BatchHeaderStyle}" VerticalAlignment="Center" Padding="5,2"/>
-                        <Border Grid.Column="1" Height="28" Margin="5,0" VerticalAlignment="Center"
-                                Background="#F0F0F0" Padding="5,0">
-                            <TextBlock VerticalAlignment="Center" Text="{Binding CurrentProductDisplay}" FontSize="12" Foreground="#666666"/>
-                        </Border>
+                    <DockPanel Grid.Row="0" Grid.Column="0" LastChildFill="False" VerticalAlignment="Center">
+                        <!-- 项目类型（原 产品代码，仅改文案） -->
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" DockPanel.Dock="Left">
+                            <TextBlock Text="项目类型：" Style="{StaticResource BatchHeaderStyle}" VerticalAlignment="Center" Padding="5,2"/>
+                            <ComboBox Height="28" Margin="5,0,10,0" VerticalAlignment="Center"
+                                      ItemsSource="{Binding AvailableProducts}"
+                                      SelectedItem="{Binding SelectedProductCode, Mode=TwoWay}">
+                                <ComboBox.Style>
+                                    <Style TargetType="ComboBox">
+                                        <Setter Property="IsEnabled" Value="True"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsProductCodeComboBoxEnabled}" Value="False">
+                                                <Setter Property="IsEnabled" Value="False"/>
+                                                <Setter Property="Background" Value="#E0E0E0"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ComboBox.Style>
+                            </ComboBox>
+                        </StackPanel>
 
-                        <TextBlock Grid.Column="2" Text="产品代码：" Style="{StaticResource BatchHeaderStyle}" Margin="10,0,0,0" VerticalAlignment="Center" Padding="5,2"/>
-                        <ComboBox Grid.Column="3" Height="28" Margin="5,0" VerticalAlignment="Center"
-                                  ItemsSource="{Binding AvailableProducts}"
-                                  SelectedItem="{Binding SelectedProductCode, Mode=TwoWay}">
-                            <ComboBox.Style>
-                                <Style TargetType="ComboBox">
-                                    <Setter Property="IsEnabled" Value="True"/>
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding IsProductCodeComboBoxEnabled}" Value="False">
-                                            <Setter Property="IsEnabled" Value="False"/>
-                                            <Setter Property="Background" Value="#E0E0E0"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </ComboBox.Style>
-                        </ComboBox>
-                    </Grid>
-                    <TextBlock Grid.Row="1" Grid.Column="0" Text="项目名：" Style="{StaticResource BatchHeaderStyle}" VerticalAlignment="Center" Padding="5,2"/>
-                    <TextBox Grid.Row="1" Grid.Column="1" x:Name="ProjectIdTextBox" MinWidth="120" Height="28" Margin="5,0" VerticalAlignment="Center" VerticalContentAlignment="Center"
-                             Text="{Binding ProjectIdInput, UpdateSourceTrigger=PropertyChanged}">
-                        <TextBox.Style>
-                            <Style TargetType="TextBox">
-                                <Setter Property="IsEnabled" Value="True"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsSessionActive}" Value="True">
-                                        <Setter Property="IsEnabled" Value="False"/>
-                                        <Setter Property="Background" Value="#E0E0E0"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TextBox.Style>
-                    </TextBox>
-                    <TextBlock Grid.Row="1" Grid.Column="2" Text="订单号：" Style="{StaticResource BatchHeaderStyle}" Margin="10,0,0,0" VerticalAlignment="Center" Padding="5,2"/>
-                    <TextBox Grid.Row="1" Grid.Column="3" x:Name="OrderIdTextBox" MinWidth="120" Height="28" Margin="5,0" VerticalAlignment="Center" VerticalContentAlignment="Center"
-                             Text="{Binding OrderIdInput, UpdateSourceTrigger=PropertyChanged}">
-                        <TextBox.Style>
-                            <Style TargetType="TextBox">
-                                <Setter Property="IsEnabled" Value="True"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsSessionActive}" Value="True">
-                                        <Setter Property="IsEnabled" Value="False"/>
-                                        <Setter Property="Background" Value="#E0E0E0"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </TextBox.Style>
-                    </TextBox>
-                    <TextBlock Grid.Row="1" Grid.Column="4" Text="本次测试：" Style="{StaticResource BatchHeaderStyle}" Margin="10,0,0,0" VerticalAlignment="Center" Padding="5,2"/>
-                    <Border Grid.Row="1" Grid.Column="5" MinWidth="150" Height="28" Margin="5,0" VerticalAlignment="Center" HorizontalAlignment="Center"
-                            Background="#F0F0F0" Padding="5,0">
-                        <TextBlock x:Name="CurrentTestIdentifierText"
-                               VerticalAlignment="Center" HorizontalAlignment="Center" TextAlignment="Center"
-                               Text="{Binding CurrentTestIdentifier}" FontSize="12" Foreground="#666666">
-                            <TextBlock.Style>
-                                <Style TargetType="TextBlock">
-                                    <Setter Property="Text" Value="--"/>
-                                    <Style.Triggers>
-                                        <DataTrigger Binding="{Binding CurrentTestIdentifier}" Value="">
-                                            <Setter Property="Text" Value="--"/>
-                                        </DataTrigger>
-                                    </Style.Triggers>
-                                </Style>
-                            </TextBlock.Style>
-                        </TextBlock>
-                    </Border>
-                    <TextBlock Grid.Row="1" Grid.Column="6" Text="检验类型：" Style="{StaticResource BatchHeaderStyle}" Margin="10,0,0,0" VerticalAlignment="Center" Padding="5,2"
-                               Visibility="{Binding IsLegacyProduct, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                    <ComboBox Grid.Row="1" Grid.Column="7" x:Name="VerificationTypeComboBox" MinWidth="100" Height="28" Margin="5,0" VerticalAlignment="Center"
-                              VerticalContentAlignment="Center"
-                              ItemsSource="{Binding AvailableVerificationTypes}"
-                              SelectedItem="{Binding CurrentVerificationType, Mode=TwoWay}"
-                              Visibility="{Binding IsLegacyProduct, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <ComboBox.Style>
-                            <Style TargetType="ComboBox">
-                                <Setter Property="IsEnabled" Value="True"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsVerificationTypeComboBoxEnabled}" Value="False">
-                                        <Setter Property="IsEnabled" Value="False"/>
-                                        <Setter Property="Background" Value="#E0E0E0"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </ComboBox.Style>
-                        <ComboBox.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding Converter={StaticResource VerificationTypeToDisplayConverter}}" VerticalAlignment="Center"/>
-                            </DataTemplate>
-                        </ComboBox.ItemTemplate>
-                        <ComboBox.ItemContainerStyle>
-                            <Style TargetType="ComboBoxItem">
-                                <Setter Property="VerticalContentAlignment" Value="Center"/>
-                            </Style>
-                        </ComboBox.ItemContainerStyle>
-                    </ComboBox>
-                    <Button Grid.Row="1" Grid.Column="8" x:Name="StartBatchButton" Content="开始测试" Width="100" Height="28" Margin="5,0" VerticalAlignment="Center"
-                            Command="{Binding StartBatchCommand}">
-                        <Button.Style>
-                            <Style TargetType="Button">
-                                <Setter Property="IsEnabled" Value="True"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsSessionActive}" Value="True">
-                                        <Setter Property="IsEnabled" Value="False"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                    </Button>
-                    <Button Grid.Row="1" Grid.Column="9" x:Name="EndBatchButton" Content="结束测试" Width="100" Height="28" Margin="5,0" VerticalAlignment="Center"
-                            Command="{Binding EndBatchCommand}">
-                        <Button.Style>
-                            <Style TargetType="Button">
-                                <Setter Property="IsEnabled" Value="False"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsSessionActive}" Value="True">
+                        <!-- 项目名 -->
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" DockPanel.Dock="Left">
+                            <TextBlock Text="项目名：" Style="{StaticResource BatchHeaderStyle}" VerticalAlignment="Center" Padding="5,2"/>
+                            <TextBox x:Name="ProjectIdTextBox" MinWidth="120" Height="28" Margin="5,0,10,0" VerticalAlignment="Center" VerticalContentAlignment="Center"
+                                     Text="{Binding ProjectIdInput, UpdateSourceTrigger=PropertyChanged}">
+                                <TextBox.Style>
+                                    <Style TargetType="TextBox">
                                         <Setter Property="IsEnabled" Value="True"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                    </Button>
-                    <Button Grid.Row="1" Grid.Column="10" x:Name="ExportBatchButton" Content="导出" Width="80" Height="28" Margin="5,0" VerticalAlignment="Center"
-                            Command="{Binding ExportCommand}">
-                        <Button.Style>
-                            <Style TargetType="Button">
-                                <Setter Property="IsEnabled" Value="False"/>
-                                <Style.Triggers>
-                                    <DataTrigger Binding="{Binding IsSessionActive}" Value="False">
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsSessionActive}" Value="True">
+                                                <Setter Property="IsEnabled" Value="False"/>
+                                                <Setter Property="Background" Value="#E0E0E0"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBox.Style>
+                            </TextBox>
+                        </StackPanel>
+
+                        <!-- 订单号 -->
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" DockPanel.Dock="Left">
+                            <TextBlock Text="订单号：" Style="{StaticResource BatchHeaderStyle}" VerticalAlignment="Center" Padding="5,2"/>
+                            <TextBox x:Name="OrderIdTextBox" MinWidth="120" Height="28" Margin="5,0,10,0" VerticalAlignment="Center" VerticalContentAlignment="Center"
+                                     Text="{Binding OrderIdInput, UpdateSourceTrigger=PropertyChanged}">
+                                <TextBox.Style>
+                                    <Style TargetType="TextBox">
                                         <Setter Property="IsEnabled" Value="True"/>
-                                    </DataTrigger>
-                                </Style.Triggers>
-                            </Style>
-                        </Button.Style>
-                    </Button>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsSessionActive}" Value="True">
+                                                <Setter Property="IsEnabled" Value="False"/>
+                                                <Setter Property="Background" Value="#E0E0E0"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </TextBox.Style>
+                            </TextBox>
+                        </StackPanel>
+
+                        <!-- 检验类型（仅老产品显示） -->
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" DockPanel.Dock="Left">
+                            <TextBlock Text="检验类型：" Style="{StaticResource BatchHeaderStyle}" Margin="10,0,0,0" VerticalAlignment="Center" Padding="5,2"
+                                       Visibility="{Binding IsLegacyProduct, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                            <ComboBox x:Name="VerificationTypeComboBox" MinWidth="100" Height="28" Margin="5,0,10,0" VerticalAlignment="Center"
+                                      VerticalContentAlignment="Center"
+                                      ItemsSource="{Binding AvailableVerificationTypes}"
+                                      SelectedItem="{Binding CurrentVerificationType, Mode=TwoWay}"
+                                      Visibility="{Binding IsLegacyProduct, Converter={StaticResource BoolToVisibilityConverter}}">
+                                <ComboBox.Style>
+                                    <Style TargetType="ComboBox">
+                                        <Setter Property="IsEnabled" Value="True"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsVerificationTypeComboBoxEnabled}" Value="False">
+                                                <Setter Property="IsEnabled" Value="False"/>
+                                                <Setter Property="Background" Value="#E0E0E0"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </ComboBox.Style>
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding Converter={StaticResource VerificationTypeToDisplayConverter}}" VerticalAlignment="Center"/>
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                                <ComboBox.ItemContainerStyle>
+                                    <Style TargetType="ComboBoxItem">
+                                        <Setter Property="VerticalContentAlignment" Value="Center"/>
+                                    </Style>
+                                </ComboBox.ItemContainerStyle>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <!-- 操作按钮组 -->
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,0,0" DockPanel.Dock="Right">
+                            <Button x:Name="StartBatchButton" Content="开始测试" Width="100" Height="28" Margin="5,0" VerticalAlignment="Center"
+                                    Command="{Binding StartBatchCommand}">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="IsEnabled" Value="True"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsSessionActive}" Value="True">
+                                                <Setter Property="IsEnabled" Value="False"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <Button x:Name="EndBatchButton" Content="结束测试" Width="100" Height="28" Margin="5,0" VerticalAlignment="Center"
+                                    Command="{Binding EndBatchCommand}">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsSessionActive}" Value="True">
+                                                <Setter Property="IsEnabled" Value="True"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                            <Button x:Name="ExportBatchButton" Content="导出" Width="80" Height="28" Margin="5,0" VerticalAlignment="Center"
+                                    Command="{Binding ExportCommand}">
+                                <Button.Style>
+                                    <Style TargetType="Button">
+                                        <Setter Property="IsEnabled" Value="False"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsSessionActive}" Value="False">
+                                                <Setter Property="IsEnabled" Value="True"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Button.Style>
+                            </Button>
+                        </StackPanel>
+                    </DockPanel>
                 </Grid>
             </Border>
         </Grid>
@@ -525,7 +502,9 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- SN信息显示（扫码SN和设备SN，VerificationType==SnMatch 时显示） -->
+                    <!-- SN信息显示（VerificationType==SnMatch 时显示）
+                         - 非KM001：仅显示 扫码SN / 设备SN（居中，无空白占位）
+                         - KM001：显示 扫码SN / 设备SN / 芯片ID / MAC -->
                     <Border Grid.Row="3" 
                             Background="#F8F8F8" 
                             BorderBrush="#DDDDDD" 
@@ -537,68 +516,235 @@
                             Width="680"
                             Visibility="{Binding IsSnInfoVisible, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Grid>
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="*"/>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <!-- 扫码SN -->
-                            <StackPanel Grid.Column="0" Margin="0,0,16,0">
-                                <TextBlock Text="扫码SN" 
-                                           FontSize="12" 
-                                           FontWeight="Bold"
-                                           Foreground="#666666"
-                                           Margin="0,0,0,2"
-                                           HorizontalAlignment="Center"/>
-                                <TextBlock Text="{Binding CurrentSn}" 
-                                           FontSize="18" 
-                                           Foreground="#333333"
-                                           HorizontalAlignment="Center"
-                                           TextTrimming="CharacterEllipsis"
-                                           TextWrapping="NoWrap">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Text" Value="--"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding CurrentSn}" Value="">
-                                                    <Setter Property="Text" Value="--"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                            </StackPanel>
-                            <!-- 分隔线 -->
-                            <Rectangle Grid.Column="1" Width="1" 
-                                       Fill="#DDDDDD" 
-                                       VerticalAlignment="Stretch" 
-                                       Margin="0,2"/>
-                            <!-- 设备SN -->
-                            <StackPanel Grid.Column="2" Margin="16,0,0,0">
-                                <TextBlock Text="设备SN" 
-                                           FontSize="12" 
-                                           FontWeight="Bold"
-                                           Foreground="#666666"
-                                           Margin="0,0,0,2"
-                                           HorizontalAlignment="Center"/>
-                                <TextBlock Text="{Binding DeviceSN}" 
-                                           FontSize="18" 
-                                           Foreground="#333333"
-                                           HorizontalAlignment="Center"
-                                           TextTrimming="CharacterEllipsis"
-                                           TextWrapping="NoWrap">
-                                    <TextBlock.Style>
-                                        <Style TargetType="TextBlock">
-                                            <Setter Property="Text" Value="--"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding DeviceSN}" Value="">
-                                                    <Setter Property="Text" Value="--"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </TextBlock.Style>
-                                </TextBlock>
-                            </StackPanel>
+                            <!-- Grid A：通用项目类型（非KM001），仅显示 扫码SN / 设备SN -->
+                            <Grid>
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Visible"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsPhase3Product}" Value="True">
+                                                <Setter Property="Visibility" Value="Collapsed"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>    <!-- 扫码SN -->
+                                    <ColumnDefinition Width="Auto"/> <!-- 分隔线 -->
+                                    <ColumnDefinition Width="*"/>    <!-- 设备SN -->
+                                </Grid.ColumnDefinitions>
+
+                                <!-- 扫码SN -->
+                                <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                    <TextBlock Text="扫码SN" 
+                                               FontSize="12" 
+                                               FontWeight="Bold"
+                                               Foreground="#666666"
+                                               Margin="0,0,0,2"
+                                               HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding CurrentSn}" 
+                                               FontSize="18" 
+                                               Foreground="#333333"
+                                               HorizontalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"
+                                               TextWrapping="NoWrap">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="--"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding CurrentSn}" Value="">
+                                                        <Setter Property="Text" Value="--"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+
+                                <!-- 分隔线 -->
+                                <Rectangle Grid.Column="1" Width="1" 
+                                           Fill="#DDDDDD" 
+                                           VerticalAlignment="Stretch" 
+                                           Margin="0,2"/>
+
+                                <!-- 设备SN -->
+                                <StackPanel Grid.Column="2" Margin="16,0,0,0">
+                                    <TextBlock Text="设备SN" 
+                                               FontSize="12" 
+                                               FontWeight="Bold"
+                                               Foreground="#666666"
+                                               Margin="0,0,0,2"
+                                               HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding DeviceSN}" 
+                                               FontSize="18" 
+                                               Foreground="#333333"
+                                               HorizontalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"
+                                               TextWrapping="NoWrap">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="--"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding DeviceSN}" Value="">
+                                                        <Setter Property="Text" Value="--"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Grid>
+
+                            <!-- Grid B：KM001 项目类型（IsPhase3Product==true），显示 扫码SN / 设备SN / 芯片ID / MAC -->
+                            <Grid>
+                                <Grid.Style>
+                                    <Style TargetType="Grid">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                        <Style.Triggers>
+                                            <DataTrigger Binding="{Binding IsPhase3Product}" Value="True">
+                                                <Setter Property="Visibility" Value="Visible"/>
+                                            </DataTrigger>
+                                        </Style.Triggers>
+                                    </Style>
+                                </Grid.Style>
+
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>    <!-- 0: 扫码SN -->
+                                    <ColumnDefinition Width="Auto"/> <!-- 1: 分隔线 -->
+                                    <ColumnDefinition Width="*"/>    <!-- 2: 设备SN -->
+                                    <ColumnDefinition Width="Auto"/> <!-- 3: 分隔线 -->
+                                    <ColumnDefinition Width="*"/>    <!-- 4: 芯片ID -->
+                                    <ColumnDefinition Width="Auto"/> <!-- 5: 分隔线 -->
+                                    <ColumnDefinition Width="*"/>    <!-- 6: MAC地址 -->
+                                </Grid.ColumnDefinitions>
+
+                                <!-- 扫码SN -->
+                                <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                    <TextBlock Text="扫码SN" 
+                                               FontSize="12" 
+                                               FontWeight="Bold"
+                                               Foreground="#666666"
+                                               Margin="0,0,0,2"
+                                               HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding CurrentSn}" 
+                                               FontSize="18" 
+                                               Foreground="#333333"
+                                               HorizontalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"
+                                               TextWrapping="NoWrap">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="--"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding CurrentSn}" Value="">
+                                                        <Setter Property="Text" Value="--"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+
+                                <!-- 分隔线 -->
+                                <Rectangle Grid.Column="1" Width="1" 
+                                           Fill="#DDDDDD" 
+                                           VerticalAlignment="Stretch" 
+                                           Margin="0,2"/>
+
+                                <!-- 设备SN -->
+                                <StackPanel Grid.Column="2" Margin="16,0,0,0">
+                                    <TextBlock Text="设备SN" 
+                                               FontSize="12" 
+                                               FontWeight="Bold"
+                                               Foreground="#666666"
+                                               Margin="0,0,0,2"
+                                               HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding DeviceSN}" 
+                                               FontSize="18" 
+                                               Foreground="#333333"
+                                               HorizontalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"
+                                               TextWrapping="NoWrap">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="--"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding DeviceSN}" Value="">
+                                                        <Setter Property="Text" Value="--"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+
+                                <!-- 分隔线 -->
+                                <Rectangle Grid.Column="3" Width="1"
+                                           Fill="#DDDDDD"
+                                           VerticalAlignment="Stretch"
+                                           Margin="0,2"/>
+
+                                <!-- 芯片ID -->
+                                <StackPanel Grid.Column="4" Margin="16,0,0,0">
+                                    <TextBlock Text="芯片ID"
+                                               FontSize="12"
+                                               FontWeight="Bold"
+                                               Foreground="#666666"
+                                               Margin="0,0,0,2"
+                                               HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding CurrentDeviceInfo.ChipId}"
+                                               FontSize="18"
+                                               Foreground="#333333"
+                                               HorizontalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"
+                                               TextWrapping="NoWrap">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="--"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding CurrentDeviceInfo.ChipId}" Value="">
+                                                        <Setter Property="Text" Value="--"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+
+                                <!-- 分隔线 -->
+                                <Rectangle Grid.Column="5" Width="1"
+                                           Fill="#DDDDDD"
+                                           VerticalAlignment="Stretch"
+                                           Margin="0,2"/>
+
+                                <!-- MAC地址 -->
+                                <StackPanel Grid.Column="6" Margin="16,0,0,0">
+                                    <TextBlock Text="WiFi MAC"
+                                               FontSize="12"
+                                               FontWeight="Bold"
+                                               Foreground="#666666"
+                                               Margin="0,0,0,2"
+                                               HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding CurrentDeviceInfo.WifiMac}"
+                                               FontSize="18"
+                                               Foreground="#333333"
+                                               HorizontalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis"
+                                               TextWrapping="NoWrap">
+                                        <TextBlock.Style>
+                                            <Style TargetType="TextBlock">
+                                                <Setter Property="Text" Value="--"/>
+                                                <Style.Triggers>
+                                                    <DataTrigger Binding="{Binding CurrentDeviceInfo.WifiMac}" Value="">
+                                                        <Setter Property="Text" Value="--"/>
+                                                    </DataTrigger>
+                                                </Style.Triggers>
+                                            </Style>
+                                        </TextBlock.Style>
+                                    </TextBlock>
+                                </StackPanel>
+                            </Grid>
                         </Grid>
                     </Border>
 
@@ -657,81 +803,96 @@
                         </Grid>
                     </Border>
 
-                    <!-- Phase3：目标版本配置（KM001 使用） -->
-                    <GroupBox Grid.Row="4" Header="目标版本配置"
-                              Margin="0,8,0,4"
-                              Visibility="{Binding IsPhase3Product, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <Grid Margin="4">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
+                    <!-- Phase3：版本信息匹配对比（KM001 使用） -->
+                    <Grid Grid.Row="4" Margin="0,8,0,4"
+                          Visibility="{Binding IsPhase3Product, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <GroupBox Header="版本信息匹配对比">
+                            <Grid Margin="4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>  <!-- 目标版本标签 -->
+                                    <ColumnDefinition Width="*"/>     <!-- 目标版本输入 -->
+                                    <ColumnDefinition Width="Auto"/>  <!-- 中间分隔线 -->
+                                    <ColumnDefinition Width="Auto"/>  <!-- 设备版本标签 -->
+                                    <ColumnDefinition Width="*"/>     <!-- 设备版本值 -->
+                                </Grid.ColumnDefinitions>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>    <!-- Row0: Android -->
+                                    <RowDefinition Height="Auto"/>    <!-- Row1: 主板 -->
+                                    <RowDefinition Height="Auto"/>    <!-- Row2: 充电板 -->
+                                </Grid.RowDefinitions>
 
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding AndroidVersionLabel, StringFormat={}{0}：}" Margin="0,2,8,2" VerticalAlignment="Center"/>
-                            <TextBox Grid.Row="0" Grid.Column="1" Height="24" Margin="0,2,0,2"
-                                     Text="{Binding ExpectedAndroidVersion, UpdateSourceTrigger=PropertyChanged}"
-                                     IsEnabled="{Binding IsVersionInputEnabled}"/>
+                                <!-- 中间竖直分隔线，贯穿三行 -->
+                                <Rectangle Grid.Row="0" Grid.RowSpan="3" Grid.Column="2"
+                                           Width="1"
+                                           Fill="#DDDDDD"
+                                           Margin="12,2"
+                                           VerticalAlignment="Stretch"/>
 
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding BoardVersionLabel, StringFormat={}{0}：}" Margin="0,2,8,2" VerticalAlignment="Center"/>
-                            <TextBox Grid.Row="1" Grid.Column="1" Height="24" Margin="0,2,0,2"
-                                     Text="{Binding ExpectedBoardVersion, UpdateSourceTrigger=PropertyChanged}"
-                                     IsEnabled="{Binding IsVersionInputEnabled}"/>
+                                <!-- Row0: Android 版本 -->
+                                <!-- 目标Android版本 -->
+                                <TextBlock Grid.Row="0" Grid.Column="0"
+                                           Text="{Binding AndroidVersionLabel, StringFormat={}{0}：}"
+                                           Margin="0,2,8,2"
+                                           VerticalAlignment="Center"/>
+                                <TextBox Grid.Row="0" Grid.Column="1"
+                                         Height="24"
+                                         Margin="0,2,0,2"
+                                         Text="{Binding ExpectedAndroidVersion, UpdateSourceTrigger=PropertyChanged}"
+                                         IsEnabled="{Binding IsVersionInputEnabled}"/>
 
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="{Binding ChargeBoardVersionLabel, StringFormat={}{0}：}" Margin="0,2,8,2" VerticalAlignment="Center"/>
-                            <TextBox Grid.Row="2" Grid.Column="1" Height="24" Margin="0,2,0,2"
-                                     Text="{Binding ExpectedChargeBoardVersion, UpdateSourceTrigger=PropertyChanged}"
-                                     IsEnabled="{Binding IsVersionInputEnabled}"/>
-                        </Grid>
-                    </GroupBox>
+                                <!-- 设备Android版本 -->
+                                <TextBlock Grid.Row="0" Grid.Column="3"
+                                           Text="设备Android版本："
+                                           Margin="12,2,8,2"
+                                           VerticalAlignment="Center"/>
+                                <TextBlock Grid.Row="0" Grid.Column="4"
+                                           Margin="0,2,0,2"
+                                           Text="{Binding CurrentDeviceInfo.AndroidVersion}"/>
 
-                    <!-- Phase3：设备信息显示（KM001 使用） -->
-                    <GroupBox Grid.Row="5" Header="设备信息"
-                              Margin="0,4,0,4"
-                              Visibility="{Binding IsPhase3Product, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <Grid Margin="4">
-                            <Grid.ColumnDefinitions>
-                                <ColumnDefinition Width="Auto"/>
-                                <ColumnDefinition Width="*"/>
-                            </Grid.ColumnDefinitions>
-                            <Grid.RowDefinitions>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                                <RowDefinition Height="Auto"/>
-                            </Grid.RowDefinitions>
+                                <!-- Row1: 主板版本 -->
+                                <!-- 目标主板版本 -->
+                                <TextBlock Grid.Row="1" Grid.Column="0"
+                                           Text="{Binding BoardVersionLabel, StringFormat={}{0}：}"
+                                           Margin="0,2,8,2"
+                                           VerticalAlignment="Center"/>
+                                <TextBox Grid.Row="1" Grid.Column="1"
+                                         Height="24"
+                                         Margin="0,2,0,2"
+                                         Text="{Binding ExpectedBoardVersion, UpdateSourceTrigger=PropertyChanged}"
+                                         IsEnabled="{Binding IsVersionInputEnabled}"/>
 
-                            <TextBlock Grid.Row="0" Grid.Column="0" Text="{Binding DeviceSnLabel, StringFormat={}{0}：}" Margin="0,2,8,2" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Row="0" Grid.Column="1" Margin="0,2,0,2"
-                                       Text="{Binding CurrentDeviceInfo.DeviceSn}" />
+                                <!-- 设备主板版本 -->
+                                <TextBlock Grid.Row="1" Grid.Column="3"
+                                           Text="设备主板版本："
+                                           Margin="12,2,8,2"
+                                           VerticalAlignment="Center"/>
+                                <TextBlock Grid.Row="1" Grid.Column="4"
+                                           Margin="0,2,0,2"
+                                           Text="{Binding CurrentDeviceInfo.BoardVersion}"/>
 
-                            <TextBlock Grid.Row="1" Grid.Column="0" Text="{Binding ChipIdLabel, StringFormat={}{0}：}" Margin="0,2,8,2" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Row="1" Grid.Column="1" Margin="0,2,0,2"
-                                       Text="{Binding CurrentDeviceInfo.ChipId}" />
+                                <!-- Row2: 充电板版本 -->
+                                <!-- 目标充电板版本 -->
+                                <TextBlock Grid.Row="2" Grid.Column="0"
+                                           Text="{Binding ChargeBoardVersionLabel, StringFormat={}{0}：}"
+                                           Margin="0,2,8,2"
+                                           VerticalAlignment="Center"/>
+                                <TextBox Grid.Row="2" Grid.Column="1"
+                                         Height="24"
+                                         Margin="0,2,0,2"
+                                         Text="{Binding ExpectedChargeBoardVersion, UpdateSourceTrigger=PropertyChanged}"
+                                         IsEnabled="{Binding IsVersionInputEnabled}"/>
 
-                            <TextBlock Grid.Row="2" Grid.Column="0" Text="{Binding WifiMacLabel, StringFormat={}{0}：}" Margin="0,2,8,2" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Row="2" Grid.Column="1" Margin="0,2,0,2"
-                                       Text="{Binding CurrentDeviceInfo.WifiMac}" />
-
-                            <TextBlock Grid.Row="3" Grid.Column="0" Text="{Binding AndroidVersionLabel, StringFormat={}{0}：}" Margin="0,2,8,2" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Row="3" Grid.Column="1" Margin="0,2,0,2"
-                                       Text="{Binding CurrentDeviceInfo.AndroidVersion}" />
-
-                            <TextBlock Grid.Row="4" Grid.Column="0" Text="{Binding BoardVersionLabel, StringFormat={}{0}：}" Margin="0,2,8,2" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Row="4" Grid.Column="1" Margin="0,2,0,2"
-                                       Text="{Binding CurrentDeviceInfo.BoardVersion}" />
-
-                            <TextBlock Grid.Row="5" Grid.Column="0" Text="{Binding ChargeBoardVersionLabel, StringFormat={}{0}：}" Margin="0,2,8,2" VerticalAlignment="Center"/>
-                            <TextBlock Grid.Row="5" Grid.Column="1" Margin="0,2,0,2"
-                                       Text="{Binding CurrentDeviceInfo.ChargeBoardVersion}" />
-                        </Grid>
-                    </GroupBox>
+                                <!-- 设备充电板版本 -->
+                                <TextBlock Grid.Row="2" Grid.Column="3"
+                                           Text="设备充电板版本："
+                                           Margin="12,2,8,2"
+                                           VerticalAlignment="Center"/>
+                                <TextBlock Grid.Row="2" Grid.Column="4"
+                                           Margin="0,2,0,2"
+                                           Text="{Binding CurrentDeviceInfo.ChargeBoardVersion}"/>
+                            </Grid>
+                        </GroupBox>
+                    </Grid>
 
                     <!-- 失败原因显示（仅FAIL时显示，区域更紧凑） -->
                     <Grid Grid.Row="6" MinHeight="40" Margin="0,6,0,6">

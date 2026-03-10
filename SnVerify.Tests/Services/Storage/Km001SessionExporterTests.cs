@@ -37,7 +37,7 @@ namespace SnVerify.Tests.Services.Storage
         }
 
         [Test]
-        public async Task ExportAsync_With_Records_Writes_Summary_PASS_FAIL_Sheets()
+        public async Task ExportAsync_With_Records_Writes_PASS_FAIL_Sheets()
         {
             var sessionId = 100;
             var records = new List<TestRecord>
@@ -76,10 +76,7 @@ namespace SnVerify.Tests.Services.Storage
             using (var package = new ExcelPackage(new FileInfo(xlsxPath)))
             {
                 var summary = package.Workbook.Worksheets["Summary"];
-                Assert.That(summary, Is.Not.Null);
-                Assert.That(summary.Cells[2, 1].GetValue<int>(), Is.EqualTo(sessionId));
-                Assert.That(summary.Cells[2, 3].GetValue<int>(), Is.EqualTo(1));
-                Assert.That(summary.Cells[2, 4].GetValue<int>(), Is.EqualTo(1));
+                Assert.That(summary, Is.Null, "KM001 profile does not enable Summary sheet.");
 
                 var passSheet = package.Workbook.Worksheets["PASS"];
                 Assert.That(passSheet, Is.Not.Null);

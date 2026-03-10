@@ -24,7 +24,7 @@ namespace SnVerify.Tests.Infrastructure
             var registry = new ProductExportRegistry();
             var profile = registry.GetProfile("KM001");
             Assert.That(profile, Is.Not.Null);
-            Assert.That(profile.HasSummarySheet, Is.True);
+            Assert.That(profile.HasSummarySheet, Is.False);
         }
 
         [Test]
@@ -61,7 +61,7 @@ namespace SnVerify.Tests.Infrastructure
             var profile = registry.GetProfile("KM001");
             var expectedOrder = new[]
             {
-                ExportFieldId.Id,
+                ExportFieldId.RowNumber,
                 ExportFieldId.StickerSn,
                 ExportFieldId.DeviceSn,
                 ExportFieldId.WifiMac,
