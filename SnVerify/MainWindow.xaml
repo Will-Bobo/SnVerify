@@ -105,7 +105,7 @@
                         <!-- 项目类型（原 产品代码，仅改文案） -->
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" DockPanel.Dock="Left">
                             <TextBlock Text="项目类型：" Style="{StaticResource BatchHeaderStyle}" VerticalAlignment="Center" Padding="5,2"/>
-                            <ComboBox Height="28" Margin="5,0,10,0" VerticalAlignment="Center"
+                            <ComboBox Height="28" Width="120" Margin="5,0,10,0" VerticalAlignment="Center" VerticalContentAlignment="Center"
                                       ItemsSource="{Binding AvailableProducts}"
                                       SelectedItem="{Binding SelectedProductCode, Mode=TwoWay}">
                                 <ComboBox.Style>
@@ -513,7 +513,7 @@
                             Padding="10,4"
                             Margin="0,8,0,4"
                             HorizontalAlignment="Center"
-                            Width="680"
+                            Width="800"
                             Visibility="{Binding IsSnInfoVisible, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Grid>
                             <!-- Grid A：通用项目类型（非KM001），仅显示 扫码SN / 设备SN -->
@@ -837,6 +837,7 @@
                                 <TextBox Grid.Row="0" Grid.Column="1"
                                          Height="24"
                                          Margin="0,2,0,2"
+                                         VerticalContentAlignment="Center"
                                          Text="{Binding ExpectedAndroidVersion, UpdateSourceTrigger=PropertyChanged}"
                                          IsEnabled="{Binding IsVersionInputEnabled}"/>
 
@@ -846,6 +847,7 @@
                                            Margin="12,2,8,2"
                                            VerticalAlignment="Center"/>
                                 <TextBlock Grid.Row="0" Grid.Column="4"
+                                           VerticalAlignment="Center"
                                            Margin="0,2,0,2"
                                            Text="{Binding CurrentDeviceInfo.AndroidVersion}"/>
 
@@ -858,15 +860,17 @@
                                 <TextBox Grid.Row="1" Grid.Column="1"
                                          Height="24"
                                          Margin="0,2,0,2"
+                                         VerticalContentAlignment="Center"
                                          Text="{Binding ExpectedBoardVersion, UpdateSourceTrigger=PropertyChanged}"
                                          IsEnabled="{Binding IsVersionInputEnabled}"/>
 
                                 <!-- 设备主板版本 -->
                                 <TextBlock Grid.Row="1" Grid.Column="3"
-                                           Text="设备主板版本："
+                                           Text="设备芯片版本："
                                            Margin="12,2,8,2"
                                            VerticalAlignment="Center"/>
                                 <TextBlock Grid.Row="1" Grid.Column="4"
+                                           VerticalAlignment="Center"
                                            Margin="0,2,0,2"
                                            Text="{Binding CurrentDeviceInfo.BoardVersion}"/>
 
@@ -879,6 +883,7 @@
                                 <TextBox Grid.Row="2" Grid.Column="1"
                                          Height="24"
                                          Margin="0,2,0,2"
+                                         VerticalContentAlignment="Center"
                                          Text="{Binding ExpectedChargeBoardVersion, UpdateSourceTrigger=PropertyChanged}"
                                          IsEnabled="{Binding IsVersionInputEnabled}"/>
 
@@ -888,6 +893,7 @@
                                            Margin="12,2,8,2"
                                            VerticalAlignment="Center"/>
                                 <TextBlock Grid.Row="2" Grid.Column="4"
+                                           VerticalAlignment="Center"
                                            Margin="0,2,0,2"
                                            Text="{Binding CurrentDeviceInfo.ChargeBoardVersion}"/>
                             </Grid>

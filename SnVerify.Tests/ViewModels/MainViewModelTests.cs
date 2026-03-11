@@ -105,6 +105,7 @@ namespace SnVerify.Tests.ViewModels
             _versionVerificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
             _flowServiceFactoryMock.Setup(f => f.Create(It.IsAny<string>(), It.IsAny<string>())).Returns(_verificationFlowServiceMock.Object);
             _loggingServiceMock.Setup(m => m.Snapshot).Returns(LoggingSnapshot.Idle());
+            _storageServiceMock.Setup(s => s.ProjectNameExistsAsync(It.IsAny<string>())).ReturnsAsync(false);
 
             _viewModel = new MainViewModel(
                 _sessionLifecycleServiceMock.Object,
@@ -192,7 +193,7 @@ namespace SnVerify.Tests.ViewModels
                 .Setup(v => v.Validate(It.IsAny<string>(), out It.Ref<string>.IsAny))
                 .Returns(true);
             sessionLifecycleServiceMock
-                .Setup(s => s.CreateAndStartSession("ORDER001", "ORDER001", "KM001", "KM001"))
+                .Setup(s => s.CreateAndStartSession("ORDER001", "ORDER001", "PROJECT_KM001", "KM001"))
                 .Returns(createdSessionId);
             storageServiceMock
                 .Setup(s => s.GetInternalSessionIdBySessionNameAsync(createdSessionId))
@@ -219,7 +220,7 @@ namespace SnVerify.Tests.ViewModels
                 parameterServiceMock.Object);
 
             viewModel.SelectedProductCode = "KM001";
-            viewModel.ProjectIdInput = "";   // 触发用 SelectedProductCode 回填 ProjectId
+            viewModel.ProjectIdInput = "PROJECT_KM001";
             viewModel.OrderIdInput = "ORDER001";
             viewModel.ExpectedAndroidVersion = "A1";
             viewModel.ExpectedBoardVersion = "B1";
@@ -294,6 +295,130 @@ namespace SnVerify.Tests.ViewModels
             Assert.That(viewModel.ExpectedAndroidVersion, Is.EqualTo("1.0.5"));
             Assert.That(viewModel.ExpectedBoardVersion, Is.EqualTo("1.0.3"));
             Assert.That(viewModel.ExpectedChargeBoardVersion, Is.EqualTo("2.0.1"));
+        }
+
+        [Test]
+        public void Constructor_ShouldRestoreLastProjectIdAndLastOrderId_AndNotBeClearedByProductInitialization()
+        {
+            Settings.Default.LastProjectId = "PROJECT_LAST";
+            Settings.Default.LastOrderId = "ORDER_LAST";
+            Settings.Default.LastProductCode = "KM001";
+            Settings.Default.Save();
+
+            var sessionLifecycleServiceMock = new Mock<ISessionLifecycleService>();
+            var flowServiceFactoryMock = new Mock<IVerificationFlowServiceFactory>();
+            var verificationFlowServiceMock = new Mock<IVerificationFlowService>();
+            var versionVerificationFlowServiceMock = new Mock<IVersionVerificationFlowService>();
+            var loggingServiceMock = new Mock<ILoggingService>();
+            var storageServiceMock = new Mock<IStorageService>();
+            var adbAccessServiceMock = new Mock<IAdbAccessService>();
+            var exportAggregationServiceMock = new Mock<IExportAggregationService>();
+            var orderNameValidatorMock = new Mock<IOrderNameValidator>();
+            var dialogServiceMock = new Mock<IUserDialogService>();
+            var productRegistryMock = new Mock<IProductRegistry>();
+
+            sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Idle());
+            verificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
+            versionVerificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
+            flowServiceFactoryMock.Setup(f => f.Create(It.IsAny<string>(), It.IsAny<string>()))
+                .Returns(verificationFlowServiceMock.Object);
+            loggingServiceMock.Setup(m => m.Snapshot).Returns(LoggingSnapshot.Idle());
+            storageServiceMock.Setup(s => s.ProjectNameExistsAsync(It.IsAny<string>())).ReturnsAsync(false);
+
+            productRegistryMock.Setup(r => r.GetProductCodes()).Returns(new[] { "SOLTAG25", "KM001" });
+            productRegistryMock.Setup(r => r.Get("KM001")).Returns(new ProductProfile { ProductCode = "KM001", Mode = VerificationMode.Phase3 });
+            productRegistryMock.Setup(r => r.Get("SOLTAG25")).Returns(new ProductProfile { ProductCode = "SOLTAG25", Mode = VerificationMode.Legacy });
+
+            var viewModel = new MainViewModel(
+                sessionLifecycleServiceMock.Object,
+                flowServiceFactoryMock.Object,
+                loggingServiceMock.Object,
+                storageServiceMock.Object,
+                adbAccessServiceMock.Object,
+                exportAggregationServiceMock.Object,
+                orderNameValidatorMock.Object,
+                dialogServiceMock.Object,
+                versionVerificationFlowServiceMock.Object,
+                Path.GetTempPath(),
+                productRegistryMock.Object);
+
+            Assert.That(viewModel.ProjectIdInput, Is.EqualTo("PROJECT_LAST"));
+            Assert.That(viewModel.OrderIdInput, Is.EqualTo("ORDER_LAST"));
+        }
+
+        [Test]
+        public void Constructor_ShouldRestoreLastProjectIdAndLastOrderId_WhenProductOrderIsReversed()
+        {
+            Settings.Default.LastProjectId = "PROJECT_LAST";
+            Settings.Default.LastOrderId = "ORDER_LAST";
+            Settings.Default.LastProductCode = "SOLTAG25";
+            Settings.Default.Save();
+
+            var sessionLifecycleServiceMock = new Mock<ISessionLifecycleService>();
+            var flowServiceFactoryMock = new Mock<IVerificationFlowServiceFactory>();
+            var verificationFlowServiceMock = new Mock<IVerificationFlowService>();
+            var versionVerificationFlowServiceMock = new Mock<IVersionVerificationFlowService>();
+            var loggingServiceMock = new Mock<ILoggingService>();
+            var storageServiceMock = new Mock<IStorageService>();
+            var adbAccessServiceMock = new Mock<IAdbAccessService>();
+            var exportAggregationServiceMock = new Mock<IExportAggregationService>();
+            var orderNameValidatorMock = new Mock<IOrderNameValidator>();
+            var dialogServiceMock = new Mock<IUserDialogService>();
+            var productRegistryMock = new Mock<IProductRegistry>();
+
+            sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Idle());
+            verificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
+            versionVerificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
+            flowServiceFactoryMock.Setup(f => f.Create(It.IsAny<string>(), It.IsAny<string>()))
+                .Returns(verificationFlowServiceMock.Object);
+            loggingServiceMock.Setup(m => m.Snapshot).Returns(LoggingSnapshot.Idle());
+            storageServiceMock.Setup(s => s.ProjectNameExistsAsync(It.IsAny<string>())).ReturnsAsync(false);
+
+            // 产品顺序与上一个测试相反
+            productRegistryMock.Setup(r => r.GetProductCodes()).Returns(new[] { "KM001", "SOLTAG25" });
+            productRegistryMock.Setup(r => r.Get("KM001")).Returns(new ProductProfile { ProductCode = "KM001", Mode = VerificationMode.Phase3 });
+            productRegistryMock.Setup(r => r.Get("SOLTAG25")).Returns(new ProductProfile { ProductCode = "SOLTAG25", Mode = VerificationMode.Legacy });
+
+            var viewModel = new MainViewModel(
+                sessionLifecycleServiceMock.Object,
+                flowServiceFactoryMock.Object,
+                loggingServiceMock.Object,
+                storageServiceMock.Object,
+                adbAccessServiceMock.Object,
+                exportAggregationServiceMock.Object,
+                orderNameValidatorMock.Object,
+                dialogServiceMock.Object,
+                versionVerificationFlowServiceMock.Object,
+                Path.GetTempPath(),
+                productRegistryMock.Object);
+
+            Assert.That(viewModel.ProjectIdInput, Is.EqualTo("PROJECT_LAST"));
+            Assert.That(viewModel.OrderIdInput, Is.EqualTo("ORDER_LAST"));
+        }
+
+        [Test]
+        public async Task StartBatchAsync_ForPhase3Product_WhenProjectIdEmpty_ShouldWarn_AndNotAutoFillProjectIdInput()
+        {
+            // Arrange
+            var orderId = "ORDER001";
+            string validationMessage = null;
+            _productRegistryMock.Setup(r => r.GetProductCodes()).Returns(new[] { "KM001" });
+            _productRegistryMock.Setup(r => r.Get("KM001")).Returns(new ProductProfile { ProductCode = "KM001", Mode = VerificationMode.Phase3 });
+            _orderNameValidatorMock.Setup(v => v.Validate(orderId, out validationMessage)).Returns(true);
+
+            _viewModel.SelectedProductCode = "KM001";
+            _viewModel.ProjectIdInput = "";
+            _viewModel.OrderIdInput = orderId;
+            _viewModel.ExpectedAndroidVersion = "A1"; // 让 Phase3 目标版本校验通过，确保命中“项目名不能为空”分支
+
+            // Act
+            _viewModel.StartBatchCommand.Execute(null);
+            await Task.Delay(250);
+
+            // Assert
+            _dialogServiceMock.Verify(d => d.ShowWarning(It.Is<string>(s => s != null && s.Contains("项目名")), It.IsAny<string>()), Times.Once);
+            Assert.That(_viewModel.ProjectIdInput, Is.EqualTo("")); // 不应被自动填充为 KM001
+            _sessionLifecycleServiceMock.Verify(s => s.CreateAndStartSession(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
         }
 
         [Test]
@@ -981,6 +1106,146 @@ namespace SnVerify.Tests.ViewModels
             _sessionLifecycleServiceMock.Verify(s => s.CreateAndStartSession(orderId, orderId, projectId, It.IsAny<string>()), Times.Once);
             _flowServiceFactoryMock.Verify(f => f.Create(sessionId, orderId), Times.Once);
             _loggingServiceMock.Verify(l => l.StartSession(sessionId), Times.Once);
+        }
+
+        /// <summary>
+        /// Phase3 UI Guard：切换 ProductCode 时自动清空项目名与订单名。
+        /// </summary>
+        [Test]
+        public void SelectedProductCode_WhenChanged_ClearsProjectIdAndOrderId()
+        {
+            _productRegistryMock.Setup(r => r.GetProductCodes()).Returns(new[] { "A100", "B200" });
+            _productRegistryMock.Setup(r => r.Get("A100")).Returns(new ProductProfile { ProductCode = "A100", Mode = VerificationMode.Legacy });
+            _productRegistryMock.Setup(r => r.Get("B200")).Returns(new ProductProfile { ProductCode = "B200", Mode = VerificationMode.Legacy });
+            _viewModel = new MainViewModel(
+                _sessionLifecycleServiceMock.Object,
+                _flowServiceFactoryMock.Object,
+                _loggingServiceMock.Object,
+                _storageServiceMock.Object,
+                _adbAccessServiceMock.Object,
+                _exportAggregationServiceMock.Object,
+                _orderNameValidatorMock.Object,
+                _dialogServiceMock.Object,
+                _versionVerificationFlowServiceMock.Object,
+                Path.GetTempPath(),
+                _productRegistryMock.Object);
+
+            _viewModel.SelectedProductCode = "A100";
+            _viewModel.ProjectIdInput = "Proj1";
+            _viewModel.OrderIdInput = "Ord1";
+
+            _viewModel.SelectedProductCode = "B200";
+
+            Assert.That(_viewModel.ProjectIdInput, Is.EqualTo(""));
+            Assert.That(_viewModel.OrderIdInput, Is.EqualTo(""));
+        }
+
+        /// <summary>
+        /// Phase3 UI Guard：仅大小写不同视为未变化，不清空项目名/订单名。
+        /// </summary>
+        [Test]
+        public void SelectedProductCode_WhenChangedOnlyCase_DoesNotClearProjectIdAndOrderId()
+        {
+            _productRegistryMock.Setup(r => r.GetProductCodes()).Returns(new[] { "KM001" });
+            _productRegistryMock.Setup(r => r.Get("KM001")).Returns(new ProductProfile { ProductCode = "KM001", Mode = VerificationMode.Phase3 });
+            _viewModel = new MainViewModel(
+                _sessionLifecycleServiceMock.Object,
+                _flowServiceFactoryMock.Object,
+                _loggingServiceMock.Object,
+                _storageServiceMock.Object,
+                _adbAccessServiceMock.Object,
+                _exportAggregationServiceMock.Object,
+                _orderNameValidatorMock.Object,
+                _dialogServiceMock.Object,
+                _versionVerificationFlowServiceMock.Object,
+                Path.GetTempPath(),
+                _productRegistryMock.Object);
+
+            _viewModel.SelectedProductCode = "KM001";
+            _viewModel.ProjectIdInput = "Proj1";
+            _viewModel.OrderIdInput = "Ord1";
+
+            _viewModel.SelectedProductCode = "km001";
+
+            Assert.That(_viewModel.ProjectIdInput, Is.EqualTo("Proj1"));
+            Assert.That(_viewModel.OrderIdInput, Is.EqualTo("Ord1"));
+        }
+
+        /// <summary>
+        /// Phase3 UI Guard：项目名已存在且用户选择继续时，正常创建 Session。
+        /// </summary>
+        [Test]
+        public async Task StartBatch_WhenProjectNameExists_AndUserConfirms_ContinuesAndCreatesSession()
+        {
+            var projectId = "EXISTING_PROJECT";
+            var orderId = "ORDER001";
+            var sessionId = "ORDER001_20250126_143000";
+            string validationMessage = null;
+            _orderNameValidatorMock.Setup(v => v.Validate(orderId, out validationMessage)).Returns(true);
+            _storageServiceMock.Setup(s => s.ProjectNameExistsAsync(projectId)).ReturnsAsync(true);
+            _dialogServiceMock.Setup(d => d.Confirm(It.Is<string>(m => m != null && m.Contains("EXISTING_PROJECT")), It.IsAny<string>())).Returns(true);
+            _sessionLifecycleServiceMock
+                .Setup(s => s.CreateAndStartSession(orderId, orderId, projectId, It.IsAny<string>()))
+                .Returns(sessionId);
+            _sessionLifecycleServiceMock
+                .SetupSequence(s => s.Snapshot)
+                .Returns(SessionSnapshot.Idle())
+                .Returns(SessionSnapshot.Active(sessionId, orderId, DateTime.Now));
+            _flowServiceFactoryMock.Setup(f => f.Create(sessionId, orderId)).Returns(_verificationFlowServiceMock.Object);
+
+            _viewModel.ProjectIdInput = projectId;
+            _viewModel.OrderIdInput = orderId;
+            _viewModel.StartBatchCommand.Execute(null);
+            await WaitUntilAsync(() => _viewModel.SessionSnapshot.IsActive, timeoutMs: 2000);
+
+            _dialogServiceMock.Verify(d => d.Confirm(It.Is<string>(m => m != null && m.Contains("EXISTING_PROJECT")), It.IsAny<string>()), Times.Once);
+            _sessionLifecycleServiceMock.Verify(s => s.CreateAndStartSession(orderId, orderId, projectId, It.IsAny<string>()), Times.Once);
+        }
+
+        /// <summary>
+        /// Phase3 UI Guard：项目名已存在且用户取消时，不创建 Session。
+        /// </summary>
+        [Test]
+        public async Task StartBatch_WhenProjectNameExists_AndUserCancels_DoesNotCreateSession()
+        {
+            var projectId = "EXISTING_PROJECT";
+            var orderId = "ORDER001";
+            string validationMessage = null;
+            _orderNameValidatorMock.Setup(v => v.Validate(orderId, out validationMessage)).Returns(true);
+            _storageServiceMock.Setup(s => s.ProjectNameExistsAsync(projectId)).ReturnsAsync(true);
+            _dialogServiceMock.Setup(d => d.Confirm(It.IsAny<string>(), It.IsAny<string>())).Returns(false);
+
+            _viewModel.ProjectIdInput = projectId;
+            _viewModel.OrderIdInput = orderId;
+            _viewModel.StartBatchCommand.Execute(null);
+            await Task.Delay(300);
+
+            _dialogServiceMock.Verify(d => d.Confirm(It.Is<string>(m => m != null && m.Contains("EXISTING_PROJECT")), It.IsAny<string>()), Times.Once);
+            _sessionLifecycleServiceMock.Verify(s => s.CreateAndStartSession(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        /// <summary>
+        /// Session 激活时尝试切换 ProductCode 应被忽略：ProductCode 保持不变，项目名/订单名不被清空。
+        /// </summary>
+        [Test]
+        public void SelectedProductCode_WhenSessionActive_ShouldIgnoreChanges_AndNotClearProjectOrder()
+        {
+            // Arrange
+            _viewModel.SelectedProductCode = "SOLTAG25";
+            _viewModel.ProjectIdInput = "PROJECT1";
+            _viewModel.OrderIdInput = "ORDER1";
+
+            var sessionId = "ORDER1_20260310_100000";
+            var orderId = "ORDER1";
+            _viewModel.SessionSnapshot = SessionSnapshot.Active(sessionId, orderId, DateTime.Now);
+
+            // Act
+            _viewModel.SelectedProductCode = "KM001";
+
+            // Assert
+            Assert.That(_viewModel.SelectedProductCode, Is.EqualTo("SOLTAG25"));
+            Assert.That(_viewModel.ProjectIdInput, Is.EqualTo("PROJECT1"));
+            Assert.That(_viewModel.OrderIdInput, Is.EqualTo("ORDER1"));
         }
 
         [Test]

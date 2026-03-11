@@ -59,6 +59,11 @@ namespace SnVerify.Services.Ui
         bool ConfirmOverwrite(string message);
 
         /// <summary>
+        /// 通用确认对话框（是/否）；true 表示用户选择“是/继续”，false 表示“否/取消”。Phase3 UI Guard 项目名重复提示用。
+        /// </summary>
+        bool Confirm(string message, string title = null);
+
+        /// <summary>
         /// 信息提示。
         /// </summary>
         void ShowInfo(string message, string title = "提示");

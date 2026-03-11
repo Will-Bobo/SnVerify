@@ -91,6 +91,17 @@ namespace SnVerify.Ui
         }
 
         /// <inheritdoc />
+        public bool Confirm(string message, string title = null)
+        {
+            var result = MessageBox.Show(
+                message ?? "",
+                title ?? "确认",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+            return result == MessageBoxResult.Yes;
+        }
+
+        /// <inheritdoc />
         public void ShowInfo(string message, string title = "提示")
         {
             MessageBox.Show(message ?? "", title ?? "提示", MessageBoxButton.OK, MessageBoxImage.Information);

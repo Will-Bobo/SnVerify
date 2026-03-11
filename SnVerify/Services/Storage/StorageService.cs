@@ -914,6 +914,33 @@ CREATE TABLE VerificationParameter (
         }
 
         /// <summary>
+        /// 判断项目名（Product.ProductName）是否已存在；比较忽略大小写。
+        /// </summary>
+        public async Task<bool> ProjectNameExistsAsync(string projectName)
+        {
+            if (string.IsNullOrWhiteSpace(projectName))
+                return false;
+            EnsureConnectionInitialized();
+            var normalized = projectName.Trim();
+            const string sql = @"SELECT 1 FROM Product WHERE LOWER(TRIM(ProductName)) = LOWER(@ProjectName) LIMIT 1";
+            var exists = await Task.Run(() =>
+            {
+                lock (_lockObject)
+                {
+                    if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        return false;
+                    using (var cmd = new SQLiteCommand(sql, _connection))
+                    {
+                        cmd.Parameters.AddWithValue("@ProjectName", normalized);
+                        var o = cmd.ExecuteScalar();
+                        return o != null && o != DBNull.Value;
+                    }
+                }
+            });
+            return exists;
+        }
+
+        /// <summary>
         /// 创建测试会话记录，返回自增 Id。
         /// </summary>
         public async Task<int> CreateSessionAsync(TestSession session)

@@ -104,6 +104,23 @@ namespace SnVerify.Tests.Services
         }
 
         /// <summary>
+        /// Phase3 UI Guard：ProjectNameExistsAsync 按 ProductName 存在性、忽略大小写。
+        /// </summary>
+        [Test]
+        public async Task ProjectNameExistsAsync_ReturnsTrue_WhenProductNameExists_AndFalseOtherwise()
+        {
+            await _storage.InitializeAsync();
+            await _storage.CreateProductAsync(new Product { ProductName = "MyProject", CreatedAt = DateTime.Now });
+
+            Assert.That(await _storage.ProjectNameExistsAsync("MyProject"), Is.True);
+            Assert.That(await _storage.ProjectNameExistsAsync("myproject"), Is.True);
+            Assert.That(await _storage.ProjectNameExistsAsync("  MyProject  "), Is.True);
+            Assert.That(await _storage.ProjectNameExistsAsync("Other"), Is.False);
+            Assert.That(await _storage.ProjectNameExistsAsync(""), Is.False);
+            Assert.That(await _storage.ProjectNameExistsAsync(null), Is.False);
+        }
+
+        /// <summary>
         /// Phase3：ExpectedBoardVersion / ExpectedChargeBoardVersion 落库并读出。
         /// </summary>
         [Test]

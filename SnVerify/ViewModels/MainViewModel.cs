@@ -93,6 +93,10 @@ namespace SnVerify.ViewModels
         private bool _isLegacyProduct;
         private bool _isPhase3Product;
 
+        // 初始化 Scope 计数器：支持嵌套的初始化阶段检测（避免初始化期间触发 ProductCode 切换防呆逻辑）。
+        private int _initScopeCounter;
+        private bool IsInitialization => _initScopeCounter > 0;
+
         // SessionLock：用于防止“真实运行中的活动 Session”被 UI/外部代码误改关键输入。
         // 说明：单元测试中常直接设置 SessionSnapshot 为 Active，但 Mock 的 ISessionLifecycleService.GetCurrentSessionId 可能仍返回 null；
         // 为保持测试稳定且不影响真实运行，此处以 GetCurrentSessionId 是否存在作为“真实活动 Session”的辅助判定。
@@ -119,8 +123,11 @@ namespace SnVerify.ViewModels
 
                 if (!string.Equals(_selectedProductCode, value, StringComparison.OrdinalIgnoreCase))
                 {
+                    var oldCode = _selectedProductCode;
                     _selectedProductCode = value;
                     OnPropertyChanged();
+                    if (!IsSessionActive)
+                        OnProductCodeChanged(oldCode, value);
                     UpdateCurrentProductProfile();
                 }
             }
@@ -680,6 +687,34 @@ namespace SnVerify.ViewModels
         }
 
         /// <summary>
+        /// Phase3 UI Guard：ProductCode 变化时自动清空项目名与订单名，防呆无弹窗。
+        /// </summary>
+        private void OnProductCodeChanged(string oldCode, string newCode)
+        {
+            if (IsInitialization)
+                return;
+            if (string.Equals(oldCode, newCode, StringComparison.OrdinalIgnoreCase))
+                return;
+            ClearProjectOrder();
+        }
+
+        private void ClearProjectOrder()
+        {
+            ProjectIdInput = "";
+            OrderIdInput = "";
+        }
+
+        /// <summary>
+        /// Phase3 UI Guard：判断是否需要弹出“项目名已存在”友情提示。
+        /// </summary>
+        private async System.Threading.Tasks.Task<bool> ShouldWarnProjectAlreadyExistsAsync(string projectName)
+        {
+            if (string.IsNullOrWhiteSpace(projectName))
+                return false;
+            return await _storageService.ProjectNameExistsAsync(projectName.Trim()).ConfigureAwait(true);
+        }
+
+        /// <summary>
         /// 将检验区恢复到默认等待状态（结束测试时调用）。
         /// </summary>
         private void ResetVerificationUiToIdle()
@@ -690,6 +725,24 @@ namespace SnVerify.ViewModels
             OnPropertyChanged(nameof(LastVersionRecord));
             OnPropertyChanged(nameof(ActualDeviceVersionDisplay));
             ClearBatchError();
+        }
+
+        private sealed class InitializationScopeGuard : IDisposable
+        {
+            private readonly Action _onDispose;
+            private bool _disposed;
+
+            public InitializationScopeGuard(Action onDispose)
+            {
+                _onDispose = onDispose ?? throw new ArgumentNullException(nameof(onDispose));
+            }
+
+            public void Dispose()
+            {
+                if (_disposed) return;
+                _disposed = true;
+                _onDispose();
+            }
         }
 
         /// <summary>
@@ -791,13 +844,8 @@ namespace SnVerify.ViewModels
 
             // 从设置中读取上次选择的导出文件夹路径（不在 ViewModel 中做文件系统级验证，仅保存字符串）
             _lastExportFolder = Settings.Default.LastExportFolder;
-            // 从设置中读取上次使用的项目名、订单号，启动时回填到输入框
-            _projectIdInput = Settings.Default.LastProjectId ?? "";
-            _orderIdInput = Settings.Default.LastOrderId ?? "";
-
-            // Stage3 Step2：产品列表从 ProductRegistry 初始化（禁止硬编码）。
-            LoadAvailableProducts();
-            RestoreLastProductAndExpectedVersions();
+            
+            InitializeViewModel();
 
             // 规则 3/5/8：自检期间禁用 Start/End/导出；检验中也禁用 Start/End/导出（防止重复点击/并发操作）。
             StartBatchCommand = new RelayCommand(async () => await StartBatchAsync(), () => CanExecuteStartBatch());
@@ -810,6 +858,34 @@ namespace SnVerify.ViewModels
             StartVersionVerifyCommand = new RelayCommand(async () => await StartVersionVerifyAsync(), () => CanExecuteStartVersionVerify());
 
             _snapshotUpdateTimer = new Timer(UpdateSnapshots, null, TimeSpan.Zero, TimeSpan.FromMilliseconds(500));
+        }
+
+        private void InitializeViewModel()
+        {
+            using (BeginInitializationScope())
+            {
+                // Stage3 Step2：产品列表从 ProductRegistry 初始化（禁止硬编码）。
+                LoadAvailableProducts();
+                RestoreLastProductAndExpectedVersions();
+            }
+
+            RestoreProjectOrderFromSettings();
+        }
+
+        private IDisposable BeginInitializationScope()
+        {
+            _initScopeCounter++;
+            return new InitializationScopeGuard(() =>
+            {
+                _initScopeCounter = Math.Max(0, _initScopeCounter - 1);
+            });
+        }
+
+        private void RestoreProjectOrderFromSettings()
+        {
+            // 从设置中读取上次使用的项目名、订单号，启动时回填到输入框
+            _projectIdInput = Settings.Default.LastProjectId ?? "";
+            _orderIdInput = Settings.Default.LastOrderId ?? "";
         }
 
         private void LoadAvailableProducts()
@@ -1019,14 +1095,7 @@ namespace SnVerify.ViewModels
                 var orderId = string.IsNullOrWhiteSpace(OrderIdInput) ? null : OrderIdInput.Trim();
 
                 // Phase3：当为 Phase3 产品且 ProjectId 未填写时，自动使用 SelectedProductCode 作为 ProjectId，
-                // 确保 ParameterService 与 ProductRegistry 使用统一键（如 KM001）。
-                if (IsPhase3Product &&
-                    string.IsNullOrWhiteSpace(projectId) &&
-                    !string.IsNullOrWhiteSpace(SelectedProductCode))
-                {
-                    projectId = SelectedProductCode.Trim();
-                    ProjectIdInput = projectId;
-                }
+                // 注意：不再在 StartBatch 里自动回填 ProjectIdInput（避免项目名为空点击开始后，UI 被自动填充造成误导）。
 
                 // 项目/订单均为必填，且订单需要通过命名校验（与项目挂钩）
                 if (string.IsNullOrWhiteSpace(projectId) || string.IsNullOrWhiteSpace(orderId))
@@ -1063,6 +1132,14 @@ namespace SnVerify.ViewModels
                         _dialogService.ShowWarning("目标版本号不能为空，请查看输入（Android Version / Board Version / ChargeBoard Version）", "校验失败");
                         return;
                     }
+                }
+
+                // Phase3 UI Guard：项目名已存在时友情提示，由操作员决定是否继续
+                if (!string.IsNullOrWhiteSpace(projectId) && await ShouldWarnProjectAlreadyExistsAsync(projectId).ConfigureAwait(true))
+                {
+                    var msg = $"项目名 \"{projectId}\" 已经存在。\n继续使用可能导致不同项目数据混在一起。\n\n是否继续开始测试？";
+                    if (!_dialogService.Confirm(msg, "项目名重复提示"))
+                        return;
                 }
 
                 // 创建并开始 Session，并以 SessionName 启动会话日志

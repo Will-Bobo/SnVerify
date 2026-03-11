@@ -130,6 +130,13 @@ namespace SnVerify.Services.Storage
         Task<IReadOnlyList<string>> GetAllProjectIdsAsync();
 
         /// <summary>
+        /// 判断项目名（Product.ProductName）是否已存在；比较忽略大小写。Phase3 UI Guard 用。
+        /// </summary>
+        /// <param name="projectName">项目名（与 ProductName 语义一致）</param>
+        /// <returns>存在为 true，不存在或空参数为 false</returns>
+        Task<bool> ProjectNameExistsAsync(string projectName);
+
+        /// <summary>
         /// 创建测试会话记录，返回自增 Id。
         /// </summary>
         /// <param name="session">会话实体</param>
