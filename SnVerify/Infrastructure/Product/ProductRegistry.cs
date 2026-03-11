@@ -31,7 +31,7 @@ namespace SnVerify.Infrastructure.Product
                     new ProductProfile
                     {
                         ProductCode = "SOLTAG25",
-                        ProductName = "SOLTAG25",
+                        ProductDisplayName = "SOLTAG25",
                         Mode = VerificationMode.Legacy,
                         AdbConfig = new DeviceAdbConfig
                         {
@@ -73,7 +73,7 @@ namespace SnVerify.Infrastructure.Product
                     new ProductProfile
                     {
                         ProductCode = "KM001",
-                        ProductName = "KM001",
+                        ProductDisplayName = "KM001",
                         Mode = VerificationMode.Phase3,
                         AdbConfig = new DeviceAdbConfig
                         {

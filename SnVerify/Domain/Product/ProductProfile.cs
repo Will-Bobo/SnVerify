@@ -20,9 +20,10 @@ namespace SnVerify.Domain.Product
         public string ProductCode { get; set; }
 
         /// <summary>
-        /// 产品名称（用于 UI 展示/日志；可与 ProductCode 相同）。
+        /// 产品展示名称（用于 UI 展示/日志；可与 ProductCode 相同）。
+        /// 仅表示“产品类型的可读名称”，不参与批次唯一性判断。
         /// </summary>
-        public string ProductName { get; set; }
+        public string ProductDisplayName { get; set; }
 
         /// <summary>
         /// 校验模式（Legacy / Phase3）。

@@ -599,6 +599,63 @@ CREATE TABLE VerificationParameter (
         }
 
         /// <summary>
+        /// 检查给定贴纸 SN 是否在指定批次内已产生 PASS 记录（Phase3 批次维度唯一性检查）。
+        /// 批次键定义为 (ProjectName, OrderName, StickerSN)，其中 ProjectName = Product.ProductName，仅 Result='PASS' 的记录参与判断。
+        /// </summary>
+        public async Task<bool> IsStickerSnPassedInBatchAsync(string projectName, string orderId, string sn)
+        {
+            if (string.IsNullOrWhiteSpace(projectName))
+                throw new ArgumentException("ProjectName 不能为空", nameof(projectName));
+            if (string.IsNullOrWhiteSpace(orderId))
+                throw new ArgumentException("OrderId 不能为空", nameof(orderId));
+            if (string.IsNullOrWhiteSpace(sn))
+                throw new ArgumentException("SN 不能为空", nameof(sn));
+
+            EnsureConnectionInitialized();
+
+            try
+            {
+                const string sql = @"
+                    SELECT COUNT(1)
+                    FROM TestRecord r
+                    INNER JOIN TestSession s ON r.SessionId = s.Id
+                    INNER JOIN ""Order"" o ON s.OrderId = o.Id
+                    INNER JOIN Product p ON o.ProductId = p.Id
+                    WHERE o.OrderName = @OrderId
+                      AND p.ProductName = @ProjectName
+                      AND r.StickerSN = @StickerSN
+                      AND r.Result = 'PASS'";
+
+                var exists = await Task.Run(() =>
+                {
+                    lock (_lockObject)
+                    {
+                        if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        {
+                            throw new InvalidOperationException("数据库连接未初始化或已关闭");
+                        }
+
+                        using (var command = new SQLiteCommand(sql, _connection))
+                        {
+                            command.Parameters.AddWithValue("@OrderId", orderId);
+                            command.Parameters.AddWithValue("@ProjectName", projectName);
+                            command.Parameters.AddWithValue("@StickerSN", sn);
+                            var count = command.ExecuteScalar();
+                            return Convert.ToInt32(count) > 0;
+                        }
+                    }
+                });
+
+                return exists;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError($"检查批次内 StickerSN PASS 记录失败: {ex.Message}", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
         /// 检查给定 ChipId 是否在指定订单内已产生 PASS 记录（Order 维度唯一性检查）。
         /// OrderId 为业务订单名（OrderName）。
         /// </summary>
@@ -646,6 +703,63 @@ CREATE TABLE VerificationParameter (
             catch (Exception ex)
             {
                 _logger?.LogError($"检查订单内 ChipId PASS 记录失败: {ex.Message}", ex);
+                throw;
+            }
+        }
+
+        /// <summary>
+        /// 检查给定 ChipId 是否在指定批次内已产生 PASS 记录（Phase3 批次维度唯一性检查）。
+        /// 批次键定义为 (ProjectName, OrderName, ChipId)，其中 ProjectName = Product.ProductName，仅 Result='PASS' 的记录参与判断。
+        /// </summary>
+        public async Task<bool> IsChipIdPassedInBatchAsync(string projectName, string orderId, string chipId)
+        {
+            if (string.IsNullOrWhiteSpace(projectName))
+                throw new ArgumentException("ProjectName 不能为空", nameof(projectName));
+            if (string.IsNullOrWhiteSpace(orderId))
+                throw new ArgumentException("OrderId 不能为空", nameof(orderId));
+            if (string.IsNullOrWhiteSpace(chipId))
+                throw new ArgumentException("ChipId 不能为空", nameof(chipId));
+
+            EnsureConnectionInitialized();
+
+            try
+            {
+                const string sql = @"
+                    SELECT COUNT(1)
+                    FROM TestRecord r
+                    INNER JOIN TestSession s ON r.SessionId = s.Id
+                    INNER JOIN ""Order"" o ON s.OrderId = o.Id
+                    INNER JOIN Product p ON o.ProductId = p.Id
+                    WHERE o.OrderName = @OrderId
+                      AND p.ProductName = @ProjectName
+                      AND r.ChipId = @ChipId
+                      AND r.Result = 'PASS'";
+
+                var exists = await Task.Run(() =>
+                {
+                    lock (_lockObject)
+                    {
+                        if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        {
+                            throw new InvalidOperationException("数据库连接未初始化或已关闭");
+                        }
+
+                        using (var command = new SQLiteCommand(sql, _connection))
+                        {
+                            command.Parameters.AddWithValue("@OrderId", orderId);
+                            command.Parameters.AddWithValue("@ProjectName", projectName);
+                            command.Parameters.AddWithValue("@ChipId", chipId);
+                            var count = command.ExecuteScalar();
+                            return Convert.ToInt32(count) > 0;
+                        }
+                    }
+                });
+
+                return exists;
+            }
+            catch (Exception ex)
+            {
+                _logger?.LogError($"检查批次内 ChipId PASS 记录失败: {ex.Message}", ex);
                 throw;
             }
         }

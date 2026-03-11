@@ -57,12 +57,32 @@ namespace SnVerify.Services.Storage
         Task<bool> IsStickerSnPassedInOrderAsync(string orderId, string sn);
 
         /// <summary>
+        /// 检查给定贴纸 SN 是否在指定批次内已产生 PASS 记录（Phase3 批次维度唯一性检查）。
+        /// 批次键定义为 (ProjectName, OrderName, StickerSN)，其中 ProjectName = Product.ProductName，仅 Result='PASS' 的记录参与判断。
+        /// </summary>
+        /// <param name="projectName">项目/产品名称（与 Product.ProductName 一致）</param>
+        /// <param name="orderId">订单业务标识（等同于 OrderName）</param>
+        /// <param name="sn">贴纸 SN（StickerSN）</param>
+        /// <returns>若该批次内存在 Result='PASS' 的记录则返回 true，否则 false。</returns>
+        Task<bool> IsStickerSnPassedInBatchAsync(string projectName, string orderId, string sn);
+
+        /// <summary>
         /// 检查给定 ChipId 是否在指定订单内已产生 PASS 记录（Order 维度唯一性检查）。
         /// </summary>
         /// <param name="orderId">订单业务标识（等同于 OrderName）</param>
         /// <param name="chipId">芯片 ID（ChipId）</param>
         /// <returns>若该订单内存在 Result='PASS' 的记录则返回 true，否则 false。</returns>
         Task<bool> IsChipIdPassedInOrderAsync(string orderId, string chipId);
+
+        /// <summary>
+        /// 检查给定 ChipId 是否在指定批次内已产生 PASS 记录（Phase3 批次维度唯一性检查）。
+        /// 批次键定义为 (ProjectName, OrderName, ChipId)，其中 ProjectName = Product.ProductName，仅 Result='PASS' 的记录参与判断。
+        /// </summary>
+        /// <param name="projectName">项目/产品名称（与 Product.ProductName 一致）</param>
+        /// <param name="orderId">订单业务标识（等同于 OrderName）</param>
+        /// <param name="chipId">芯片 ID（ChipId）</param>
+        /// <returns>若该批次内存在 Result='PASS' 的记录则返回 true，否则 false。</returns>
+        Task<bool> IsChipIdPassedInBatchAsync(string projectName, string orderId, string chipId);
 
         // ---------- Phase 2.5 Step 6：Product / Order / TestSession / TestRecord ----------
 

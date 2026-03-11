@@ -35,7 +35,7 @@ namespace SnVerify.Tests.Services
             return new ProductProfile
             {
                 ProductCode = "KM001",
-                ProductName = "KM001",
+                ProductDisplayName = "KM001",
                 Mode = VerificationMode.Phase3,
                 AdbConfig = null,
                 EnableChipIdCheck = true,
@@ -82,11 +82,11 @@ namespace SnVerify.Tests.Services
             _loggerMock = new Mock<IFileLogger>();
 
             _storageMock
-                .Setup(s => s.IsStickerSnPassedInOrderAsync(It.IsAny<string>(), It.IsAny<string>()))
+                .Setup(s => s.IsStickerSnPassedInBatchAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
                 .ReturnsAsync(false);
 
             _storageMock
-                .Setup(s => s.IsChipIdPassedInOrderAsync(It.IsAny<string>(), It.IsAny<string>()))
+                .Setup(s => s.IsChipIdPassedInBatchAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
                 .ReturnsAsync(false);
 
             _deviceAccessMock
@@ -105,6 +105,7 @@ namespace SnVerify.Tests.Services
         {
             var profile = CreatePhase3Profile();
             var parameter = CreateParameter();
+            var projectName = "P_PHASE3";
 
             // Frozen Pipeline: ①Parameter → ②ADB → ③SN匹配 → ④SN历史PASS
             // 因此此用例必须提供可用的 ADB 读取结果，否则会提前在 ② 失败为 ADB_READ_FAIL。
@@ -113,10 +114,10 @@ namespace SnVerify.Tests.Services
                 .ReturnsAsync(CreateDeviceInfo(deviceSn: "SN001", chipId: "F501234"));
 
             _storageMock
-                .Setup(s => s.IsStickerSnPassedInOrderAsync(OrderId, "SN001"))
+                .Setup(s => s.IsStickerSnPassedInBatchAsync(projectName, OrderId, "SN001"))
                 .ReturnsAsync(true);
 
-            var result = await _executor.ExecuteAsync(profile, null, parameter, "SN001", OrderId);
+            var result = await _executor.ExecuteAsync(profile, null, parameter, "SN001", OrderId, projectName);
 
             Assert.That(result.Result, Is.EqualTo("FAIL"));
             Assert.That(result.FailReason, Is.EqualTo(RuleFailReasonCodes.SnDuplicate));
@@ -137,7 +138,7 @@ namespace SnVerify.Tests.Services
                 .Setup(a => a.ReadDeviceInfoAsync(It.IsAny<ProductProfile>()))
                 .ReturnsAsync((DeviceInfo)null);
 
-            var result = await _executor.ExecuteAsync(profile, null, parameter, "SN001", OrderId);
+            var result = await _executor.ExecuteAsync(profile, null, parameter, "SN001", OrderId, "P1");
 
             Assert.That(result.Result, Is.EqualTo("FAIL"));
             Assert.That(result.FailReason, Is.EqualTo(RuleFailReasonCodes.AdbReadFail));
@@ -154,7 +155,7 @@ namespace SnVerify.Tests.Services
                 .Setup(a => a.ReadDeviceInfoAsync(It.IsAny<ProductProfile>()))
                 .ThrowsAsync(new AggregateProtocolException("聚合协议错误：第二行字段不足6列"));
 
-            var result = await _executor.ExecuteAsync(profile, null, parameter, "SN001", OrderId);
+            var result = await _executor.ExecuteAsync(profile, null, parameter, "SN001", OrderId, "P1");
 
             Assert.That(result.Result, Is.EqualTo("FAIL"));
             Assert.That(result.FailReason, Is.EqualTo(RuleFailReasonCodes.AdbProtocolInvalid));
@@ -173,12 +174,12 @@ namespace SnVerify.Tests.Services
                 .Setup(a => a.ReadDeviceInfoAsync(It.IsAny<ProductProfile>()))
                 .ReturnsAsync(CreateDeviceInfo(deviceSn: "SN001", chipId: "X123"));
 
-            var result = await _executor.ExecuteAsync(profile, null, parameter, "SN001", OrderId);
+            var result = await _executor.ExecuteAsync(profile, null, parameter, "SN001", OrderId, "P1");
 
             Assert.That(result.Result, Is.EqualTo("FAIL"));
             Assert.That(result.FailReason, Is.EqualTo(RuleFailReasonCodes.ChipIdInvalid));
 
-            _storageMock.Verify(s => s.IsChipIdPassedInOrderAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            _storageMock.Verify(s => s.IsChipIdPassedInBatchAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
             _storageMock.Verify(s => s.SaveTestRecordAsync(It.IsAny<TestRecord>()), Times.Never);
         }
 
@@ -192,11 +193,12 @@ namespace SnVerify.Tests.Services
                 .Setup(a => a.ReadDeviceInfoAsync(It.IsAny<ProductProfile>()))
                 .ReturnsAsync(CreateDeviceInfo(deviceSn: "SN001", chipId: "F501234"));
 
+            var projectName = "P_PHASE3";
             _storageMock
-                .Setup(s => s.IsChipIdPassedInOrderAsync(OrderId, "F501234"))
+                .Setup(s => s.IsChipIdPassedInBatchAsync(projectName, OrderId, "F501234"))
                 .ReturnsAsync(true);
 
-            var result = await _executor.ExecuteAsync(profile, null, parameter, "SN001", OrderId);
+            var result = await _executor.ExecuteAsync(profile, null, parameter, "SN001", OrderId, projectName);
 
             Assert.That(result.Result, Is.EqualTo("FAIL"));
             Assert.That(result.FailReason, Is.EqualTo(RuleFailReasonCodes.ChipIdDuplicate));
@@ -217,7 +219,7 @@ namespace SnVerify.Tests.Services
                 .Setup(v => v.VerifyAsync(It.IsAny<DeviceInfo>(), It.IsAny<VerificationParameter>(), default))
                 .ReturnsAsync((false, RuleFailReasonCodes.AndroidVersionMismatch));
 
-            var result = await _executor.ExecuteAsync(profile, null, parameter, "SN001", OrderId);
+            var result = await _executor.ExecuteAsync(profile, null, parameter, "SN001", OrderId, "P1");
 
             Assert.That(result.Result, Is.EqualTo("FAIL"));
             Assert.That(result.FailReason, Is.EqualTo(RuleFailReasonCodes.AndroidVersionMismatch));
@@ -234,7 +236,7 @@ namespace SnVerify.Tests.Services
                 .Setup(a => a.ReadDeviceInfoAsync(It.IsAny<ProductProfile>()))
                 .ReturnsAsync(CreateDeviceInfo(deviceSn: "SN001", chipId: "F501234"));
 
-            var result = await _executor.ExecuteAsync(profile, null, parameter, "SN001", OrderId);
+            var result = await _executor.ExecuteAsync(profile, null, parameter, "SN001", OrderId, "P1");
 
             Assert.That(result.Result, Is.EqualTo("PASS"));
             Assert.That(result.FailReason, Is.Null);
@@ -247,7 +249,7 @@ namespace SnVerify.Tests.Services
         {
             var profile = CreatePhase3Profile();
 
-            var result = await _executor.ExecuteAsync(profile, null, parameter: null, stickerSn: "SN001", orderId: OrderId);
+            var result = await _executor.ExecuteAsync(profile, null, parameter: null, stickerSn: "SN001", orderId: OrderId, projectName: "P1");
 
             Assert.That(result.Result, Is.EqualTo("FAIL"));
             Assert.That(result.FailReason, Is.EqualTo(RuleFailReasonCodes.ParameterNotConfigured));

@@ -1962,7 +1962,7 @@ namespace SnVerify.Tests.ViewModels
                 var phase3Profile = new ProductProfile
                 {
                     ProductCode = "KM001",
-                    ProductName = "KM001",
+                    ProductDisplayName = "KM001",
                     Mode = VerificationMode.Phase3
                 };
                 _productRegistryMock.Setup(r => r.GetProductCodes()).Returns(new[] { "KM001" });

@@ -117,11 +117,11 @@ namespace SnVerify.Tests.Services
                 .ReturnsAsync(CreateDeviceInfo(sn: StickerSn, chipId: ChipId, android: "A1"));
 
             _storageMock
-                .Setup(x => x.IsStickerSnPassedInOrderAsync(OrderId, StickerSn))
+                .Setup(x => x.IsStickerSnPassedInBatchAsync(It.IsAny<string>(), OrderId, StickerSn))
                 .ReturnsAsync(false);
 
             _storageMock
-                .Setup(x => x.IsChipIdPassedInOrderAsync(OrderId, ChipId))
+                .Setup(x => x.IsChipIdPassedInBatchAsync(It.IsAny<string>(), OrderId, ChipId))
                 .ReturnsAsync(false);
 
             // Act
@@ -158,7 +158,7 @@ namespace SnVerify.Tests.Services
                 .ReturnsAsync(CreateDeviceInfo(sn: "OTHER_SN", chipId: ChipId, android: "A1"));
 
             _storageMock
-                .Setup(x => x.IsStickerSnPassedInOrderAsync(OrderId, StickerSn))
+                .Setup(x => x.IsStickerSnPassedInBatchAsync(It.IsAny<string>(), OrderId, StickerSn))
                 .ReturnsAsync(false);
 
             // Act
@@ -189,7 +189,7 @@ namespace SnVerify.Tests.Services
                 .ReturnsAsync(CreateDeviceInfo(sn: StickerSn, chipId: "X123", android: "A1"));
 
             _storageMock
-                .Setup(x => x.IsStickerSnPassedInOrderAsync(OrderId, StickerSn))
+                .Setup(x => x.IsStickerSnPassedInBatchAsync(It.IsAny<string>(), OrderId, StickerSn))
                 .ReturnsAsync(false);
 
             // Act
@@ -201,7 +201,7 @@ namespace SnVerify.Tests.Services
             Assert.That(snapshot.FailReason, Is.EqualTo("CHIPID_INVALID"));
 
             _storageMock.Verify(
-                x => x.IsChipIdPassedInOrderAsync(It.IsAny<string>(), It.IsAny<string>()),
+                x => x.IsChipIdPassedInBatchAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()),
                 Times.Never,
                 "ChipId 格式非法时不应执行唯一性查询");
         }
@@ -219,11 +219,11 @@ namespace SnVerify.Tests.Services
                 .ReturnsAsync(CreateDeviceInfo(sn: StickerSn, chipId: ChipId, android: "A1"));
 
             _storageMock
-                .Setup(x => x.IsStickerSnPassedInOrderAsync(OrderId, StickerSn))
+                .Setup(x => x.IsStickerSnPassedInBatchAsync(It.IsAny<string>(), OrderId, StickerSn))
                 .ReturnsAsync(false);
 
             _storageMock
-                .Setup(x => x.IsChipIdPassedInOrderAsync(OrderId, ChipId))
+                .Setup(x => x.IsChipIdPassedInBatchAsync(It.IsAny<string>(), OrderId, ChipId))
                 .ReturnsAsync(true);
 
             // Act
@@ -248,11 +248,11 @@ namespace SnVerify.Tests.Services
                 .ReturnsAsync(CreateDeviceInfo(sn: StickerSn, chipId: ChipId, android: "A2"));
 
             _storageMock
-                .Setup(x => x.IsStickerSnPassedInOrderAsync(OrderId, StickerSn))
+                .Setup(x => x.IsStickerSnPassedInBatchAsync(It.IsAny<string>(), OrderId, StickerSn))
                 .ReturnsAsync(false);
 
             _storageMock
-                .Setup(x => x.IsChipIdPassedInOrderAsync(OrderId, ChipId))
+                .Setup(x => x.IsChipIdPassedInBatchAsync(It.IsAny<string>(), OrderId, ChipId))
                 .ReturnsAsync(false);
 
             // Act
@@ -277,7 +277,7 @@ namespace SnVerify.Tests.Services
                 .ReturnsAsync((DeviceInfo)null);
 
             _storageMock
-                .Setup(x => x.IsStickerSnPassedInOrderAsync(OrderId, StickerSn))
+                .Setup(x => x.IsStickerSnPassedInBatchAsync(It.IsAny<string>(), OrderId, StickerSn))
                 .ReturnsAsync(false);
 
             // Act
@@ -326,11 +326,11 @@ namespace SnVerify.Tests.Services
                 .ReturnsAsync(deviceInfo);
 
             _storageMock
-                .Setup(x => x.IsStickerSnPassedInOrderAsync(OrderId, StickerSn))
+                .Setup(x => x.IsStickerSnPassedInBatchAsync(It.IsAny<string>(), OrderId, StickerSn))
                 .ReturnsAsync(false);
 
             _storageMock
-                .Setup(x => x.IsChipIdPassedInOrderAsync(OrderId, ChipId))
+                .Setup(x => x.IsChipIdPassedInBatchAsync(It.IsAny<string>(), OrderId, ChipId))
                 .ReturnsAsync(false);
 
             // Act
@@ -377,11 +377,11 @@ namespace SnVerify.Tests.Services
                 .ReturnsAsync(deviceInfo);
 
             _storageMock
-                .Setup(x => x.IsStickerSnPassedInOrderAsync(OrderId, StickerSn))
+                .Setup(x => x.IsStickerSnPassedInBatchAsync(It.IsAny<string>(), OrderId, StickerSn))
                 .ReturnsAsync(false);
 
             _storageMock
-                .Setup(x => x.IsChipIdPassedInOrderAsync(OrderId, ChipId))
+                .Setup(x => x.IsChipIdPassedInBatchAsync(It.IsAny<string>(), OrderId, ChipId))
                 .ReturnsAsync(false);
 
             // Act

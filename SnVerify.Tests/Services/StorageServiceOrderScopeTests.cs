@@ -91,6 +91,52 @@ namespace SnVerify.Tests.Services
         }
 
         [Test]
+        public async Task IsStickerSnPassedInBatchAsync_UsesProjectNameAndOrderNameAsBatchKey()
+        {
+            await _storage.InitializeAsync();
+
+            // 创建两个产品/订单：PA-ORDER_A 与 PB-ORDER_A（同订单名，不同 ProjectName）
+            var productA = await _storage.CreateProductAsync(new Product { ProductName = "PA", CreatedAt = DateTime.Now });
+            var productB = await _storage.CreateProductAsync(new Product { ProductName = "PB", CreatedAt = DateTime.Now });
+
+            var orderIdA1 = await _storage.CreateOrderAsync(new Order { ProductId = productA, OrderName = "ORDER_A", CreatedAt = DateTime.Now });
+            var orderIdA2 = await _storage.CreateOrderAsync(new Order { ProductId = productB, OrderName = "ORDER_A", CreatedAt = DateTime.Now });
+
+            var sessionA1 = await _storage.CreateSessionAsync(new TestSession { OrderId = orderIdA1, SessionName = "A_ORDER_A_1", StartTime = DateTime.Now });
+            var sessionA2 = await _storage.CreateSessionAsync(new TestSession { OrderId = orderIdA2, SessionName = "B_ORDER_A_1", StartTime = DateTime.Now });
+
+            // 在 Batch (A, ORDER_A) 中 SN1 为 PASS
+            await _storage.SaveTestRecordAsync(new TestRecord
+            {
+                SessionId = sessionA1,
+                StickerSN = "SN1",
+                DeviceSN = "DEV1",
+                Result = "PASS",
+                VerifyTime = DateTime.Now
+            });
+
+            // 在 Batch (B, ORDER_A) 中 SN1 为 PASS（不同 ProductCode，同订单名）
+            await _storage.SaveTestRecordAsync(new TestRecord
+            {
+                SessionId = sessionA2,
+                StickerSN = "SN1",
+                DeviceSN = "DEV2",
+                Result = "PASS",
+                VerifyTime = DateTime.Now
+            });
+
+            var inBatchA_SN1 = await _storage.IsStickerSnPassedInBatchAsync("PA", "ORDER_A", "SN1");
+            var inBatchB_SN1 = await _storage.IsStickerSnPassedInBatchAsync("PB", "ORDER_A", "SN1");
+
+            Assert.That(inBatchA_SN1, Is.True, "Batch (A, ORDER_A) 中 SN1 为 PASS，应返回 true");
+            Assert.That(inBatchB_SN1, Is.True, "Batch (B, ORDER_A) 中 SN1 为 PASS，应返回 true");
+
+            // 在 Batch (A, ORDER_A) 中 SN2 没有 PASS 记录
+            var inBatchA_SN2 = await _storage.IsStickerSnPassedInBatchAsync("PA", "ORDER_A", "SN2");
+            Assert.That(inBatchA_SN2, Is.False, "Batch (PA, ORDER_A) 中 SN2 无 PASS 记录，应返回 false");
+        }
+
+        [Test]
         public async Task IsChipIdPassedInOrderAsync_ReturnsTrueOnlyForPassRecordsInSameOrder()
         {
             await _storage.InitializeAsync();
@@ -141,6 +187,52 @@ namespace SnVerify.Tests.Services
             Assert.That(inOrderCA_F501, Is.True, "ORDER_CA 中 F501 为 PASS，应返回 true");
             Assert.That(inOrderCA_F502, Is.False, "ORDER_CA 中 F502 仅有 FAIL，应返回 false");
             Assert.That(inOrderCB_F501, Is.True, "ORDER_CB 中 F501 为 PASS，应返回 true");
+        }
+
+        [Test]
+        public async Task IsChipIdPassedInBatchAsync_UsesProjectNameAndOrderNameAsBatchKey()
+        {
+            await _storage.InitializeAsync();
+
+            // ProductName PA / PB 分别代表两个项目
+            var productA = await _storage.CreateProductAsync(new Product { ProductName = "PA", CreatedAt = DateTime.Now });
+            var productB = await _storage.CreateProductAsync(new Product { ProductName = "PB", CreatedAt = DateTime.Now });
+
+            var orderIdA = await _storage.CreateOrderAsync(new Order { ProductId = productA, OrderName = "ORDER_X", CreatedAt = DateTime.Now });
+            var orderIdB = await _storage.CreateOrderAsync(new Order { ProductId = productB, OrderName = "ORDER_X", CreatedAt = DateTime.Now });
+
+            var sessionA = await _storage.CreateSessionAsync(new TestSession { OrderId = orderIdA, SessionName = "PA_ORDER_X_1", StartTime = DateTime.Now });
+            var sessionB = await _storage.CreateSessionAsync(new TestSession { OrderId = orderIdB, SessionName = "PB_ORDER_X_1", StartTime = DateTime.Now });
+
+            // Batch (PA, ORDER_X) 中 Chip F501 为 PASS
+            await _storage.SaveTestRecordAsync(new TestRecord
+            {
+                SessionId = sessionA,
+                StickerSN = "SN_A1",
+                DeviceSN = "DEV_A1",
+                ChipId = "F501",
+                Result = "PASS",
+                VerifyTime = DateTime.Now
+            });
+
+            // Batch (PB, ORDER_X) 中 Chip F501 再次 PASS（不同 ProjectName，同一订单名）
+            await _storage.SaveTestRecordAsync(new TestRecord
+            {
+                SessionId = sessionB,
+                StickerSN = "SN_B1",
+                DeviceSN = "DEV_B1",
+                ChipId = "F501",
+                Result = "PASS",
+                VerifyTime = DateTime.Now
+            });
+
+            var inBatchA_F501 = await _storage.IsChipIdPassedInBatchAsync("PA", "ORDER_X", "F501");
+            var inBatchB_F501 = await _storage.IsChipIdPassedInBatchAsync("PB", "ORDER_X", "F501");
+            var inBatchA_F502 = await _storage.IsChipIdPassedInBatchAsync("PA", "ORDER_X", "F502");
+
+            Assert.That(inBatchA_F501, Is.True, "Batch (PA, ORDER_X) 中 F501 为 PASS，应返回 true");
+            Assert.That(inBatchB_F501, Is.True, "Batch (PB, ORDER_X) 中 F501 为 PASS，应返回 true");
+            Assert.That(inBatchA_F502, Is.False, "Batch (PA, ORDER_X) 中 F502 无 PASS 记录，应返回 false");
         }
 
         /// <summary>

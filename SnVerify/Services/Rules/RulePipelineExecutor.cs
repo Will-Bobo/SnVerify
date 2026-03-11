@@ -45,11 +45,13 @@ namespace SnVerify.Services.Rules
             DeviceInfo deviceInfo,
             VerificationParameter parameter,
             string stickerSn,
-            string orderId)
+            string orderId,
+            string projectName)
         {
             if (profile == null) throw new ArgumentNullException(nameof(profile));
             if (string.IsNullOrWhiteSpace(stickerSn)) throw new ArgumentException("stickerSn 不能为空", nameof(stickerSn));
             if (string.IsNullOrWhiteSpace(orderId)) throw new ArgumentException("orderId 不能为空", nameof(orderId));
+            if (string.IsNullOrWhiteSpace(projectName)) throw new ArgumentException("projectName 不能为空", nameof(projectName));
 
             // ① Parameter 非空检查（最优先，Fail Fast，禁止访问 ADB）
             if (parameter == null)
@@ -100,8 +102,9 @@ namespace SnVerify.Services.Rules
                 return RuleExecutionResult.Fail(failReason, di);
             }
 
-            // ④ SN 历史 PASS 检查（Order 维度）
-            var snExists = await _storageService.IsStickerSnPassedInOrderAsync(orderId, sticker).ConfigureAwait(false);
+            // ④ SN 历史 PASS 检查（Phase3 批次维度：ProjectName + OrderName + StickerSN）
+            // 此处的 ProjectName 为当前 Session 对应的项目个体名（Storage 中 Product.ProductName），由调用方提供。
+            var snExists = await _storageService.IsStickerSnPassedInBatchAsync(projectName, orderId, sticker).ConfigureAwait(false);
             if (snExists)
             {
                 const string failReason = RuleFailReasonCodes.SnDuplicate;
@@ -116,8 +119,9 @@ namespace SnVerify.Services.Rules
                 return RuleExecutionResult.Fail(failReason, di);
             }
 
-            // ⑥ ChipId 订单唯一检查（PASS 记录）
-            var chipExists = await _storageService.IsChipIdPassedInOrderAsync(orderId, chipIdValue).ConfigureAwait(false);
+            // ⑥ ChipId 批次唯一检查（Phase3：ProjectName + OrderName 维度，PASS 记录）
+            // 使用与 SN 相同的 ProjectName 维度。
+            var chipExists = await _storageService.IsChipIdPassedInBatchAsync(projectName, orderId, chipIdValue).ConfigureAwait(false);
             if (chipExists)
             {
                 const string failReason = RuleFailReasonCodes.ChipIdDuplicate;

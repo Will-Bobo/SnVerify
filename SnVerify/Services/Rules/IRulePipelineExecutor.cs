@@ -24,12 +24,17 @@ namespace SnVerify.Services.Rules
         /// <param name="parameter">版本参数（Expected*）；为 null 时返回 PARAMETER_NOT_CONFIGURED。</param>
         /// <param name="stickerSn">扫码 SN（StickerSN）。</param>
         /// <param name="orderId">订单业务标识（OrderName）。</param>
+        /// <param name="projectName">
+        /// 批次项目名（ProjectName），用于 SN/ChipId 唯一性检查。
+        /// 语义为当前 Session 对应的项目个体名（Storage 中 Product.ProductName），而非 ProductProfile 的展示名。
+        /// </param>
         Task<RuleExecutionResult> ExecuteAsync(
             ProductProfile profile,
             DeviceInfo deviceInfo,
             VerificationParameter parameter,
             string stickerSn,
-            string orderId);
+            string orderId,
+            string projectName);
     }
 }
 

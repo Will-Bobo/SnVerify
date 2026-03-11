@@ -346,7 +346,7 @@ namespace SnVerify.Services.Coordination
                 return;
             }
 
-            _loggingService?.LogInfo($"[Phase3] 校验开始，项目={projectId}, 订单={_orderId}, SN={sn}");
+            _loggingService?.LogInfo($"校验开始，项目={projectId}, 订单={_orderId}, SN={sn}");
 
             try
             {
@@ -363,11 +363,21 @@ namespace SnVerify.Services.Coordination
                 var productProfile = _productRegistry.GetProductProfile(projectId);
                 if (productProfile == null)
                 {
-                    const string failReason = "PRODUCT_PROFILE_NOT_FOUND";
-                    _loggingService?.LogInfo($"[Phase3] 未找到产品 Profile: productCode={projectId}");
-                    await SavePhase3ResultAsync(sn.Trim(), "FAIL", failReason, null, parameter).ConfigureAwait(false);
-                    UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", failReason, _sessionId, null));
+                    const string reason = "PRODUCT_PROFILE_NOT_FOUND";
+                    _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {sn.Trim()}, 设备SN: N/A] , 错误结果: 未找到产品配置: {projectId}");
+                    await SavePhase3ResultAsync(sn.Trim(), "FAIL", reason, null, parameter).ConfigureAwait(false);
+                    UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", reason, _sessionId, null));
                     return;
+                }
+
+                // 从当前 SessionName 映射出项目个体名（ProjectName），用于 SN/ChipId 批次唯一性。
+                var projectName = await _storageService
+                    .GetProductNameBySessionNameAsync(_sessionId)
+                    .ConfigureAwait(false);
+                if (string.IsNullOrWhiteSpace(projectName))
+                {
+                    // 兼容性考虑：若历史数据缺失项目名，则回退为使用 ProductProfile 的展示名或代码，避免直接抛异常中断生产。
+                    projectName = productProfile.ProductDisplayName ?? productProfile.ProductCode ?? _orderId;
                 }
 
                 var executor = _rulePipelineExecutor ?? (_deviceAccessService != null
@@ -379,20 +389,38 @@ namespace SnVerify.Services.Coordination
                     : throw new InvalidOperationException("Phase3 需要注入 IRulePipelineExecutor 或 IDeviceAccessService"));
 
                 var execResult = await executor
-                    .ExecuteAsync(productProfile, deviceInfo: null, parameter, stickerSn: sn, orderId: _orderId)
+                    .ExecuteAsync(productProfile, deviceInfo: null, parameter, stickerSn: sn, orderId: _orderId, projectName: projectName)
                     .ConfigureAwait(false);
 
                 var deviceInfo = execResult?.DeviceInfo;
                 var deviceSN = deviceInfo?.DeviceSn?.Trim() ?? execResult?.DeviceSn?.Trim();
-                await SavePhase3ResultAsync(sn.Trim(), execResult?.Result ?? "FAIL", execResult?.FailReason, execResult?.DeviceInfo, parameter).ConfigureAwait(false);
-                UpdateSnapshot(VerificationSnapshot.Completed(sn.Trim(), execResult?.Result ?? "FAIL", execResult?.FailReason, _sessionId, deviceSN, deviceInfo));
+                var result = execResult?.Result ?? "FAIL";
+                var finalReason = execResult?.FailReason;
+
+                await SavePhase3ResultAsync(sn.Trim(), result, finalReason, execResult?.DeviceInfo, parameter).ConfigureAwait(false);
+
+                // 将最终结果写入日志：PASS/FAIL + 错误文案（若有），不使用错误码。
+                if (string.Equals(result, "PASS", StringComparison.OrdinalIgnoreCase))
+                {
+                    _loggingService?.LogInfo(
+                        $"检验结果 [PASS] , [扫码枪SN: {sn.Trim()}, 设备SN: {deviceSN}] , 成功结果");
+                }
+                else
+                {
+                    var reasonText = string.IsNullOrWhiteSpace(finalReason) ? "未知错误" : finalReason;
+                    _loggingService?.LogInfo(
+                        $"检验结果 [FAIL] , [扫码枪SN: {sn.Trim()}, 设备SN: {deviceSN}] , 错误结果: {reasonText}");
+                }
+
+                UpdateSnapshot(VerificationSnapshot.Completed(sn.Trim(), result, finalReason, _sessionId, deviceSN, deviceInfo));
             }
             catch (Exception ex)
             {
-                var failReason = $"EXCEPTION: {ex.Message}";
-                await SavePhase3ResultAsync(sn.Trim(), "FAIL", failReason, null, null).ConfigureAwait(false);
-                _loggingService?.LogInfo($"[Phase3] 校验异常: {ex.Message}");
-                UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", failReason, _sessionId, null));
+                var exceptionReason = $"EXCEPTION: {ex.Message}";
+                await SavePhase3ResultAsync(sn.Trim(), "FAIL", exceptionReason, null, null).ConfigureAwait(false);
+                _loggingService?.LogInfo(
+                    $"检验结果 [FAIL] , [扫码枪SN: {sn.Trim()}, 设备SN: N/A] , 错误结果: {exceptionReason}");
+                UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", exceptionReason, _sessionId, null));
             }
         }
 
