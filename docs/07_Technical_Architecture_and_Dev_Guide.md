@@ -150,6 +150,8 @@ Snapshot 对象（`VerificationSnapshot`、`SessionSnapshot`、`LoggingSnapshot`
   - `SessionId`：外键 → `TestSession.Id`。
   - `StickerSN`：贴纸/扫码 SN（SN 校验时为真实 SN；版本校验时为 `"-"`）。
   - `DeviceSN`：设备 SN（ADB 读出）。
+  - `WifiMac` / `ChipId` / `BoardVersion` / `ChargeBoardVersion`：Phase3 设备扩展字段（ADB 读出）。
+  - `ExpectedBoardVersion` / `ExpectedChargeBoardVersion`：Phase3 主板/充电板目标版本（写录时从 VerificationParameter 固化，便于审计与导出）。
   - `Result`：`"PASS"` / `"FAIL"` / `"TIMEOUT"` 等。
   - `FailReason`：失败原因。
   - `VerifyTime`：本次检验时间。
@@ -183,7 +185,7 @@ Snapshot 对象（`VerificationSnapshot`、`SessionSnapshot`、`LoggingSnapshot`
 - `ExportRecordFilter` 作为数据过滤入口，可以区分：
   - SN 校验记录（`StickerSN != "-"`）。
   - 版本校验记录（`StickerSN == "-"`）。
-- **按 ProductCode 的导出策略（Phase3 已落地）**：`ExportAggregationService` 对每个 Session 通过 `GetProductCodeBySessionIdAsync` 得到 ProductCode，经 `ISessionExporterFactory.GetExporter(productCode)` 选择 Exporter（如 Legacy、KM001），构造 `ExportContext`（SessionId、SessionName、OutputDirectory、Filter 等）后调用 `ISessionExporter.ExportAsync(context)`；扩展新产品只需新增 Exporter 实现并在工厂注册。
+- **按 ProductCode 的导出策略（Phase3 已落地）**：`ExportAggregationService` 对每个 Session 通过 `GetProductCodeBySessionIdAsync` 得到 ProductCode，经 `ISessionExporterFactory.GetExporter(productCode)` 选择 Exporter（如 Legacy、Km001SessionExporter）；KM001 使用 **Km001SessionExporter**，列定义由 `IProductExportRegistry`（ProductExportProfile）与 `IExportValueResolver` 配置化提供，表头文案来自 Resources（Export_Km001_*、Export_Summary_*）；构造 `ExportContext` 后调用 `ISessionExporter.ExportAsync(context)`；扩展新产品可新增 Exporter 实现并在工厂注册，或为新产品在 ProductExportRegistry 中注册配置。
 - 聚合层基于各 Session 的导出结果生成 Excel，并聚合 Session 日志文件打 ZIP 包。
 
 ---

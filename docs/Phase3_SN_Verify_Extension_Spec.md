@@ -284,17 +284,25 @@ CHIPID_EMPTY
 
 核心方法：
 
-ProcessScanAsync(stickerSn)
+ProcessScanAsync(stickerSn, projectId)
 
-流程：
+入口链路：
 
-1 读取 DeviceInfo
-2 SN匹配
-3 SN唯一
-4 ChipId格式校验
-5 ChipId唯一
-6 Version校验
-7 保存记录
+ScanInput
+ → MainViewModel.HandleScanInputAsync
+ → IVerificationFlowService.StartPhase3VerificationAsync(sn, projectId)
+ → ProcessCoordinator.ProcessScanAsync(sn, projectId)
+
+流程（Frozen Pipeline）：
+
+1 Parameter 非空检查
+2 ADB 读取 DeviceInfo
+3 SN 匹配（StickerSN == DeviceSN）
+4 SN 唯一（订单维度，PASS 历史）
+5 ChipId 格式校验（F50 开头）
+6 ChipId 唯一（订单维度，PASS 历史）
+7 Version 校验（三版本强校验服务）
+8 保存记录（含 WifiMac / ChipId / 多版本字段）
 十一、Cursor Agent 实现步骤
 
 Cursor需要执行以下修改：

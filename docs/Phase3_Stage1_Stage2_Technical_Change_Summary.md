@@ -179,3 +179,30 @@ Coordinator 不再包含任何版本比较或 Profile 构造逻辑，仅做调�
 
 **文档版本**：v1.0  
 **适用阶段**：Phase3 Stage1 + Stage2 代码评审。
+
+---
+
+## 六、KM001 聚合命令增补（2026-03）
+
+> 本增补用于记录 KM001 在 Phase3 下的设备信息读取方式收敛，不改变既有流程骨架。
+
+- KM001 `AdbConfig` 已切换为 **aggregate-only**：
+  - `AggregateCommand.Command = "shell dumpsys window getmcuversion"`
+  - `AggregateCommand.ParserKey = ParserKeys.Aggregate.Km001McuVersion`
+  - `BootstrapCommandSpecs = null`
+  - `Commands = null`
+- 新增 `Km001McuVersionAggregateParser`，协议映射为：
+  - 第2行第1列 -> `ChargeBoardVersion`
+  - 第2行第2列 -> `BoardVersion`
+  - 第2行第3列 -> `ChipId`
+  - 第2行第4列 -> `AndroidVersion`
+  - 第2行第5列 -> `DeviceSn`
+  - 第2行第6列 -> `WifiMac`
+- 协议规则：
+  - 先做换行标准化（`\r\n` -> `\n`）再分行；
+  - 少于两行或第二行列数小于6时，视为协议错误；
+  - 列数大于6时仅使用前6列。
+- 失败语义区分：
+  - 无输出/未读到 SN -> `ADB_READ_FAIL`
+  - 协议不符（解析异常）-> `ADB_PROTOCOL_INVALID`
+- SN 比对保持 `StringComparison.Ordinal`，严格大小写一致。
