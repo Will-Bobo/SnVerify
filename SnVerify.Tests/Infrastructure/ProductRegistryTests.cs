@@ -88,12 +88,26 @@ namespace SnVerify.Tests.Infrastructure
         }
 
         [Test]
+        public void Km008_Profile_ShouldUseKm008Parser_AndDisableChipBoardChecks()
+        {
+            var profile = ProductRegistry.Get("KM008");
+            Assert.That(profile, Is.Not.Null);
+            Assert.That(profile.Mode, Is.EqualTo(VerificationMode.Phase3));
+            Assert.That(profile.EnableChipIdCheck, Is.False);
+            Assert.That(profile.EnableBoardVersionCheck, Is.False);
+            Assert.That(profile.EnableWifiMacCheck, Is.True);
+            Assert.That(profile.AdbConfig.AggregateCommand.ParserKey, Is.EqualTo(ParserKeys.Aggregate.Km008AndroidVersion));
+            Assert.That(profile.AdbConfig.AggregateCommand.Command, Is.EqualTo("shell dumpsys window getmcuversion"));
+        }
+
+        [Test]
         public void GetProductCodes_ShouldContainAllRegisteredCodes()
         {
             var codes = ProductRegistry.GetProductCodes();
 
             Assert.That(codes, Does.Contain("SOLTAG25"));
             Assert.That(codes, Does.Contain("KM001"));
+            Assert.That(codes, Does.Contain("KM008"));
         }
     }
 }

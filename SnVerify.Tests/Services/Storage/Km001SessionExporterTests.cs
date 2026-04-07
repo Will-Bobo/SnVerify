@@ -9,6 +9,7 @@ using OfficeOpenXml;
 using SnVerify.Domain.Export;
 using SnVerify.Domain.Models;
 using SnVerify.Infrastructure.Export;
+using SnVerify.Infrastructure.Product;
 using SnVerify.Services.Storage;
 using SnVerify.Services.Storage.Export;
 
@@ -59,13 +60,14 @@ namespace SnVerify.Tests.Services.Storage
 
             var registry = new ProductExportRegistry();
             var resolver = new DefaultExportValueResolver();
-            var exporter = new Km001SessionExporter(storageMock.Object, registry, resolver);
+            var exporter = new Km001SessionExporter(storageMock.Object, registry, resolver, new ProductRegistryAdapter());
 
             var context = new ExportContext
             {
                 SessionId = sessionId,
                 SessionName = "TestSession",
-                OutputDirectory = _outputDir
+                OutputDirectory = _outputDir,
+                ProductCode = "KM001"
             };
 
             await exporter.ExportAsync(context);
@@ -102,8 +104,8 @@ namespace SnVerify.Tests.Services.Storage
                 .ReturnsAsync(new List<TestRecord>());
 
             var registry = new ProductExportRegistry();
-            var exporter = new Km001SessionExporter(storageMock.Object, registry, new DefaultExportValueResolver());
-            var context = new ExportContext { SessionId = 99, OutputDirectory = _outputDir };
+            var exporter = new Km001SessionExporter(storageMock.Object, registry, new DefaultExportValueResolver(), new ProductRegistryAdapter());
+            var context = new ExportContext { SessionId = 99, OutputDirectory = _outputDir, ProductCode = "KM001" };
 
             await exporter.ExportAsync(context);
 
@@ -114,7 +116,7 @@ namespace SnVerify.Tests.Services.Storage
         public void ExportAsync_NullContext_Throws()
         {
             var storageMock = new Mock<IStorageService>(MockBehavior.Loose);
-            var exporter = new Km001SessionExporter(storageMock.Object, new ProductExportRegistry(), new DefaultExportValueResolver());
+            var exporter = new Km001SessionExporter(storageMock.Object, new ProductExportRegistry(), new DefaultExportValueResolver(), new ProductRegistryAdapter());
             Assert.ThrowsAsync<ArgumentNullException>(async () => await exporter.ExportAsync(null));
         }
 
@@ -122,9 +124,43 @@ namespace SnVerify.Tests.Services.Storage
         public void ExportAsync_Empty_OutputDirectory_Throws()
         {
             var storageMock = new Mock<IStorageService>(MockBehavior.Loose);
-            var exporter = new Km001SessionExporter(storageMock.Object, new ProductExportRegistry(), new DefaultExportValueResolver());
-            var context = new ExportContext { SessionId = 1, OutputDirectory = "" };
+            var exporter = new Km001SessionExporter(storageMock.Object, new ProductExportRegistry(), new DefaultExportValueResolver(), new ProductRegistryAdapter());
+            var context = new ExportContext { SessionId = 1, OutputDirectory = "", ProductCode = "KM001" };
             Assert.ThrowsAsync<ArgumentException>(async () => await exporter.ExportAsync(context));
+        }
+
+        [Test]
+        public void ExportAsync_When_ProductCodeMissing_ShouldThrow()
+        {
+            var storageMock = new Mock<IStorageService>(MockBehavior.Loose);
+            var exporter = new Km001SessionExporter(storageMock.Object, new ProductExportRegistry(), new DefaultExportValueResolver(), new ProductRegistryAdapter());
+            var ex = Assert.ThrowsAsync<InvalidOperationException>(async () => await exporter.ExportAsync(new ExportContext
+            {
+                SessionId = 1,
+                OutputDirectory = _outputDir,
+                ProductCode = null
+            }));
+            Assert.That(ex.Message, Does.Contain("ProductCode"));
+        }
+
+        [Test]
+        public async Task ExportAsync_When_Km008_WithRecords_ShouldWrite_9_Columns()
+        {
+            var sessionId = 200;
+            var records = new List<TestRecord>
+            {
+                new TestRecord { Id = 1, StickerSN = "S", DeviceSN = "D", Result = "PASS", VerifyTime = DateTime.Now }
+            };
+            var storageMock = new Mock<IStorageService>();
+            storageMock.Setup(s => s.GetTestRecordsBySessionAsync(sessionId)).ReturnsAsync(records);
+            var exporter = new Km001SessionExporter(storageMock.Object, new ProductExportRegistry(), new DefaultExportValueResolver(), new ProductRegistryAdapter());
+            await exporter.ExportAsync(new ExportContext { SessionId = sessionId, OutputDirectory = _outputDir, ProductCode = "KM008" });
+            var path = Path.Combine(_outputDir, $"{sessionId}.xlsx");
+            Assert.That(File.Exists(path), Is.True);
+            using (var package = new ExcelPackage(new FileInfo(path)))
+            {
+                Assert.That(package.Workbook.Worksheets["PASS"].Dimension?.Columns, Is.EqualTo(9));
+            }
         }
     }
 }

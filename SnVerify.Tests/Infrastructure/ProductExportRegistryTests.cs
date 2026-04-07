@@ -55,6 +55,27 @@ namespace SnVerify.Tests.Infrastructure
         }
 
         [Test]
+        public void GetProfile_KM008_ShouldNotContain_ChipAndBoardAndCharge_Columns()
+        {
+            var registry = new ProductExportRegistry();
+            var km008 = registry.GetProfile("KM008");
+            Assert.That(km008, Is.Not.Null);
+            Assert.That(km008.RecordColumns, Is.Not.Null);
+
+            // KM008 只导出：RowNumber/StickerSn/DeviceSn/WifiMac/Result/ErrorDetail/VerificationTime/ExpectedVersion/ActualVersion
+            Assert.That(km008.RecordColumns.Count, Is.EqualTo(9));
+
+            var fieldIds = new ExportFieldId[km008.RecordColumns.Count];
+            for (int i = 0; i < km008.RecordColumns.Count; i++)
+                fieldIds[i] = km008.RecordColumns[i].FieldId;
+            Assert.That(fieldIds, Does.Not.Contain(ExportFieldId.ChipId));
+            Assert.That(fieldIds, Does.Not.Contain(ExportFieldId.ExpectedBoardVersion));
+            Assert.That(fieldIds, Does.Not.Contain(ExportFieldId.ActualBoardVersion));
+            Assert.That(fieldIds, Does.Not.Contain(ExportFieldId.ExpectedChargeBoardVersion));
+            Assert.That(fieldIds, Does.Not.Contain(ExportFieldId.ActualChargeBoardVersion));
+        }
+
+        [Test]
         public void KM001_RecordColumns_Order_Matches_ExportFieldId_Sequence()
         {
             var registry = new ProductExportRegistry();

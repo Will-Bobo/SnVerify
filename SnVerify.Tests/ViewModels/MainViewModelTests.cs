@@ -270,7 +270,9 @@ namespace SnVerify.Tests.ViewModels
             productRegistryMock.Setup(r => r.Get("KM001")).Returns(new ProductProfile
             {
                 ProductCode = "KM001",
-                Mode = VerificationMode.Phase3
+                Mode = VerificationMode.Phase3,
+                EnableBoardVersionCheck = true,
+                EnableChargeBoardVersionCheck = true
             });
             productRegistryMock.Setup(r => r.Get("SOLTAG25")).Returns(new ProductProfile
             {

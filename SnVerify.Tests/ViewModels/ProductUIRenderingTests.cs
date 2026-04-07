@@ -66,7 +66,7 @@ namespace SnVerify.Tests.ViewModels
             var mock = new Mock<IProductRegistry>();
 
             mock.Setup(r => r.GetProductCodes())
-                .Returns(new List<string> { "SOLTAG25", "KM001" });
+                .Returns(new List<string> { "SOLTAG25", "KM001", "KM008" });
 
             mock.Setup(r => r.Get("SOLTAG25"))
                 .Returns(new ProductProfile
@@ -83,7 +83,24 @@ namespace SnVerify.Tests.ViewModels
                     ProductCode = "KM001",
                     ProductDisplayName = "KM001",
                     Mode = VerificationMode.Phase3,
-                    AdbConfig = null
+                    AdbConfig = null,
+                    EnableChipIdCheck = true,
+                    EnableBoardVersionCheck = true,
+                    EnableChargeBoardVersionCheck = true,
+                    EnableWifiMacCheck = true
+                });
+
+            mock.Setup(r => r.Get("KM008"))
+                .Returns(new ProductProfile
+                {
+                    ProductCode = "KM008",
+                    ProductDisplayName = "KM008",
+                    Mode = VerificationMode.Phase3,
+                    AdbConfig = null,
+                    EnableChipIdCheck = false,
+                    EnableBoardVersionCheck = false,
+                    EnableChargeBoardVersionCheck = false,
+                    EnableWifiMacCheck = true
                 });
 
             mock.Setup(r => r.GetProductProfile(It.IsAny<string>()))
@@ -105,6 +122,15 @@ namespace SnVerify.Tests.ViewModels
             vm.SelectedProductCode = "KM001";
             Assert.That(vm.IsLegacyProduct, Is.False);
             Assert.That(vm.IsPhase3Product, Is.True);
+            Assert.That(vm.ShowChipIdColumn, Is.True);
+            Assert.That(vm.ShowBoardVersion, Is.True);
+
+            vm.SelectedProductCode = "KM008";
+            Assert.That(vm.IsPhase3Product, Is.True);
+            Assert.That(vm.ShowChipIdColumn, Is.False);
+            Assert.That(vm.ShowBoardVersion, Is.False);
+            Assert.That(vm.ShowChargeVersion, Is.False);
+            Assert.That(vm.ShowWifiMac, Is.True);
         }
 
         [Test]

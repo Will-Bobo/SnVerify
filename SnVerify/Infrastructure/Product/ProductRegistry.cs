@@ -99,6 +99,35 @@ namespace SnVerify.Infrastructure.Product
                         EnableBoardVersionCheck = true,
                         EnableChargeBoardVersionCheck = true
                     }
+                },
+                {
+                    "KM008",
+                    new ProductProfile
+                    {
+                        ProductCode = "KM008",
+                        ProductDisplayName = "KM008",
+                        Mode = VerificationMode.Phase3,
+                        AdbConfig = new DeviceAdbConfig
+                        {
+                            BootstrapCommandSpecs = null,
+                            AggregateCommand = new AggregateDeviceInfoCommand
+                            {
+                                Command = "shell dumpsys window getmcuversion",
+                                ParserKey = ParserKeys.Aggregate.Km008AndroidVersion
+                            },
+                            Commands = null
+                        },
+                        FieldLabels = new Dictionary<DeviceInfoField, string>
+                        {
+                            { DeviceInfoField.DeviceSn, GetResource("Label_DeviceSn", "设备SN") },
+                            { DeviceInfoField.AndroidVersion, GetResource("Label_AndroidVersionNo", "Android版本号") },
+                            { DeviceInfoField.WifiMac, GetResource("Label_MacAddress", "MAC地址") }
+                        },
+                        EnableChipIdCheck = false,
+                        EnableWifiMacCheck = true,
+                        EnableBoardVersionCheck = false,
+                        EnableChargeBoardVersionCheck = false
+                    }
                 }
             };
 

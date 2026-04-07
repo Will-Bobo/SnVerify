@@ -12,6 +12,7 @@ using System.Threading.Tasks;
 using SnVerify.Domain.Export;
 using SnVerify.Domain.Models;
 using SnVerify.Infrastructure.Export;
+using SnVerify.Infrastructure.Product;
 using SnVerify.Services.Logging;
 using SnVerify.Services.Storage.Export;
 
@@ -39,7 +40,7 @@ namespace SnVerify.Services.Storage
             _storage = storage ?? throw new ArgumentNullException(nameof(storage));
             _logger = logger ?? new NullFileLogger();
             _loggingService = loggingService;
-            _exporterFactory = exporterFactory ?? new SessionExporterFactory(storage, new ProductExportRegistry(), new DefaultExportValueResolver());
+            _exporterFactory = exporterFactory ?? new SessionExporterFactory(storage, new ProductExportRegistry(), new DefaultExportValueResolver(), new ProductRegistryAdapter());
         }
 
         /// <inheritdoc />
@@ -91,7 +92,8 @@ namespace SnVerify.Services.Storage
                                 SessionId = s.Id,
                                 SessionName = s.SessionName,
                                 OutputDirectory = tempDir,
-                                Filter = filter
+                                Filter = filter,
+                                ProductCode = productCode
                             };
                             await exporter.ExportAsync(context).ConfigureAwait(false);
                             var excelPath = Path.Combine(tempDir, $"{s.Id}.xlsx");
@@ -188,7 +190,8 @@ namespace SnVerify.Services.Storage
                                 SessionId = s.Id,
                                 SessionName = s.SessionName,
                                 OutputDirectory = tempDir,
-                                Filter = filter
+                                Filter = filter,
+                                ProductCode = productCode
                             };
                             await exporter.ExportAsync(context).ConfigureAwait(false);
                             var excelPath = Path.Combine(tempDir, $"{s.Id}.xlsx");

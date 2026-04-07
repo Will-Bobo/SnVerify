@@ -9,7 +9,9 @@ using System.Threading.Tasks;
 using OfficeOpenXml;
 using SnVerify.Domain.Export;
 using SnVerify.Domain.Models;
+using SnVerify.Domain.Product;
 using SnVerify.Infrastructure.Export;
+using SnVerify.Infrastructure.Product;
 using SnVerify.Properties;
 using SnVerify.Services.Storage.Export;
 
@@ -23,12 +25,14 @@ namespace SnVerify.Services.Storage
         private readonly IStorageService _storage;
         private readonly IProductExportRegistry _exportRegistry;
         private readonly IExportValueResolver _valueResolver;
+        private readonly IProductRegistry _productRegistry;
 
-        public Km001SessionExporter(IStorageService storage, IProductExportRegistry exportRegistry, IExportValueResolver valueResolver)
+        public Km001SessionExporter(IStorageService storage, IProductExportRegistry exportRegistry, IExportValueResolver valueResolver, IProductRegistry productRegistry)
         {
             _storage = storage ?? throw new ArgumentNullException(nameof(storage));
             _exportRegistry = exportRegistry ?? throw new ArgumentNullException(nameof(exportRegistry));
             _valueResolver = valueResolver ?? throw new ArgumentNullException(nameof(valueResolver));
+            _productRegistry = productRegistry ?? throw new ArgumentNullException(nameof(productRegistry));
         }
 
         /// <inheritdoc />
@@ -38,10 +42,19 @@ namespace SnVerify.Services.Storage
                 throw new ArgumentNullException(nameof(context));
             if (string.IsNullOrWhiteSpace(context.OutputDirectory))
                 throw new ArgumentException("OutputDirectory 不能为空", nameof(context));
+            if (string.IsNullOrWhiteSpace(context.ProductCode))
+                throw new InvalidOperationException("ProductCode is null or empty in export context");
 
-            var profile = _exportRegistry.GetProfile("KM001");
+            var productCode = context.ProductCode.Trim();
+            var product = _productRegistry.Get(productCode);
+            if (product == null)
+                throw new InvalidOperationException($"Unknown productCode: {context.ProductCode}");
+            if (product.Mode != VerificationMode.Phase3)
+                throw new InvalidOperationException($"Phase3 export requires Phase3 product profile: {context.ProductCode}");
+
+            var profile = _exportRegistry.GetProfile(productCode);
             if (profile == null || profile.RecordColumns == null || profile.RecordColumns.Count == 0)
-                return;
+                throw new InvalidOperationException($"No export profile columns for productCode: {context.ProductCode}");
 
             var records = await _storage.GetTestRecordsBySessionAsync(context.SessionId).ConfigureAwait(false);
             if (records == null || records.Count == 0)

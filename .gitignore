@@ -143,4 +143,4 @@ logs/
 ~$*
 
 # 成果物文档
-_artifacts/
+dist/

@@ -33,6 +33,11 @@ namespace SnVerify.Domain.DeviceAccess
             /// KM001 MCU 版本聚合输出解析器。
             /// </summary>
             public const string Km001McuVersion = "Km001McuVersion";
+
+            /// <summary>
+            /// KM008 聚合输出解析（第二行：android, sn, wifiMac）。
+            /// </summary>
+            public const string Km008AndroidVersion = "Km008AndroidVersion";
         }
     }
 }

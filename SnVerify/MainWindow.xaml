@@ -596,7 +596,7 @@
                                 </StackPanel>
                             </Grid>
 
-                            <!-- Grid B：KM001 项目类型（IsPhase3Product==true），显示 扫码SN / 设备SN / 芯片ID / MAC -->
+                            <!-- Grid B：Phase3；含芯片列 / 无芯片列 由 ShowChipIdColumn 切换 -->
                             <Grid>
                                 <Grid.Style>
                                     <Style TargetType="Grid">
@@ -609,6 +609,18 @@
                                     </Style>
                                 </Grid.Style>
 
+                                <!-- B1：含芯片 ID（ShowChipIdColumn==true） -->
+                                <Grid>
+                                    <Grid.Style>
+                                        <Style TargetType="Grid">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ShowChipIdColumn}" Value="True">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Grid.Style>
                                 <Grid.ColumnDefinitions>
                                     <ColumnDefinition Width="*"/>    <!-- 0: 扫码SN -->
                                     <ColumnDefinition Width="Auto"/> <!-- 1: 分隔线 -->
@@ -719,7 +731,8 @@
                                            Margin="0,2"/>
 
                                 <!-- MAC地址 -->
-                                <StackPanel Grid.Column="6" Margin="16,0,0,0">
+                                <StackPanel Grid.Column="6" Margin="16,0,0,0"
+                                            Visibility="{Binding ShowWifiMac, Converter={StaticResource BoolToVisibilityConverter}}">
                                     <TextBlock Text="WiFi MAC"
                                                FontSize="12"
                                                FontWeight="Bold"
@@ -744,6 +757,43 @@
                                         </TextBlock.Style>
                                     </TextBlock>
                                 </StackPanel>
+                                </Grid>
+
+                                <!-- B2：无芯片列（如 KM008）：扫码SN / 设备SN / WiFi MAC -->
+                                <Grid>
+                                    <Grid.Style>
+                                        <Style TargetType="Grid">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding ShowChipIdColumn}" Value="False">
+                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Grid.Style>
+                                    <Grid.ColumnDefinitions>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                        <ColumnDefinition Width="Auto"/>
+                                        <ColumnDefinition Width="*"/>
+                                    </Grid.ColumnDefinitions>
+                                    <StackPanel Grid.Column="0" Margin="0,0,16,0">
+                                        <TextBlock Text="扫码SN" FontSize="12" FontWeight="Bold" Foreground="#666666" Margin="0,0,0,2" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="{Binding CurrentSn}" FontSize="18" Foreground="#333333" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+                                    </StackPanel>
+                                    <Rectangle Grid.Column="1" Width="1" Fill="#DDDDDD" VerticalAlignment="Stretch" Margin="0,2"/>
+                                    <StackPanel Grid.Column="2" Margin="16,0,0,0">
+                                        <TextBlock Text="设备SN" FontSize="12" FontWeight="Bold" Foreground="#666666" Margin="0,0,0,2" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="{Binding DeviceSN}" FontSize="18" Foreground="#333333" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+                                    </StackPanel>
+                                    <Rectangle Grid.Column="3" Width="1" Fill="#DDDDDD" VerticalAlignment="Stretch" Margin="0,2"/>
+                                    <StackPanel Grid.Column="4" Margin="16,0,0,0"
+                                                Visibility="{Binding ShowWifiMac, Converter={StaticResource BoolToVisibilityConverter}}">
+                                        <TextBlock Text="WiFi MAC" FontSize="12" FontWeight="Bold" Foreground="#666666" Margin="0,0,0,2" HorizontalAlignment="Center"/>
+                                        <TextBlock Text="{Binding CurrentDeviceInfo.WifiMac}" FontSize="18" Foreground="#333333" HorizontalAlignment="Center" TextTrimming="CharacterEllipsis" TextWrapping="NoWrap"/>
+                                    </StackPanel>
+                                </Grid>
                             </Grid>
                         </Grid>
                     </Border>
@@ -856,46 +906,54 @@
                                 <TextBlock Grid.Row="1" Grid.Column="0"
                                            Text="{Binding BoardVersionLabel, StringFormat={}{0}：}"
                                            Margin="0,2,8,2"
-                                           VerticalAlignment="Center"/>
+                                           VerticalAlignment="Center"
+                                           Visibility="{Binding ShowBoardVersion, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                 <TextBox Grid.Row="1" Grid.Column="1"
                                          Height="24"
                                          Margin="0,2,0,2"
                                          VerticalContentAlignment="Center"
                                          Text="{Binding ExpectedBoardVersion, UpdateSourceTrigger=PropertyChanged}"
-                                         IsEnabled="{Binding IsVersionInputEnabled}"/>
+                                         IsEnabled="{Binding IsVersionInputEnabled}"
+                                         Visibility="{Binding ShowBoardVersion, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
                                 <!-- 设备主板版本 -->
                                 <TextBlock Grid.Row="1" Grid.Column="3"
                                            Text="设备芯片版本："
                                            Margin="12,2,8,2"
-                                           VerticalAlignment="Center"/>
+                                           VerticalAlignment="Center"
+                                           Visibility="{Binding ShowBoardVersion, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                 <TextBlock Grid.Row="1" Grid.Column="4"
                                            VerticalAlignment="Center"
                                            Margin="0,2,0,2"
-                                           Text="{Binding CurrentDeviceInfo.BoardVersion}"/>
+                                           Text="{Binding CurrentDeviceInfo.BoardVersion}"
+                                           Visibility="{Binding ShowBoardVersion, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
                                 <!-- Row2: 充电板版本 -->
                                 <!-- 目标充电板版本 -->
                                 <TextBlock Grid.Row="2" Grid.Column="0"
                                            Text="{Binding ChargeBoardVersionLabel, StringFormat={}{0}：}"
                                            Margin="0,2,8,2"
-                                           VerticalAlignment="Center"/>
+                                           VerticalAlignment="Center"
+                                           Visibility="{Binding ShowChargeVersion, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                 <TextBox Grid.Row="2" Grid.Column="1"
                                          Height="24"
                                          Margin="0,2,0,2"
                                          VerticalContentAlignment="Center"
                                          Text="{Binding ExpectedChargeBoardVersion, UpdateSourceTrigger=PropertyChanged}"
-                                         IsEnabled="{Binding IsVersionInputEnabled}"/>
+                                         IsEnabled="{Binding IsVersionInputEnabled}"
+                                         Visibility="{Binding ShowChargeVersion, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
                                 <!-- 设备充电板版本 -->
                                 <TextBlock Grid.Row="2" Grid.Column="3"
                                            Text="设备充电板版本："
                                            Margin="12,2,8,2"
-                                           VerticalAlignment="Center"/>
+                                           VerticalAlignment="Center"
+                                           Visibility="{Binding ShowChargeVersion, Converter={StaticResource BoolToVisibilityConverter}}"/>
                                 <TextBlock Grid.Row="2" Grid.Column="4"
                                            VerticalAlignment="Center"
                                            Margin="0,2,0,2"
-                                           Text="{Binding CurrentDeviceInfo.ChargeBoardVersion}"/>
+                                           Text="{Binding CurrentDeviceInfo.ChargeBoardVersion}"
+                                           Visibility="{Binding ShowChargeVersion, Converter={StaticResource BoolToVisibilityConverter}}"/>
                             </Grid>
                         </GroupBox>
                     </Grid>

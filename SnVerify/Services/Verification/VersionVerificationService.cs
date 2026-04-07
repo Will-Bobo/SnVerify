@@ -8,6 +8,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using SnVerify.Domain.Models;
+using SnVerify.Domain.Product;
 using SnVerify.Services.Rules;
 
 namespace SnVerify.Services.Verification
@@ -21,6 +22,7 @@ namespace SnVerify.Services.Verification
         public Task<(bool success, string failReason)> VerifyAsync(
             DeviceInfo deviceInfo,
             VerificationParameter parameter,
+            ProductProfile profile = null,
             CancellationToken cancellationToken = default)
         {
             cancellationToken.ThrowIfCancellationRequested();
@@ -38,6 +40,9 @@ namespace SnVerify.Services.Verification
             var boardActual = (deviceInfo?.BoardVersion ?? string.Empty).Trim();
             var chargeActual = (deviceInfo?.ChargeBoardVersion ?? string.Empty).Trim();
 
+            var checkBoard = profile == null || profile.EnableBoardVersionCheck;
+            var checkCharge = profile == null || profile.EnableChargeBoardVersionCheck;
+
             // 校验顺序：Android → Board → ChargeBoard，任一失败即终止。
 
             if (!string.IsNullOrWhiteSpace(androidExpected) &&
@@ -46,13 +51,15 @@ namespace SnVerify.Services.Verification
                 return Task.FromResult((false, RuleFailReasonCodes.AndroidVersionMismatch));
             }
 
-            if (!string.IsNullOrWhiteSpace(boardExpected) &&
+            if (checkBoard &&
+                !string.IsNullOrWhiteSpace(boardExpected) &&
                 !string.Equals(boardExpected, boardActual, StringComparison.OrdinalIgnoreCase))
             {
                 return Task.FromResult((false, RuleFailReasonCodes.BoardVersionMismatch));
             }
 
-            if (!string.IsNullOrWhiteSpace(chargeExpected) &&
+            if (checkCharge &&
+                !string.IsNullOrWhiteSpace(chargeExpected) &&
                 !string.Equals(chargeExpected, chargeActual, StringComparison.OrdinalIgnoreCase))
             {
                 return Task.FromResult((false, RuleFailReasonCodes.ChargeBoardVersionMismatch));

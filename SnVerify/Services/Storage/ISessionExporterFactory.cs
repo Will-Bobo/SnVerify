@@ -4,7 +4,7 @@
 namespace SnVerify.Services.Storage
 {
     /// <summary>
-    /// 根据 ProductCode 返回对应 Exporter；null 或非 KM001 时返回 Legacy。
+    /// 根据 ProductCode 与 ProductProfile.Mode 返回 Exporter；Phase3 返回配置化 Exporter；null 或非 Phase3 时返回 Legacy。
     /// </summary>
     public interface ISessionExporterFactory
     {

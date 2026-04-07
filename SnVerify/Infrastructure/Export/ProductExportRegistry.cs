@@ -37,7 +37,22 @@ namespace SnVerify.Infrastructure.Export
                 new ExportColumnDefinition(ExportFieldId.ExpectedVersion, "Export_Km001_ExpectedVersion"),
                 new ExportColumnDefinition(ExportFieldId.ActualVersion, "Export_Km001_ActualVersion")
             };
+
+            // KM008: 去掉芯片/Board/Charge 相关列（仅保留 SN/Wifi/结果/时间/Android 版本）
+            var km008Columns = new List<ExportColumnDefinition>
+            {
+                new ExportColumnDefinition(ExportFieldId.RowNumber, "Export_Km001_RowNumber"),
+                new ExportColumnDefinition(ExportFieldId.StickerSn, "Export_Km001_StickerSn"),
+                new ExportColumnDefinition(ExportFieldId.DeviceSn, "Export_Km001_DeviceSn"),
+                new ExportColumnDefinition(ExportFieldId.WifiMac, "Export_Km001_WifiMac"),
+                new ExportColumnDefinition(ExportFieldId.Result, "Export_Km001_Result"),
+                new ExportColumnDefinition(ExportFieldId.ErrorDetail, "Export_Km001_ErrorDetail"),
+                new ExportColumnDefinition(ExportFieldId.VerificationTime, "Export_Km001_VerificationTime"),
+                new ExportColumnDefinition(ExportFieldId.ExpectedVersion, "Export_Km001_ExpectedVersion"),
+                new ExportColumnDefinition(ExportFieldId.ActualVersion, "Export_Km001_ActualVersion")
+            };
             dict["KM001"] = new ProductExportProfile("KM001", km001Columns, hasSummarySheet: false);
+            dict["KM008"] = new ProductExportProfile("KM008", km008Columns, hasSummarySheet: false);
 
             Profiles = dict;
         }

@@ -6,6 +6,7 @@
 using System.Threading.Tasks;
 using NUnit.Framework;
 using SnVerify.Domain.Models;
+using SnVerify.Domain.Product;
 using SnVerify.Services.Rules;
 using SnVerify.Services.Verification;
 
@@ -134,6 +135,93 @@ namespace SnVerify.Tests.Services
 
             Assert.That(success, Is.False);
             Assert.That(failReason, Is.EqualTo(RuleFailReasonCodes.ParameterNotConfigured));
+        }
+
+        [Test]
+        public async Task Should_Pass_When_Profile_Disables_Board_And_Charge_And_Stale_Expected_In_Parameter()
+        {
+            var device = new DeviceInfo
+            {
+                AndroidVersion = "A1",
+                BoardVersion = "",
+                ChargeBoardVersion = ""
+            };
+
+            var parameter = new VerificationParameter
+            {
+                ExpectedAndroidVersion = "A1",
+                ExpectedBoardVersion = "B_STALE",
+                ExpectedChargeBoardVersion = "C_STALE"
+            };
+
+            var profile = new ProductProfile
+            {
+                EnableBoardVersionCheck = false,
+                EnableChargeBoardVersionCheck = false
+            };
+
+            var (success, failReason) = await _service.VerifyAsync(device, parameter, profile);
+
+            Assert.That(success, Is.True);
+            Assert.That(failReason, Is.Null);
+        }
+
+        [Test]
+        public async Task Should_Fail_When_Profile_Disables_Board_But_Charge_Enabled_And_ChargeMismatch()
+        {
+            var device = new DeviceInfo
+            {
+                AndroidVersion = "A1",
+                BoardVersion = "ANY",
+                ChargeBoardVersion = "CX"
+            };
+
+            var parameter = new VerificationParameter
+            {
+                ExpectedAndroidVersion = "A1",
+                ExpectedBoardVersion = "B1",
+                ExpectedChargeBoardVersion = "C1"
+            };
+
+            var profile = new ProductProfile
+            {
+                EnableBoardVersionCheck = false,
+                EnableChargeBoardVersionCheck = true
+            };
+
+            var (success, failReason) = await _service.VerifyAsync(device, parameter, profile);
+
+            Assert.That(success, Is.False);
+            Assert.That(failReason, Is.EqualTo(RuleFailReasonCodes.ChargeBoardVersionMismatch));
+        }
+
+        [Test]
+        public async Task Should_Pass_When_Profile_Disables_Board_But_Charge_Enabled_And_BoardMismatch()
+        {
+            var device = new DeviceInfo
+            {
+                AndroidVersion = "A1",
+                BoardVersion = "BX",
+                ChargeBoardVersion = "C1"
+            };
+
+            var parameter = new VerificationParameter
+            {
+                ExpectedAndroidVersion = "A1",
+                ExpectedBoardVersion = "B1",
+                ExpectedChargeBoardVersion = "C1"
+            };
+
+            var profile = new ProductProfile
+            {
+                EnableBoardVersionCheck = false,
+                EnableChargeBoardVersionCheck = true
+            };
+
+            var (success, failReason) = await _service.VerifyAsync(device, parameter, profile);
+
+            Assert.That(success, Is.True);
+            Assert.That(failReason, Is.Null);
         }
     }
 }

@@ -94,7 +94,7 @@ namespace SnVerify.Tests.Services
                 .ReturnsAsync(CreateDeviceInfo(deviceSn: "SN001", chipId: "F501234"));
 
             _versionMock
-                .Setup(v => v.VerifyAsync(It.IsAny<DeviceInfo>(), It.IsAny<VerificationParameter>(), default))
+                .Setup(v => v.VerifyAsync(It.IsAny<DeviceInfo>(), It.IsAny<VerificationParameter>(), It.IsAny<ProductProfile>(), default))
                 .ReturnsAsync((true, (string)null));
 
             _executor = new RulePipelineExecutor(_storageMock.Object, _deviceAccessMock.Object, _versionMock.Object, _loggerMock.Object);
@@ -216,7 +216,7 @@ namespace SnVerify.Tests.Services
                 .ReturnsAsync(CreateDeviceInfo(deviceSn: "SN001", chipId: "F501234"));
 
             _versionMock
-                .Setup(v => v.VerifyAsync(It.IsAny<DeviceInfo>(), It.IsAny<VerificationParameter>(), default))
+                .Setup(v => v.VerifyAsync(It.IsAny<DeviceInfo>(), It.IsAny<VerificationParameter>(), It.IsAny<ProductProfile>(), default))
                 .ReturnsAsync((false, RuleFailReasonCodes.AndroidVersionMismatch));
 
             var result = await _executor.ExecuteAsync(profile, null, parameter, "SN001", OrderId, "P1");
@@ -241,7 +241,7 @@ namespace SnVerify.Tests.Services
             Assert.That(result.Result, Is.EqualTo("PASS"));
             Assert.That(result.FailReason, Is.Null);
             _storageMock.Verify(s => s.SaveTestRecordAsync(It.IsAny<TestRecord>()), Times.Never);
-            _versionMock.Verify(v => v.VerifyAsync(It.IsAny<DeviceInfo>(), It.IsAny<VerificationParameter>(), default), Times.Once);
+            _versionMock.Verify(v => v.VerifyAsync(It.IsAny<DeviceInfo>(), It.IsAny<VerificationParameter>(), It.IsAny<ProductProfile>(), default), Times.Once);
         }
 
         [Test]
@@ -256,6 +256,88 @@ namespace SnVerify.Tests.Services
 
             _deviceAccessMock.Verify(a => a.ReadDeviceInfoAsync(It.IsAny<ProductProfile>()), Times.Never);
             _storageMock.Verify(s => s.SaveTestRecordAsync(It.IsAny<TestRecord>()), Times.Never);
+        }
+
+        private static ProductProfile CreateKm008Profile()
+        {
+            return new ProductProfile
+            {
+                ProductCode = "KM008",
+                Mode = VerificationMode.Phase3,
+                EnableChipIdCheck = false,
+                EnableWifiMacCheck = true,
+                EnableBoardVersionCheck = false,
+                EnableChargeBoardVersionCheck = false
+            };
+        }
+
+        private static VerificationParameter CreateAndroidOnlyParameter()
+        {
+            return new VerificationParameter
+            {
+                SessionId = 1,
+                ExpectedAndroidVersion = "A1",
+                ExpectedBoardVersion = null,
+                ExpectedChargeBoardVersion = null
+            };
+        }
+
+        [Test]
+        public async Task ExecuteAsync_WhenChipIdCheckDisabled_ShouldClearChip_AndPass_WhenAndroidMatches()
+        {
+            var profile = CreateKm008Profile();
+            var parameter = CreateAndroidOnlyParameter();
+            var di = CreateDeviceInfo(deviceSn: "SN001", chipId: "BADNOTF50", android: "A1", board: "", charge: "");
+
+            var result = await _executor.ExecuteAsync(profile, di, parameter, "SN001", OrderId, "P1");
+
+            Assert.That(result.Result, Is.EqualTo("PASS"));
+            Assert.That(result.DeviceInfo, Is.Not.Null);
+            Assert.That(result.DeviceInfo.ChipId, Is.Null);
+            _storageMock.Verify(s => s.IsChipIdPassedInBatchAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Test]
+        public async Task ExecuteAsync_WhenChipIdCheckDisabled_ShouldNotInvokeChipDuplicateCheck_EvenWhenChipWouldDuplicate()
+        {
+            var profile = CreateKm008Profile();
+            var parameter = CreateAndroidOnlyParameter();
+            var di = CreateDeviceInfo(deviceSn: "SN001", chipId: "F501234", android: "A1");
+
+            _storageMock
+                .Setup(s => s.IsChipIdPassedInBatchAsync(It.IsAny<string>(), It.IsAny<string>(), "F501234"))
+                .ReturnsAsync(true);
+
+            var result = await _executor.ExecuteAsync(profile, di, parameter, "SN001", OrderId, "P_KM008");
+
+            Assert.That(result.Result, Is.EqualTo("PASS"));
+            Assert.That(result.DeviceInfo.ChipId, Is.Null);
+            _storageMock.Verify(s => s.IsChipIdPassedInBatchAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        /// <summary>
+        /// KM008：Profile 关闭 Board/Charge 校验时，parameter 中残留的期望不得触发版本失败（真实 VersionVerificationService）。
+        /// </summary>
+        [Test]
+        public async Task ExecuteAsync_Km008_StaleBoardChargeExpected_ShouldPass_WithRealVersionVerificationService()
+        {
+            var realVersion = new VersionVerificationService();
+            var executor = new RulePipelineExecutor(_storageMock.Object, _deviceAccessMock.Object, realVersion, _loggerMock.Object);
+
+            var profile = CreateKm008Profile();
+            var parameter = new VerificationParameter
+            {
+                SessionId = 1,
+                ExpectedAndroidVersion = "A1",
+                ExpectedBoardVersion = "STALE_BOARD",
+                ExpectedChargeBoardVersion = "STALE_CHARGE"
+            };
+            var di = CreateDeviceInfo(deviceSn: "SN001", chipId: "X", android: "A1", board: "", charge: "");
+
+            var result = await executor.ExecuteAsync(profile, di, parameter, "SN001", OrderId, "P_KM008");
+
+            Assert.That(result.Result, Is.EqualTo("PASS"));
+            Assert.That(result.FailReason, Is.Null);
         }
     }
 }

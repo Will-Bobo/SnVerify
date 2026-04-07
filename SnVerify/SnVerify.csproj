@@ -160,6 +160,7 @@
     <Compile Include="Infrastructure\DeviceAccess\Command\DeviceCommandExecutor.cs" />
     <Compile Include="Infrastructure\DeviceAccess\Parser\TrimParser.cs" />
     <Compile Include="Infrastructure\DeviceAccess\Parser\Km001McuVersionAggregateParser.cs" />
+    <Compile Include="Infrastructure\DeviceAccess\Parser\Km008AndroidVersionAggregateParser.cs" />
     <Compile Include="Infrastructure\DeviceAccess\Parser\ParserFactory.cs" />
     <Compile Include="Infrastructure\DeviceAccess\Service\AdbDeviceService.cs" />
     <Compile Include="Services\DeviceAccess\IDeviceAccessService.cs" />

@@ -93,6 +93,11 @@ namespace SnVerify.Services.Rules
                 return RuleExecutionResult.Fail(failReason, di);
             }
 
+            if (!profile.EnableChipIdCheck)
+            {
+                di.ChipId = null;
+            }
+
             var deviceSn = di.DeviceSn.Trim();
 
             // ③ StickerSN 与 DeviceSN 物理匹配
@@ -111,25 +116,27 @@ namespace SnVerify.Services.Rules
                 return RuleExecutionResult.Fail(failReason, di);
             }
 
-            // ⑤ ChipId 格式检查（必须以 F50 开头）
-            var chipIdValue = di.ChipId;
-            if (string.IsNullOrWhiteSpace(chipIdValue) || !chipIdValue.StartsWith("F50", StringComparison.OrdinalIgnoreCase))
+            if (profile.EnableChipIdCheck)
             {
-                const string failReason = RuleFailReasonCodes.ChipIdInvalid;
-                return RuleExecutionResult.Fail(failReason, di);
+                // ⑤ ChipId 格式检查（必须以 F50 开头）
+                var chipIdValue = di.ChipId;
+                if (string.IsNullOrWhiteSpace(chipIdValue) || !chipIdValue.StartsWith("F50", StringComparison.OrdinalIgnoreCase))
+                {
+                    const string failReason = RuleFailReasonCodes.ChipIdInvalid;
+                    return RuleExecutionResult.Fail(failReason, di);
+                }
+
+                // ⑥ ChipId 批次唯一检查（Phase3：ProjectName + OrderName 维度，PASS 记录）
+                var chipExists = await _storageService.IsChipIdPassedInBatchAsync(projectName, orderId, chipIdValue).ConfigureAwait(false);
+                if (chipExists)
+                {
+                    const string failReason = RuleFailReasonCodes.ChipIdDuplicate;
+                    return RuleExecutionResult.Fail(failReason, di);
+                }
             }
 
-            // ⑥ ChipId 批次唯一检查（Phase3：ProjectName + OrderName 维度，PASS 记录）
-            // 使用与 SN 相同的 ProjectName 维度。
-            var chipExists = await _storageService.IsChipIdPassedInBatchAsync(projectName, orderId, chipIdValue).ConfigureAwait(false);
-            if (chipExists)
-            {
-                const string failReason = RuleFailReasonCodes.ChipIdDuplicate;
-                return RuleExecutionResult.Fail(failReason, di);
-            }
-
-            // ⑦ 三版本强校验（统一由 VersionVerificationService 负责）
-            var (verOk, verFail) = await _versionVerificationService.VerifyAsync(di, parameter).ConfigureAwait(false);
+            // ⑦ 三版本强校验（统一由 VersionVerificationService 负责；Board/Charge 是否比对由 Profile 开关决定）
+            var (verOk, verFail) = await _versionVerificationService.VerifyAsync(di, parameter, profile).ConfigureAwait(false);
             if (!verOk)
             {
                 return RuleExecutionResult.Fail(verFail, di);

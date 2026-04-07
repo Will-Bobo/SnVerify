@@ -85,10 +85,12 @@ namespace SnVerify.Infrastructure
             var deviceCommandExecutor = new DeviceCommandExecutor(adbPath, processRunner);
             var trimParser = new TrimParser();
             var km001AggregateParser = new Km001McuVersionAggregateParser();
+            var km008AggregateParser = new Km008AndroidVersionAggregateParser();
             var fieldParsers = new Dictionary<string, IDeviceInfoParser>(StringComparer.OrdinalIgnoreCase) { { ParserKeys.Field.Trim, trimParser } };
             var aggregateParsers = new Dictionary<string, IAggregateDeviceInfoParser>(StringComparer.OrdinalIgnoreCase)
             {
-                { ParserKeys.Aggregate.Km001McuVersion, km001AggregateParser }
+                { ParserKeys.Aggregate.Km001McuVersion, km001AggregateParser },
+                { ParserKeys.Aggregate.Km008AndroidVersion, km008AggregateParser }
             };
             var parserFactory = new ParserFactory(fieldParsers, aggregateParsers);
             var deviceAccessService = new AdbDeviceService(deviceSessionManager, deviceCommandExecutor, parserFactory);

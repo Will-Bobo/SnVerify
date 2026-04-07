@@ -22,5 +22,8 @@ namespace SnVerify.Domain.Export
 
         /// <summary>记录过滤（仅 Legacy 使用）；null 时使用 ExportRecordFilter.All。</summary>
         public ExportRecordFilter Filter { get; set; }
+
+        /// <summary>项目类型代码（Phase3 导出必填，如 KM001、KM008）。</summary>
+        public string ProductCode { get; set; }
     }
 }

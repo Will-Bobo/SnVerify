@@ -92,6 +92,10 @@ namespace SnVerify.ViewModels
         private string _expectedChargeBoardVersion;
         private bool _isLegacyProduct;
         private bool _isPhase3Product;
+        private bool _showChipIdColumn;
+        private bool _showBoardVersion;
+        private bool _showChargeVersion;
+        private bool _showWifiMac;
 
         // 初始化 Scope 计数器：支持嵌套的初始化阶段检测（避免初始化期间触发 ProductCode 切换防呆逻辑）。
         private int _initScopeCounter;
@@ -927,6 +931,8 @@ namespace SnVerify.ViewModels
                 ExpectedBoardVersion = Settings.Default.LastExpectedBoardVersion ?? "";
                 ExpectedChargeBoardVersion = Settings.Default.LastExpectedChargeBoardVersion ?? "";
             }
+
+            SanitizeExpectedVersionsForCurrentProfile();
         }
 
         private void UpdateCurrentProductProfile()
@@ -937,6 +943,10 @@ namespace SnVerify.ViewModels
                 CurrentProductDisplay = "--";
                 IsLegacyProduct = false;
                 IsPhase3Product = false;
+                ShowChipIdColumn = false;
+                ShowBoardVersion = false;
+                ShowChargeVersion = false;
+                ShowWifiMac = false;
                 RaiseFieldLabelChanged();
                 return;
             }
@@ -947,6 +957,10 @@ namespace SnVerify.ViewModels
                 CurrentProductDisplay = $"{SelectedProductCode} [未知]";
                 IsLegacyProduct = false;
                 IsPhase3Product = false;
+                ShowChipIdColumn = false;
+                ShowBoardVersion = false;
+                ShowChargeVersion = false;
+                ShowWifiMac = false;
                 RaiseFieldLabelChanged();
                 return;
             }
@@ -956,7 +970,81 @@ namespace SnVerify.ViewModels
 
              IsLegacyProduct = _currentProductProfile.Mode == VerificationMode.Legacy;
              IsPhase3Product = _currentProductProfile.Mode == VerificationMode.Phase3;
+            ShowChipIdColumn = _currentProductProfile.EnableChipIdCheck;
+            ShowBoardVersion = _currentProductProfile.EnableBoardVersionCheck;
+            ShowChargeVersion = _currentProductProfile.EnableChargeBoardVersionCheck;
+            ShowWifiMac = _currentProductProfile.EnableWifiMacCheck;
+            SanitizeExpectedVersionsForCurrentProfile();
             RaiseFieldLabelChanged();
+        }
+
+        /// <summary>
+        /// 按当前 Profile 关闭的校验项清空对应目标版本输入，避免切换产品或设置恢复后残留 KM001 等产品的 Board/Charge 期望。
+        /// </summary>
+        private void SanitizeExpectedVersionsForCurrentProfile()
+        {
+            if (_currentProductProfile == null)
+                return;
+            if (!_currentProductProfile.EnableBoardVersionCheck)
+                ExpectedBoardVersion = "";
+            if (!_currentProductProfile.EnableChargeBoardVersionCheck)
+                ExpectedChargeBoardVersion = "";
+        }
+
+        /// <summary>Phase3 SN 区是否显示芯片列（由 Profile 驱动）。</summary>
+        public bool ShowChipIdColumn
+        {
+            get => _showChipIdColumn;
+            private set
+            {
+                if (_showChipIdColumn != value)
+                {
+                    _showChipIdColumn = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        /// <summary>是否显示主板/芯片版本目标与设备行。</summary>
+        public bool ShowBoardVersion
+        {
+            get => _showBoardVersion;
+            private set
+            {
+                if (_showBoardVersion != value)
+                {
+                    _showBoardVersion = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        /// <summary>是否显示充电板版本目标与设备行。</summary>
+        public bool ShowChargeVersion
+        {
+            get => _showChargeVersion;
+            private set
+            {
+                if (_showChargeVersion != value)
+                {
+                    _showChargeVersion = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        /// <summary>是否显示 WiFi MAC 列。</summary>
+        public bool ShowWifiMac
+        {
+            get => _showWifiMac;
+            private set
+            {
+                if (_showWifiMac != value)
+                {
+                    _showWifiMac = value;
+                    OnPropertyChanged();
+                }
+            }
         }
 
         private void RaiseFieldLabelChanged()
