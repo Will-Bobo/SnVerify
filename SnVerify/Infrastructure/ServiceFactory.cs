@@ -112,7 +112,8 @@ namespace SnVerify.Infrastructure
                 parameterService,
                 versionVerificationService,
                 productRegistry,
-                rulePipelineExecutor);
+                rulePipelineExecutor,
+                deviceAccessService);
 
             // 版本检验流程服务
             var versionVerificationFlowService = new VersionVerificationFlowService(adbAccessService, storageService);

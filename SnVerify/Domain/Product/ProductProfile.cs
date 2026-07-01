@@ -56,6 +56,11 @@ namespace SnVerify.Domain.Product
         public bool EnableChargeBoardVersionCheck { get; set; }
 
         /// <summary>
+        /// 是否启用 Android 版本校验（Legacy 合一检验或 Phase3 均可用）。
+        /// </summary>
+        public bool EnableAndroidVersionCheck { get; set; }
+
+        /// <summary>
         /// 字段显示标签映射（按产品差异化语义定义）。
         /// 例如：KM001 的 BoardVersion 可映射为“芯片版本号”。
         /// </summary>

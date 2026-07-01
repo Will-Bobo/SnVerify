@@ -20,6 +20,7 @@ using SnVerify.Services.Verification;
 using SnVerify.Services.DeviceAccess;
 using SnVerify.Infrastructure.Product;
 using SnVerify.Services.Rules;
+using SnVerify.Domain.Product;
 
 namespace SnVerify.Services.Coordination
 {
@@ -41,6 +42,7 @@ namespace SnVerify.Services.Coordination
         private readonly IProductRegistry _productRegistry;
         private readonly IDeviceAccessService _deviceAccessService;
         private readonly IRulePipelineExecutor _rulePipelineExecutor;
+        private readonly string _sessionProductCode;
         private readonly object _lockObject = new object();
         private VerificationSnapshot _snapshot;
 
@@ -91,6 +93,7 @@ namespace SnVerify.Services.Coordination
         /// <param name="productRegistry">ProductRegistry 读取接口（Stage3：唯一规则入口，可选；默认使用静态注册表适配器）。</param>
         /// <param name="deviceAccessService">设备访问服务（Stage3：当 rulePipelineExecutor 为 null 时用于构建默认规则执行器，可选）。</param>
         /// <param name="rulePipelineExecutor">规则链执行器（Stage3：可选；为空且提供了 deviceAccessService 时使用默认实现）。</param>
+        /// <param name="sessionProductCode">当前 Session 对应的产品类型代码（StartBatch 所选 ProductCode，用于 DB ProductCode 为空时的兜底解析）。</param>
         public ProcessCoordinator(
             string sessionId,
             IStorageService storageService,
@@ -104,7 +107,8 @@ namespace SnVerify.Services.Coordination
             IVersionVerificationService versionVerificationService = null,
             IProductRegistry productRegistry = null,
             IDeviceAccessService deviceAccessService = null,
-            IRulePipelineExecutor rulePipelineExecutor = null)
+            IRulePipelineExecutor rulePipelineExecutor = null,
+            string sessionProductCode = null)
         {
             _sessionId = sessionId ?? throw new ArgumentNullException(nameof(sessionId));
             _orderId = orderId;
@@ -119,6 +123,7 @@ namespace SnVerify.Services.Coordination
             _productRegistry = productRegistry ?? new ProductRegistryAdapter();
             _deviceAccessService = deviceAccessService;
             _rulePipelineExecutor = rulePipelineExecutor;
+            _sessionProductCode = string.IsNullOrWhiteSpace(sessionProductCode) ? null : sessionProductCode.Trim();
             _snapshot = VerificationSnapshot.Idle(_sessionId);
         }
 
@@ -192,30 +197,79 @@ namespace SnVerify.Services.Coordination
 
             try
             {
-                // Step 1: 通过 ADB 读取设备 SN
-                var adbResult = await _adbAccessService.ReadDeviceSnAsync();
-                if (!adbResult.IsSuccess)
+                var legacyAndroidProfile = await TryResolveLegacyAndroidProfileAsync().ConfigureAwait(false);
+                if (legacyAndroidProfile == null && RequiresLegacyAndroidUnifiedCheck())
                 {
-                    var result = adbResult.IsTimeout ? "TIMEOUT" : "FAIL";
-                    var failReason = adbResult.IsTimeout
-                        ? "ADB读取设备超时"
-                        : $"请检查设备连接，{adbResult.ErrorReason}";
-                    await SaveOrUpdateFailResultAsync(sn, result, failReason, null);
-                    _loggingService?.LogInfo($"检验结果 [{result}] , [扫码枪SN: {sn}, 设备SN: N/A] , 错误结果: {failReason}");
-                    _loggingService?.LogInfo("检验结束");
-                    UpdateSnapshot(VerificationSnapshot.Completed(sn, result, failReason, _sessionId, null));
-                    return;
-                }
-
-                var deviceSN = adbResult.Sn;
-                if (string.IsNullOrWhiteSpace(deviceSN))
-                {
-                    const string failReason = "ADB读取设备SN为空";
-                    await SaveOrUpdateFailResultAsync(sn, "FAIL", failReason, null);
+                    var failReason = ResolveLegacyAndroidSetupFailureReason();
+                    await SaveOrUpdateFailResultAsync(sn, "FAIL", failReason, null).ConfigureAwait(false);
                     _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {sn}, 设备SN: N/A] , 错误结果: {failReason}");
                     _loggingService?.LogInfo("检验结束");
                     UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", failReason, _sessionId, null));
                     return;
+                }
+
+                VerificationParameter legacySessionParameter = null;
+                if (legacyAndroidProfile != null && legacyAndroidProfile.EnableAndroidVersionCheck)
+                {
+                    legacySessionParameter = await GetSessionParameterAsync().ConfigureAwait(false);
+                }
+
+                DeviceInfo deviceInfo = null;
+                string deviceSN;
+
+                if (legacyAndroidProfile != null && _deviceAccessService != null)
+                {
+                    try
+                    {
+                        deviceInfo = await _deviceAccessService.ReadDeviceInfoAsync(legacyAndroidProfile).ConfigureAwait(false);
+                    }
+                    catch (Exception ex)
+                    {
+                        const string failReason = "ADB读取设备失败";
+                        await SaveOrUpdateFailResultAsync(sn, "FAIL", failReason, null, null, legacySessionParameter).ConfigureAwait(false);
+                        _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {sn}, 设备SN: N/A] , 错误结果: {failReason}: {ex.Message}");
+                        _loggingService?.LogInfo("检验结束");
+                        UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", failReason, _sessionId, null));
+                        return;
+                    }
+
+                    deviceSN = deviceInfo?.DeviceSn?.Trim();
+                    if (string.IsNullOrWhiteSpace(deviceSN))
+                    {
+                        const string failReason = "ADB读取设备SN为空";
+                        await SaveOrUpdateFailResultAsync(sn, "FAIL", failReason, null, deviceInfo, legacySessionParameter).ConfigureAwait(false);
+                        _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {sn}, 设备SN: N/A] , 错误结果: {failReason}");
+                        _loggingService?.LogInfo("检验结束");
+                        UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", failReason, _sessionId, null, deviceInfo));
+                        return;
+                    }
+                }
+                else
+                {
+                    var adbResult = await _adbAccessService.ReadDeviceSnAsync().ConfigureAwait(false);
+                    if (!adbResult.IsSuccess)
+                    {
+                        var result = adbResult.IsTimeout ? "TIMEOUT" : "FAIL";
+                        var failReason = adbResult.IsTimeout
+                            ? "ADB读取设备超时"
+                            : $"请检查设备连接，{adbResult.ErrorReason}";
+                        await SaveOrUpdateFailResultAsync(sn, result, failReason, null).ConfigureAwait(false);
+                        _loggingService?.LogInfo($"检验结果 [{result}] , [扫码枪SN: {sn}, 设备SN: N/A] , 错误结果: {failReason}");
+                        _loggingService?.LogInfo("检验结束");
+                        UpdateSnapshot(VerificationSnapshot.Completed(sn, result, failReason, _sessionId, null));
+                        return;
+                    }
+
+                    deviceSN = adbResult.Sn;
+                    if (string.IsNullOrWhiteSpace(deviceSN))
+                    {
+                        const string failReason = "ADB读取设备SN为空";
+                        await SaveOrUpdateFailResultAsync(sn, "FAIL", failReason, null).ConfigureAwait(false);
+                        _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {sn}, 设备SN: N/A] , 错误结果: {failReason}");
+                        _loggingService?.LogInfo("检验结束");
+                        UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", failReason, _sessionId, null));
+                        return;
+                    }
                 }
 
                 // Step 2: 决策树校验逻辑（基于 SN_Sticker_Device_Relation_Rules.md）
@@ -226,79 +280,69 @@ namespace SnVerify.Services.Coordination
                 if (stickerSN == deviceSNNormalized)
                 {
                     // 优先检查绑定关系（规则2优先于规则1）；PASS 时 StickerSN=DeviceSN，仅传一个 SN 即可
-                    var bindingExists = await _storageService.IsBindingInPassHistoryAsync(stickerSN);
+                    var bindingExists = await _storageService.IsBindingInPassHistoryAsync(stickerSN).ConfigureAwait(false);
                     if (bindingExists)
                     {
                         // 规则 2：绑定一致，但存在历史 PASS 绑定 → FAIL（已出站）
                         const string failReason = "设备SN已存在";
-                        await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", failReason, deviceSNNormalized);
+                        await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", failReason, deviceSNNormalized, deviceInfo, LegacyParameterOrNull(legacyAndroidProfile, legacySessionParameter)).ConfigureAwait(false);
                         _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 错误结果: {failReason}");
                         _loggingService?.LogInfo("检验结束");
-                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _sessionId, deviceSNNormalized));
+                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _sessionId, deviceSNNormalized, deviceInfo));
                         return;
                     }
 
                     // 检查是否在历史 PASS 中（用于规则1判断）
-                    var stickerExists = await _storageService.IsStickerSnInPassHistoryAsync(stickerSN);
-                    var deviceExists = await _storageService.IsDeviceSnInPassHistoryAsync(deviceSNNormalized);
+                    var stickerExists = await _storageService.IsStickerSnInPassHistoryAsync(stickerSN).ConfigureAwait(false);
+                    var deviceExists = await _storageService.IsDeviceSnInPassHistoryAsync(deviceSNNormalized).ConfigureAwait(false);
 
                     if (!stickerExists && !deviceExists)
                     {
-                        // 规则 1：PASS
-                        await SaveResultAsync(stickerSN, "PASS", null, deviceSNNormalized);
-                        _loggingService?.LogInfo($"检验结果 [PASS] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 成功结果");
-                        _loggingService?.LogInfo("检验结束");
-                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "PASS", null, _sessionId, deviceSNNormalized));
-                        return;
-                    }
-                    else
-                    {
-                        // 规则 2：绑定一致，但存在历史 PASS 绑定 → FAIL（已出站）
-                        const string failReason = "设备SN已存在";
-                        await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", failReason, deviceSNNormalized);
-                        _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 错误结果: {failReason}");
-                        _loggingService?.LogInfo("检验结束");
-                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _sessionId, deviceSNNormalized));
-                        return;
-                    }
-                }
-                else
-                {
-                    // 绑定不一致：StickerSN != DeviceSN
-                    const string mismatchReason = "设备SN 与 条形码SN [不匹配]";
-
-                    // 规则 3：StickerSN 已存在于历史 PASS 绑定中 → FAIL（贴纸重复）
-                    var stickerExists = await _storageService.IsStickerSnInPassHistoryAsync(stickerSN);
-                    if (stickerExists)
-                    {
-                        var failReason = $"{mismatchReason}，并且 条形码SN 已存在";
-                        await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", failReason, deviceSNNormalized);
-                        _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 错误结果: {failReason}");
-                        _loggingService?.LogInfo("检验结束");
-                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _sessionId, deviceSNNormalized));
+                        await CompleteLegacyPassAsync(stickerSN, deviceSNNormalized, deviceInfo, legacyAndroidProfile, legacySessionParameter).ConfigureAwait(false);
                         return;
                     }
 
-                    // 规则 4：DeviceSN 已存在于历史 PASS 绑定中 → FAIL（设备已出站）
-                    var deviceExists = await _storageService.IsDeviceSnInPassHistoryAsync(deviceSNNormalized);
-                    if (deviceExists)
-                    {
-                        var failReason = $"{mismatchReason}，并且 设备SN 已存在";
-                        await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", failReason, deviceSNNormalized);
-                        _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 错误结果: {failReason}");
-                        _loggingService?.LogInfo("检验结束");
-                        UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _sessionId, deviceSNNormalized));
-                        return;
-                    }
-
-                    // 规则 5：绑定不一致，且双方均无历史 PASS 绑定 → FAIL（包装不一致）
-                    var failReason5 = mismatchReason;
-                    await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", failReason5, deviceSNNormalized);
-                    _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 错误结果: {failReason5}");
+                    // 规则 2：绑定一致，但存在历史 PASS 绑定 → FAIL（已出站）
+                    const string failReason2 = "设备SN已存在";
+                    await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", failReason2, deviceSNNormalized, deviceInfo, LegacyParameterOrNull(legacyAndroidProfile, legacySessionParameter)).ConfigureAwait(false);
+                    _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 错误结果: {failReason2}");
                     _loggingService?.LogInfo("检验结束");
-                    UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason5, _sessionId, deviceSNNormalized));
+                    UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason2, _sessionId, deviceSNNormalized, deviceInfo));
                     return;
                 }
+
+                // 绑定不一致：StickerSN != DeviceSN
+                const string mismatchReason = "设备SN 与 条形码SN [不匹配]";
+
+                // 规则 3：StickerSN 已存在于历史 PASS 绑定中 → FAIL（贴纸重复）
+                var stickerExistsMismatch = await _storageService.IsStickerSnInPassHistoryAsync(stickerSN).ConfigureAwait(false);
+                if (stickerExistsMismatch)
+                {
+                    var failReason = $"{mismatchReason}，并且 条形码SN 已存在";
+                    await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", failReason, deviceSNNormalized, deviceInfo, LegacyParameterOrNull(legacyAndroidProfile, legacySessionParameter)).ConfigureAwait(false);
+                    _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 错误结果: {failReason}");
+                    _loggingService?.LogInfo("检验结束");
+                    UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _sessionId, deviceSNNormalized, deviceInfo));
+                    return;
+                }
+
+                // 规则 4：DeviceSN 已存在于历史 PASS 绑定中 → FAIL（设备已出站）
+                var deviceExistsMismatch = await _storageService.IsDeviceSnInPassHistoryAsync(deviceSNNormalized).ConfigureAwait(false);
+                if (deviceExistsMismatch)
+                {
+                    var failReason = $"{mismatchReason}，并且 设备SN 已存在";
+                    await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", failReason, deviceSNNormalized, deviceInfo, LegacyParameterOrNull(legacyAndroidProfile, legacySessionParameter)).ConfigureAwait(false);
+                    _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 错误结果: {failReason}");
+                    _loggingService?.LogInfo("检验结束");
+                    UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _sessionId, deviceSNNormalized, deviceInfo));
+                    return;
+                }
+
+                // 规则 5：绑定不一致，且双方均无历史 PASS 绑定 → FAIL（包装不一致）
+                await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", mismatchReason, deviceSNNormalized, deviceInfo, LegacyParameterOrNull(legacyAndroidProfile, legacySessionParameter)).ConfigureAwait(false);
+                _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 错误结果: {mismatchReason}");
+                _loggingService?.LogInfo("检验结束");
+                UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", mismatchReason, _sessionId, deviceSNNormalized, deviceInfo));
             }
             catch (Exception ex)
             {
@@ -363,7 +407,7 @@ namespace SnVerify.Services.Coordination
                 var productProfile = _productRegistry.GetProductProfile(projectId);
                 if (productProfile == null)
                 {
-                    const string reason = "PRODUCT_PROFILE_NOT_FOUND";
+                    var reason = RuleFailReasonCodes.ProductProfileNotFound;
                     _loggingService?.LogInfo($"检验结果 [FAIL] , [扫码枪SN: {sn.Trim()}, 设备SN: N/A] , 错误结果: 未找到产品配置: {projectId}");
                     await SavePhase3ResultAsync(sn.Trim(), "FAIL", reason, null, parameter).ConfigureAwait(false);
                     UpdateSnapshot(VerificationSnapshot.Completed(sn, "FAIL", reason, _sessionId, null));
@@ -442,7 +486,13 @@ namespace SnVerify.Services.Coordination
         /// - 若当前 Session + StickerSN 下已存在 PASS 记录，则保持该 PASS 事实不变，新的 FAIL/TIMEOUT 仅追加记录。
         /// - 若仅存在 FAIL/TIMEOUT 记录，则在原记录上更新（同一次重试场景）。
         /// </summary>
-        private async Task SaveOrUpdateFailResultAsync(string sn, string result, string failReason, string deviceSN)
+        private async Task SaveOrUpdateFailResultAsync(
+            string sn,
+            string result,
+            string failReason,
+            string deviceSN,
+            DeviceInfo deviceInfo = null,
+            VerificationParameter parameter = null)
         {
             try
             {
@@ -459,6 +509,8 @@ namespace SnVerify.Services.Coordination
                     .ConfigureAwait(false);
 
                 var at = DateTime.Now;
+                var expectedVersion = parameter?.ExpectedAndroidVersion;
+                var actualVersion = deviceInfo?.AndroidVersion;
 
                 if (existing != null && !string.Equals(existing.Result, "PASS", StringComparison.OrdinalIgnoreCase))
                 {
@@ -467,6 +519,8 @@ namespace SnVerify.Services.Coordination
                     existing.FailReason = failReason;
                     existing.DeviceSN = deviceSN;
                     existing.VerifyTime = at;
+                    existing.ExpectedVersion = expectedVersion;
+                    existing.ActualVersion = actualVersion;
                     await _storageService.UpdateTestRecordAsync(existing).ConfigureAwait(false);
                 }
                 else
@@ -479,7 +533,9 @@ namespace SnVerify.Services.Coordination
                         DeviceSN = deviceSN,
                         Result = result,
                         FailReason = failReason,
-                        VerifyTime = at
+                        VerifyTime = at,
+                        ExpectedVersion = expectedVersion,
+                        ActualVersion = actualVersion
                     };
                     await _storageService.SaveTestRecordAsync(record).ConfigureAwait(false);
                 }
@@ -495,7 +551,13 @@ namespace SnVerify.Services.Coordination
         /// <summary>
         /// 保存校验结果到存储服务（Phase 2.5 使用 TestRecord）；落库后执行 MES Post-Report。
         /// </summary>
-        private async Task SaveResultAsync(string sn, string result, string failReason, string deviceSN)
+        private async Task SaveResultAsync(
+            string sn,
+            string result,
+            string failReason,
+            string deviceSN,
+            DeviceInfo deviceInfo = null,
+            VerificationParameter parameter = null)
         {
             try
             {
@@ -513,7 +575,9 @@ namespace SnVerify.Services.Coordination
                     DeviceSN = deviceSN,
                     Result = result,
                     FailReason = failReason,
-                    VerifyTime = DateTime.Now
+                    VerifyTime = DateTime.Now,
+                    ExpectedVersion = parameter?.ExpectedAndroidVersion,
+                    ActualVersion = deviceInfo?.AndroidVersion
                 };
                 await _storageService.SaveTestRecordAsync(record).ConfigureAwait(false);
                 await PostReportAsync(sn, result, failReason, deviceSN).ConfigureAwait(false);
@@ -522,6 +586,135 @@ namespace SnVerify.Services.Coordination
             {
                 // 保存失败不影响流程
             }
+        }
+
+        /// <summary>
+        /// Legacy 合一检验：SN 规则通过后执行 Android 版本校验并落库。
+        /// </summary>
+        private async Task CompleteLegacyPassAsync(
+            string stickerSN,
+            string deviceSNNormalized,
+            DeviceInfo deviceInfo,
+            ProductProfile legacyAndroidProfile,
+            VerificationParameter legacySessionParameter = null)
+        {
+            VerificationParameter parameter = legacySessionParameter;
+            if (legacyAndroidProfile != null && legacyAndroidProfile.EnableAndroidVersionCheck)
+            {
+                if (parameter == null)
+                    parameter = await GetSessionParameterAsync().ConfigureAwait(false);
+                if (parameter == null || string.IsNullOrWhiteSpace(parameter.ExpectedAndroidVersion))
+                {
+                    const string failReason = RuleFailReasonCodes.ParameterNotConfigured;
+                    await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", failReason, deviceSNNormalized, deviceInfo, parameter)
+                        .ConfigureAwait(false);
+                    _loggingService?.LogInfo(
+                        $"检验结果 [FAIL] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 错误结果: {failReason}");
+                    _loggingService?.LogInfo("检验结束");
+                    UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", failReason, _sessionId, deviceSNNormalized, deviceInfo));
+                    return;
+                }
+
+                var versionService = _versionVerificationService ?? new VersionVerificationService();
+                var (verOk, verFail) = await versionService
+                    .VerifyAsync(deviceInfo, parameter, legacyAndroidProfile)
+                    .ConfigureAwait(false);
+                if (!verOk)
+                {
+                    await SaveOrUpdateFailResultAsync(stickerSN, "FAIL", verFail, deviceSNNormalized, deviceInfo, parameter)
+                        .ConfigureAwait(false);
+                    _loggingService?.LogInfo(
+                        $"检验结果 [FAIL] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 错误结果: {verFail}");
+                    _loggingService?.LogInfo("检验结束");
+                    UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "FAIL", verFail, _sessionId, deviceSNNormalized, deviceInfo));
+                    return;
+                }
+            }
+
+            await SaveResultAsync(stickerSN, "PASS", null, deviceSNNormalized, deviceInfo, parameter).ConfigureAwait(false);
+            _loggingService?.LogInfo($"检验结果 [PASS] , [扫码枪SN: {stickerSN}, 设备SN: {deviceSNNormalized}] , 成功结果");
+            _loggingService?.LogInfo("检验结束");
+            UpdateSnapshot(VerificationSnapshot.Completed(stickerSN, "PASS", null, _sessionId, deviceSNNormalized, deviceInfo));
+        }
+
+        /// <summary>
+        /// 解析当前 Session 是否启用 Legacy Android 合一检验及对应 Profile。
+        /// </summary>
+        private async Task<ProductProfile> TryResolveLegacyAndroidProfileAsync()
+        {
+            if (_deviceAccessService == null)
+                return null;
+
+            var internalSessionId = await _storageService.GetInternalSessionIdBySessionNameAsync(_sessionId).ConfigureAwait(false);
+            if (!internalSessionId.HasValue)
+                return null;
+
+            var productCode = await _storageService.GetProductCodeBySessionIdAsync(internalSessionId.Value).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(productCode))
+                productCode = _sessionProductCode;
+
+            if (string.IsNullOrWhiteSpace(productCode))
+                return null;
+
+            var profile = _productRegistry.GetProductProfile(productCode);
+            if (profile == null || !profile.EnableAndroidVersionCheck)
+                return null;
+
+            return profile;
+        }
+
+        /// <summary>
+        /// 当前 Session 是否应按 Legacy Android 合一检验执行（Fail-closed 判定）。
+        /// </summary>
+        private bool RequiresLegacyAndroidUnifiedCheck()
+        {
+            if (string.IsNullOrWhiteSpace(_sessionProductCode))
+                return false;
+
+            var profile = _productRegistry.GetProductProfile(_sessionProductCode);
+            if (profile == null)
+                return true;
+
+            return profile.EnableAndroidVersionCheck;
+        }
+
+        /// <summary>
+        /// Legacy Android 合一检验前置条件不满足时的失败码。
+        /// </summary>
+        private string ResolveLegacyAndroidSetupFailureReason()
+        {
+            if (string.IsNullOrWhiteSpace(_sessionProductCode))
+                return RuleFailReasonCodes.ProductProfileNotFound;
+
+            var profile = _productRegistry.GetProductProfile(_sessionProductCode);
+            if (profile == null)
+                return RuleFailReasonCodes.ProductProfileNotFound;
+
+            if (_deviceAccessService == null)
+                return RuleFailReasonCodes.AdbReadFail;
+
+            return RuleFailReasonCodes.ProductProfileNotFound;
+        }
+
+        private static VerificationParameter LegacyParameterOrNull(
+            ProductProfile legacyAndroidProfile,
+            VerificationParameter legacySessionParameter)
+        {
+            if (legacyAndroidProfile != null && legacyAndroidProfile.EnableAndroidVersionCheck)
+                return legacySessionParameter;
+            return null;
+        }
+
+        private async Task<VerificationParameter> GetSessionParameterAsync()
+        {
+            if (_parameterService == null)
+                return null;
+
+            var internalSessionId = await _storageService.GetInternalSessionIdBySessionNameAsync(_sessionId).ConfigureAwait(false);
+            if (!internalSessionId.HasValue)
+                return null;
+
+            return await _parameterService.GetParameterAsync(internalSessionId.Value).ConfigureAwait(false);
         }
 
         /// <summary>

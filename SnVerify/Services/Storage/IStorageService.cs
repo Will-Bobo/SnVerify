@@ -103,6 +103,11 @@ namespace SnVerify.Services.Storage
         Task<int?> GetProductIdByProductNameAsync(string productName);
 
         /// <summary>
+        /// 当 Product.ProductCode 为空时回填产品类型代码；已有值时不覆盖。
+        /// </summary>
+        Task EnsureProductCodeAsync(int productId, string productCode);
+
+        /// <summary>
         /// 根据当前 Session 名称解析所属项目个体名（Session → Order → Product → ProductName）。
         /// </summary>
         Task<string> GetProductNameBySessionNameAsync(string sessionName);

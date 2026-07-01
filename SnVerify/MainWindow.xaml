@@ -163,12 +163,12 @@
                         <!-- 检验类型（仅老产品显示） -->
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" DockPanel.Dock="Left">
                             <TextBlock Text="检验类型：" Style="{StaticResource BatchHeaderStyle}" Margin="10,0,0,0" VerticalAlignment="Center" Padding="5,2"
-                                       Visibility="{Binding IsLegacyProduct, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                       Visibility="{Binding ShowLegacyVerificationTypeCombo, Converter={StaticResource BoolToVisibilityConverter}}"/>
                             <ComboBox x:Name="VerificationTypeComboBox" MinWidth="100" Height="28" Margin="5,0,10,0" VerticalAlignment="Center"
                                       VerticalContentAlignment="Center"
                                       ItemsSource="{Binding AvailableVerificationTypes}"
                                       SelectedItem="{Binding CurrentVerificationType, Mode=TwoWay}"
-                                      Visibility="{Binding IsLegacyProduct, Converter={StaticResource BoolToVisibilityConverter}}">
+                                      Visibility="{Binding ShowLegacyVerificationTypeCombo, Converter={StaticResource BoolToVisibilityConverter}}">
                                 <ComboBox.Style>
                                     <Style TargetType="ComboBox">
                                         <Setter Property="IsEnabled" Value="True"/>
@@ -853,9 +853,9 @@
                         </Grid>
                     </Border>
 
-                    <!-- Phase3：版本信息匹配对比（KM001 使用） -->
+                    <!-- Phase3 / Legacy Android 合一：版本信息匹配对比 -->
                     <Grid Grid.Row="4" Margin="0,8,0,4"
-                          Visibility="{Binding IsPhase3Product, Converter={StaticResource BoolToVisibilityConverter}}">
+                          Visibility="{Binding ShowVersionComparisonSection, Converter={StaticResource BoolToVisibilityConverter}}">
                         <GroupBox Header="版本信息匹配对比">
                             <Grid Margin="4">
                                 <Grid.ColumnDefinitions>

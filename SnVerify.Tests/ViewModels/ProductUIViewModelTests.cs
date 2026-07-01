@@ -57,7 +57,7 @@ namespace SnVerify.Tests.ViewModels
             _sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Idle());
             _verificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
             _versionVerificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
-            _flowServiceFactoryMock.Setup(f => f.Create(It.IsAny<string>(), It.IsAny<string>())).Returns(_verificationFlowServiceMock.Object);
+            _flowServiceFactoryMock.Setup(f => f.Create(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>())).Returns(_verificationFlowServiceMock.Object);
             _loggingServiceMock.Setup(m => m.Snapshot).Returns(LoggingSnapshot.Idle());
 
             _productRegistryMock

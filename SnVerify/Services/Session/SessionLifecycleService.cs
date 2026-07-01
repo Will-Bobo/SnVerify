@@ -100,6 +100,10 @@ namespace SnVerify.Services.Session
                     if (existingProductId.HasValue)
                     {
                         productId = existingProductId.Value;
+                        if (!string.IsNullOrWhiteSpace(productCode))
+                        {
+                            _storage.EnsureProductCodeAsync(productId, productCode.Trim()).GetAwaiter().GetResult();
+                        }
                     }
                     else
                     {

@@ -387,9 +387,9 @@ namespace SnVerify.Tests.Services
                 Assert.That(passSheet.Cells[1, 1].Value, Is.EqualTo("Id"));
                 Assert.That(passSheet.Cells[1, 2].Value, Is.EqualTo("条形码SN"));
                 Assert.That(passSheet.Cells[1, 3].Value, Is.EqualTo("设备SN"));
-                Assert.That(passSheet.Cells[1, 4].Value, Is.EqualTo("Result"));
-                Assert.That(passSheet.Cells[1, 5].Value, Is.EqualTo("FailReason"));
-                Assert.That(passSheet.Cells[1, 6].Value, Is.EqualTo("VerifyTime"));
+                Assert.That(passSheet.Cells[1, 4].Value, Is.EqualTo("检验结果"));
+                Assert.That(passSheet.Cells[1, 5].Value, Is.EqualTo("失败原因"));
+                Assert.That(passSheet.Cells[1, 6].Value, Is.EqualTo("检验时间"));
 
                 // 验证 PASS Sheet 数据列顺序
                 Assert.That(passSheet.Cells[2, 1].Value, Is.EqualTo(passResult.Id));

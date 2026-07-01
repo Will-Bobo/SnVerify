@@ -40,6 +40,7 @@ namespace SnVerify.Tests.Infrastructure
             Assert.That(profile.EnableBoardVersionCheck, Is.False);
             Assert.That(profile.EnableChargeBoardVersionCheck, Is.False);
 
+            Assert.That(profile.EnableAndroidVersionCheck, Is.True, "SOLTAG25 应启用 Android 版本合一检验");
             Assert.That(profile.AdbConfig, Is.Not.Null, "SOLTAG25 需要显式 ADB 配置用于自检");
             Assert.That(profile.AdbConfig.AggregateCommand, Is.Null);
             Assert.That(profile.AdbConfig.BootstrapCommandSpecs, Is.Not.Null);

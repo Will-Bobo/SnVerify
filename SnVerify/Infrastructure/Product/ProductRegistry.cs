@@ -65,7 +65,8 @@ namespace SnVerify.Infrastructure.Product
                         EnableChipIdCheck = false,
                         EnableWifiMacCheck = false,
                         EnableBoardVersionCheck = false,
-                        EnableChargeBoardVersionCheck = false
+                        EnableChargeBoardVersionCheck = false,
+                        EnableAndroidVersionCheck = true
                     }
                 },
                 {
@@ -97,7 +98,8 @@ namespace SnVerify.Infrastructure.Product
                         EnableChipIdCheck = true,
                         EnableWifiMacCheck = true,
                         EnableBoardVersionCheck = true,
-                        EnableChargeBoardVersionCheck = true
+                        EnableChargeBoardVersionCheck = true,
+                        EnableAndroidVersionCheck = true
                     }
                 },
                 {
@@ -126,7 +128,8 @@ namespace SnVerify.Infrastructure.Product
                         EnableChipIdCheck = false,
                         EnableWifiMacCheck = true,
                         EnableBoardVersionCheck = false,
-                        EnableChargeBoardVersionCheck = false
+                        EnableChargeBoardVersionCheck = false,
+                        EnableAndroidVersionCheck = true
                     }
                 }
             };

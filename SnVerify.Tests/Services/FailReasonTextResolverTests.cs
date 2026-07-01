@@ -15,6 +15,13 @@ namespace SnVerify.Tests.Services
         }
 
         [Test]
+        public void Resolve_WhenAndroidVersionMismatch_ShouldReturnLocalizedText()
+        {
+            var text = FailReasonTextResolver.Resolve(RuleFailReasonCodes.AndroidVersionMismatch);
+            Assert.That(text, Is.EqualTo("设备Android版本号与目标值不匹配"));
+        }
+
+        [Test]
         public void Resolve_WhenUnknownCode_ShouldFallbackToCode()
         {
             const string code = "UNKNOWN_REASON";

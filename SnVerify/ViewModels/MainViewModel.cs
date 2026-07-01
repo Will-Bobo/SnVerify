@@ -96,6 +96,7 @@ namespace SnVerify.ViewModels
         private bool _showBoardVersion;
         private bool _showChargeVersion;
         private bool _showWifiMac;
+        private bool _showAndroidVersionSection;
 
         // 初始化 Scope 计数器：支持嵌套的初始化阶段检测（避免初始化期间触发 ProductCode 切换防呆逻辑）。
         private int _initScopeCounter;
@@ -434,29 +435,65 @@ namespace SnVerify.ViewModels
         }
 
         /// <summary>
+        /// 检验类型 ComboBox 是否显示（Legacy 且非 Android 合一检验时显示）。
+        /// </summary>
+        public bool ShowLegacyVerificationTypeCombo => IsLegacyProduct && !ShowAndroidVersionSection;
+
+        /// <summary>
         /// 检验类型 ComboBox 是否可用（开始测试后禁用）
         /// </summary>
         public bool IsVerificationTypeComboBoxEnabled => !IsSessionActive;
 
         /// <summary>
-        /// 扫码输入框是否显示（VerificationType == SnMatch 时显示）
+        /// 是否显示 Android 版本合一检验区（Legacy SOLTAG25 或 Phase3）。
         /// </summary>
-        public bool IsScanInputVisible => CurrentVerificationType == VerificationType.SnMatch;
+        public bool ShowAndroidVersionSection
+        {
+            get => _showAndroidVersionSection;
+            private set
+            {
+                if (_showAndroidVersionSection != value)
+                {
+                    _showAndroidVersionSection = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(ShowLegacyVerificationTypeCombo));
+                    OnPropertyChanged(nameof(ShowVersionComparisonSection));
+                    OnPropertyChanged(nameof(IsScanInputVisible));
+                    OnPropertyChanged(nameof(IsVersionInputVisible));
+                    OnPropertyChanged(nameof(IsSnInfoVisible));
+                    OnPropertyChanged(nameof(IsVersionInfoVisible));
+                }
+            }
+        }
 
         /// <summary>
-        /// 版本输入框是否显示（VerificationType == VersionMatch 时显示）
+        /// 是否显示「版本信息匹配对比」GroupBox。
         /// </summary>
-        public bool IsVersionInputVisible => CurrentVerificationType == VerificationType.VersionMatch;
+        public bool ShowVersionComparisonSection => IsPhase3Product || ShowAndroidVersionSection;
 
         /// <summary>
-        /// SN 信息区是否显示（扫码SN + 设备SN，VerificationType == SnMatch 时显示）
+        /// 扫码输入框是否显示（SnMatch 或 Android 合一检验模式）
         /// </summary>
-        public bool IsSnInfoVisible => CurrentVerificationType == VerificationType.SnMatch;
+        public bool IsScanInputVisible =>
+            CurrentVerificationType == VerificationType.SnMatch || ShowAndroidVersionSection;
 
         /// <summary>
-        /// 设备版本信息区是否显示（目标版本 + 设备实际版本，VerificationType == VersionMatch 时显示）
+        /// 版本输入框是否显示（已弃用独立 VersionMatch 模式时隐藏）
         /// </summary>
-        public bool IsVersionInfoVisible => CurrentVerificationType == VerificationType.VersionMatch;
+        public bool IsVersionInputVisible =>
+            !ShowAndroidVersionSection && CurrentVerificationType == VerificationType.VersionMatch;
+
+        /// <summary>
+        /// SN 信息区是否显示
+        /// </summary>
+        public bool IsSnInfoVisible =>
+            CurrentVerificationType == VerificationType.SnMatch || ShowAndroidVersionSection;
+
+        /// <summary>
+        /// 设备版本信息区是否显示（旧版 VersionMatch 双列布局，合一模式已弃用）
+        /// </summary>
+        public bool IsVersionInfoVisible =>
+            !ShowAndroidVersionSection && CurrentVerificationType == VerificationType.VersionMatch;
 
         /// <summary>
         /// 目标版本显示（VersionMatch 时用，来自 TargetVersionInput，空时显示 --）
@@ -551,6 +588,7 @@ namespace SnVerify.ViewModels
                 {
                     _expectedAndroidVersion = value;
                     OnPropertyChanged();
+                    StartBatchCommand?.RaiseCanExecuteChanged();
                 }
             }
         }
@@ -925,11 +963,15 @@ namespace SnVerify.ViewModels
                 SelectedProductCode = lastProductCode;
             }
 
-            if (IsPhase3Product && string.Equals(SelectedProductCode, Settings.Default.LastProductCode, StringComparison.OrdinalIgnoreCase))
+            if ((IsPhase3Product || ShowAndroidVersionSection) &&
+                string.Equals(SelectedProductCode, Settings.Default.LastProductCode, StringComparison.OrdinalIgnoreCase))
             {
                 ExpectedAndroidVersion = Settings.Default.LastExpectedAndroidVersion ?? "";
-                ExpectedBoardVersion = Settings.Default.LastExpectedBoardVersion ?? "";
-                ExpectedChargeBoardVersion = Settings.Default.LastExpectedChargeBoardVersion ?? "";
+                if (IsPhase3Product)
+                {
+                    ExpectedBoardVersion = Settings.Default.LastExpectedBoardVersion ?? "";
+                    ExpectedChargeBoardVersion = Settings.Default.LastExpectedChargeBoardVersion ?? "";
+                }
             }
 
             SanitizeExpectedVersionsForCurrentProfile();
@@ -947,6 +989,7 @@ namespace SnVerify.ViewModels
                 ShowBoardVersion = false;
                 ShowChargeVersion = false;
                 ShowWifiMac = false;
+                ShowAndroidVersionSection = false;
                 RaiseFieldLabelChanged();
                 return;
             }
@@ -961,6 +1004,7 @@ namespace SnVerify.ViewModels
                 ShowBoardVersion = false;
                 ShowChargeVersion = false;
                 ShowWifiMac = false;
+                ShowAndroidVersionSection = false;
                 RaiseFieldLabelChanged();
                 return;
             }
@@ -974,6 +1018,9 @@ namespace SnVerify.ViewModels
             ShowBoardVersion = _currentProductProfile.EnableBoardVersionCheck;
             ShowChargeVersion = _currentProductProfile.EnableChargeBoardVersionCheck;
             ShowWifiMac = _currentProductProfile.EnableWifiMacCheck;
+            ShowAndroidVersionSection = _currentProductProfile.EnableAndroidVersionCheck;
+            if (ShowAndroidVersionSection && !IsPhase3Product)
+                CurrentVerificationType = VerificationType.SnMatch;
             SanitizeExpectedVersionsForCurrentProfile();
             RaiseFieldLabelChanged();
         }
@@ -1167,7 +1214,11 @@ namespace SnVerify.ViewModels
         {
             if (IsSessionActive || IsSelfChecking || IsProcessing)
                 return false;
-            if (CurrentVerificationType == VerificationType.VersionMatch && string.IsNullOrWhiteSpace(TargetVersionInput))
+            if (!ShowAndroidVersionSection && CurrentVerificationType == VerificationType.VersionMatch &&
+                string.IsNullOrWhiteSpace(TargetVersionInput))
+                return false;
+            if (ShowAndroidVersionSection && !IsPhase3Product &&
+                string.IsNullOrWhiteSpace(ExpectedAndroidVersion?.Trim()))
                 return false;
             return true;
         }
@@ -1192,10 +1243,20 @@ namespace SnVerify.ViewModels
                     return;
                 }
 
-                // VersionMatch 时目标版本必填
-                if (CurrentVerificationType == VerificationType.VersionMatch && string.IsNullOrWhiteSpace(TargetVersionInput?.Trim()))
+                // VersionMatch 时目标版本必填（旧版独立版本检验）
+                if (!ShowAndroidVersionSection &&
+                    CurrentVerificationType == VerificationType.VersionMatch &&
+                    string.IsNullOrWhiteSpace(TargetVersionInput?.Trim()))
                 {
                     _dialogService.ShowWarning("版本检验模式下，请先填写目标版本号", "校验失败");
+                    return;
+                }
+
+                // Legacy Android 合一检验：目标 Android 版本必填
+                if (ShowAndroidVersionSection && !IsPhase3Product &&
+                    string.IsNullOrWhiteSpace(ExpectedAndroidVersion?.Trim()))
+                {
+                    _dialogService.ShowWarning("目标 Android 版本号不能为空", "校验失败");
                     return;
                 }
 
@@ -1231,7 +1292,12 @@ namespace SnVerify.ViewModels
                 }
 
                 // 创建并开始 Session，并以 SessionName 启动会话日志
-                var productCode = (IsPhase3Product && !string.IsNullOrWhiteSpace(SelectedProductCode)) ? SelectedProductCode.Trim() : null;
+                string productCode = null;
+                if (!string.IsNullOrWhiteSpace(SelectedProductCode))
+                {
+                    if (IsPhase3Product || (_currentProductProfile?.EnableAndroidVersionCheck ?? false))
+                        productCode = SelectedProductCode.Trim();
+                }
                 var sessionId = await System.Threading.Tasks.Task.Run(() =>
                 {
                     var sid = _sessionLifecycleService.CreateAndStartSession(orderId, orderId, projectId, productCode);
@@ -1239,24 +1305,27 @@ namespace SnVerify.ViewModels
                     return sid;
                 });
 
-                _verificationFlowService = _flowServiceFactory.Create(sessionId, orderId);
+                _verificationFlowService = _flowServiceFactory.Create(sessionId, orderId, productCode);
                 AttachMesEventHandlers(_verificationFlowService);
 
                 SessionSnapshot = _sessionLifecycleService.Snapshot;
                 VerificationSnapshot = _verificationFlowService.Snapshot;
                 LoggingSnapshot = _loggingService.Snapshot;
 
-                // Phase3：先创建 Session，再按 SessionId 保存参数快照，确保批次语义一致。
-                if (IsPhase3Product && _parameterService != null)
+                // Phase3 / Legacy Android 合一：先创建 Session，再按 SessionId 保存参数快照。
+                if ((IsPhase3Product || ShowAndroidVersionSection) && _parameterService != null)
                 {
                     var expectedAndroid = ExpectedAndroidVersion?.Trim();
                     var expectedBoard = ExpectedBoardVersion?.Trim();
                     var expectedCharge = ExpectedChargeBoardVersion?.Trim();
 
-                    // 至少存在一个非空目标版本时才保存（上文已校验，此处恒为真，保留以保持语义清晰）。
-                    if (!string.IsNullOrWhiteSpace(expectedAndroid) ||
-                        !string.IsNullOrWhiteSpace(expectedBoard) ||
-                        !string.IsNullOrWhiteSpace(expectedCharge))
+                    var hasParameter = IsPhase3Product
+                        ? !string.IsNullOrWhiteSpace(expectedAndroid) ||
+                          !string.IsNullOrWhiteSpace(expectedBoard) ||
+                          !string.IsNullOrWhiteSpace(expectedCharge)
+                        : !string.IsNullOrWhiteSpace(expectedAndroid);
+
+                    if (hasParameter)
                     {
                         var internalSessionId = await _storageService.GetInternalSessionIdBySessionNameAsync(sessionId).ConfigureAwait(true);
                         if (!internalSessionId.HasValue)
@@ -1266,8 +1335,8 @@ namespace SnVerify.ViewModels
                         {
                             SessionId = internalSessionId.Value,
                             ExpectedAndroidVersion = expectedAndroid,
-                            ExpectedBoardVersion = expectedBoard,
-                            ExpectedChargeBoardVersion = expectedCharge,
+                            ExpectedBoardVersion = IsPhase3Product ? expectedBoard : null,
+                            ExpectedChargeBoardVersion = IsPhase3Product ? expectedCharge : null,
                             CreatedAt = DateTime.Now
                         };
 
@@ -1279,10 +1348,12 @@ namespace SnVerify.ViewModels
                 Settings.Default.LastProjectId = projectId;
                 Settings.Default.LastOrderId = orderId;
                 Settings.Default.LastProductCode = SelectedProductCode ?? "";
-                // 仅 Phase3 产品保存版本号默认值；Legacy 不覆盖，避免误清空用户可复用值。
-                if (IsPhase3Product)
+                if (IsPhase3Product || ShowAndroidVersionSection)
                 {
                     Settings.Default.LastExpectedAndroidVersion = ExpectedAndroidVersion ?? "";
+                }
+                if (IsPhase3Product)
+                {
                     Settings.Default.LastExpectedBoardVersion = ExpectedBoardVersion ?? "";
                     Settings.Default.LastExpectedChargeBoardVersion = ExpectedChargeBoardVersion ?? "";
                 }
@@ -1352,9 +1423,9 @@ namespace SnVerify.ViewModels
             }
 
             // Step 2: 选择导出内容类型（SN 检验 / 版本检验 / 全部），默认根据当前 VerificationType 勾选
-            // Phase3 产品（如 KM001）：Session 导出逻辑始终为全量导出，忽略 Filter，此处直接使用 All，跳过内容类型选择页。
+            // Phase3 与 Legacy Android 合一检验：Session 导出始终为全量，跳过内容类型选择页。
             ExportRecordFilter exportFilter;
-            if (_currentProductProfile?.Mode == VerificationMode.Phase3)
+            if (IsPhase3Product || ShowAndroidVersionSection)
             {
                 exportFilter = ExportRecordFilter.All;
             }

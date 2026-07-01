@@ -15,6 +15,6 @@ namespace SnVerify.Services.Coordination
         /// <param name="sessionId">会话 ID（SessionId）</param>
         /// <param name="orderId">订单 ID（可选，用于 MES 上下文）</param>
         /// <returns>校验流程服务实例</returns>
-        IVerificationFlowService Create(string sessionId, string orderId = null);
+        IVerificationFlowService Create(string sessionId, string orderId = null, string productCode = null);
     }
 }

@@ -18,5 +18,6 @@ namespace SnVerify.Services.Rules
         public const string AndroidVersionMismatch = "ANDROID_VERSION_MISMATCH";
         public const string BoardVersionMismatch = "BOARD_VERSION_MISMATCH";
         public const string ChargeBoardVersionMismatch = "CHARGE_BOARD_VERSION_MISMATCH";
+        public const string ProductProfileNotFound = "PRODUCT_PROFILE_NOT_FOUND";
     }
 }

@@ -96,6 +96,33 @@ namespace SnVerify.Tests.Services
         }
 
         [Test]
+        public async Task CreateAndStartSession_WhenExistingProductHasEmptyProductCode_ShouldBackfillProductCode()
+        {
+            var orderId1 = "ORDER_BACKFILL_1";
+            var orderId2 = "ORDER_BACKFILL_2";
+            var projectId = "PROJECT_SOLTAG";
+
+            var sessionId1 = _sessionService.CreateAndStartSession(orderId1, orderId1, projectId);
+            Assert.That(sessionId1, Is.Not.Null);
+
+            var productId = await _storage.GetProductIdByProductNameAsync(projectId);
+            Assert.That(productId, Is.Not.Null);
+
+            var productsBefore = await _storage.GetAllProductsAsync();
+            var productBefore = productsBefore.First(p => p.Id == productId.Value);
+            Assert.That(productBefore.ProductCode, Is.Null.Or.Empty);
+
+            _sessionService.EndSession();
+
+            var sessionId2 = _sessionService.CreateAndStartSession(orderId2, orderId2, projectId, "SOLTAG25");
+            Assert.That(sessionId2, Is.Not.Null);
+
+            var productsAfter = await _storage.GetAllProductsAsync();
+            var productAfter = productsAfter.First(p => p.Id == productId.Value);
+            Assert.That(productAfter.ProductCode, Is.EqualTo("SOLTAG25"));
+        }
+
+        [Test]
         public async Task CreateAndStartSession_WhenProjectIdIsEmpty_ShouldCreateOrderWithProductIdZero()
         {
             var orderId = "ORDER003";

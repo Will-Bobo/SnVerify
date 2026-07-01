@@ -103,7 +103,7 @@ namespace SnVerify.Tests.ViewModels
             _sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Idle());
             _verificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
             _versionVerificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
-            _flowServiceFactoryMock.Setup(f => f.Create(It.IsAny<string>(), It.IsAny<string>())).Returns(_verificationFlowServiceMock.Object);
+            _flowServiceFactoryMock.Setup(f => f.Create(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>())).Returns(_verificationFlowServiceMock.Object);
             _loggingServiceMock.Setup(m => m.Snapshot).Returns(LoggingSnapshot.Idle());
             _storageServiceMock.Setup(s => s.ProjectNameExistsAsync(It.IsAny<string>())).ReturnsAsync(false);
 
@@ -175,7 +175,7 @@ namespace SnVerify.Tests.ViewModels
             sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Idle());
             verificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
             versionVerificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
-            flowServiceFactoryMock.Setup(f => f.Create(It.IsAny<string>(), It.IsAny<string>()))
+            flowServiceFactoryMock.Setup(f => f.Create(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
                                   .Returns(verificationFlowServiceMock.Object);
             loggingServiceMock.Setup(m => m.Snapshot).Returns(LoggingSnapshot.Idle());
 
@@ -263,7 +263,7 @@ namespace SnVerify.Tests.ViewModels
             sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Idle());
             verificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
             versionVerificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
-            flowServiceFactoryMock.Setup(f => f.Create(It.IsAny<string>(), It.IsAny<string>()))
+            flowServiceFactoryMock.Setup(f => f.Create(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
                 .Returns(verificationFlowServiceMock.Object);
             loggingServiceMock.Setup(m => m.Snapshot).Returns(LoggingSnapshot.Idle());
             productRegistryMock.Setup(r => r.GetProductCodes()).Returns(new[] { "SOLTAG25", "KM001" });
@@ -322,7 +322,7 @@ namespace SnVerify.Tests.ViewModels
             sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Idle());
             verificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
             versionVerificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
-            flowServiceFactoryMock.Setup(f => f.Create(It.IsAny<string>(), It.IsAny<string>()))
+            flowServiceFactoryMock.Setup(f => f.Create(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
                 .Returns(verificationFlowServiceMock.Object);
             loggingServiceMock.Setup(m => m.Snapshot).Returns(LoggingSnapshot.Idle());
             storageServiceMock.Setup(s => s.ProjectNameExistsAsync(It.IsAny<string>())).ReturnsAsync(false);
@@ -371,7 +371,7 @@ namespace SnVerify.Tests.ViewModels
             sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Idle());
             verificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
             versionVerificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
-            flowServiceFactoryMock.Setup(f => f.Create(It.IsAny<string>(), It.IsAny<string>()))
+            flowServiceFactoryMock.Setup(f => f.Create(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
                 .Returns(verificationFlowServiceMock.Object);
             loggingServiceMock.Setup(m => m.Snapshot).Returns(LoggingSnapshot.Idle());
             storageServiceMock.Setup(s => s.ProjectNameExistsAsync(It.IsAny<string>())).ReturnsAsync(false);
@@ -536,20 +536,15 @@ namespace SnVerify.Tests.ViewModels
         }
 
         [Test]
-        public async Task StartBatchAsync_ForLegacyProduct_ShouldNotOverwriteExpectedVersionSettings()
+        public async Task StartBatchAsync_ForSoltag25_ShouldSaveExpectedAndroidVersionToSettings()
         {
-            Settings.Default.LastExpectedAndroidVersion = "KEEP_A";
-            Settings.Default.LastExpectedBoardVersion = "KEEP_B";
-            Settings.Default.LastExpectedChargeBoardVersion = "KEEP_C";
-            Settings.Default.Save();
-
             var sessionId = "ORDER_L_20260310_100000";
             var projectId = "SOLTAG25";
             var orderId = "ORDER_L";
             string validationMessage = null;
             _orderNameValidatorMock.Setup(v => v.Validate(orderId, out validationMessage)).Returns(true);
             _sessionLifecycleServiceMock
-                .Setup(s => s.CreateAndStartSession(orderId, orderId, projectId, It.IsAny<string>()))
+                .Setup(s => s.CreateAndStartSession(orderId, orderId, projectId, "SOLTAG25"))
                 .Returns(sessionId);
             _sessionLifecycleServiceMock
                 .SetupSequence(s => s.Snapshot)
@@ -559,7 +554,8 @@ namespace SnVerify.Tests.ViewModels
             _productRegistryMock.Setup(r => r.Get("SOLTAG25")).Returns(new ProductProfile
             {
                 ProductCode = "SOLTAG25",
-                Mode = VerificationMode.Legacy
+                Mode = VerificationMode.Legacy,
+                EnableAndroidVersionCheck = true
             });
 
             _viewModel = new MainViewModel(
@@ -578,13 +574,30 @@ namespace SnVerify.Tests.ViewModels
             _viewModel.SelectedProductCode = "SOLTAG25";
             _viewModel.ProjectIdInput = projectId;
             _viewModel.OrderIdInput = orderId;
+            _viewModel.ExpectedAndroidVersion = "V2.0";
 
             _viewModel.StartBatchCommand.Execute(null);
             await Task.Delay(150);
 
-            Assert.That(Settings.Default.LastExpectedAndroidVersion, Is.EqualTo("KEEP_A"));
-            Assert.That(Settings.Default.LastExpectedBoardVersion, Is.EqualTo("KEEP_B"));
-            Assert.That(Settings.Default.LastExpectedChargeBoardVersion, Is.EqualTo("KEEP_C"));
+            _flowServiceFactoryMock.Verify(f => f.Create(sessionId, orderId, "SOLTAG25"), Times.Once);
+            Assert.That(Settings.Default.LastExpectedAndroidVersion, Is.EqualTo("V2.0"));
+        }
+
+        [Test]
+        public void StartBatchCommand_ForSoltag25_ShouldBeDisabled_WhenExpectedAndroidVersionEmpty()
+        {
+            _productRegistryMock.Setup(r => r.GetProductCodes()).Returns(new[] { "SOLTAG25" });
+            _productRegistryMock.Setup(r => r.Get("SOLTAG25")).Returns(new ProductProfile
+            {
+                ProductCode = "SOLTAG25",
+                Mode = VerificationMode.Legacy,
+                EnableAndroidVersionCheck = true
+            });
+
+            _viewModel.SelectedProductCode = "SOLTAG25";
+            _viewModel.ExpectedAndroidVersion = "";
+
+            Assert.That(_viewModel.StartBatchCommand.CanExecute(null), Is.False);
         }
 
         [Test]
@@ -1095,7 +1108,7 @@ namespace SnVerify.Tests.ViewModels
                 .Returns(SessionSnapshot.Idle())
                 .Returns(SessionSnapshot.Active(sessionId, orderId, startTime));
             _flowServiceFactoryMock
-                .Setup(f => f.Create(sessionId, orderId))
+                .Setup(f => f.Create(sessionId, orderId, It.IsAny<string>()))
                 .Returns(_verificationFlowServiceMock.Object);
 
             // Act
@@ -1106,7 +1119,7 @@ namespace SnVerify.Tests.ViewModels
 
             // Assert
             _sessionLifecycleServiceMock.Verify(s => s.CreateAndStartSession(orderId, orderId, projectId, It.IsAny<string>()), Times.Once);
-            _flowServiceFactoryMock.Verify(f => f.Create(sessionId, orderId), Times.Once);
+            _flowServiceFactoryMock.Verify(f => f.Create(sessionId, orderId, It.IsAny<string>()), Times.Once);
             _loggingServiceMock.Verify(l => l.StartSession(sessionId), Times.Once);
         }
 
@@ -1193,7 +1206,7 @@ namespace SnVerify.Tests.ViewModels
                 .SetupSequence(s => s.Snapshot)
                 .Returns(SessionSnapshot.Idle())
                 .Returns(SessionSnapshot.Active(sessionId, orderId, DateTime.Now));
-            _flowServiceFactoryMock.Setup(f => f.Create(sessionId, orderId)).Returns(_verificationFlowServiceMock.Object);
+            _flowServiceFactoryMock.Setup(f => f.Create(sessionId, orderId, It.IsAny<string>())).Returns(_verificationFlowServiceMock.Object);
 
             _viewModel.ProjectIdInput = projectId;
             _viewModel.OrderIdInput = orderId;
@@ -2037,6 +2050,86 @@ namespace SnVerify.Tests.ViewModels
                 {
                     Directory.Delete(exportRoot, true);
                 }
+            }
+        }
+
+        [Test]
+        public async Task ExportAsync_ForSoltag25_ShouldSkipRecordFilterDialog_AndUseAllFilter()
+        {
+            var exportRoot = Path.Combine(Path.GetTempPath(), $"SnVerify_Export_Soltag_{Guid.NewGuid()}");
+            Directory.CreateDirectory(exportRoot);
+            try
+            {
+                var order = new Order { Id = 1, OrderName = "OrderSoltag", ProductId = 1, CreatedAt = DateTime.Now };
+
+                _productRegistryMock.Setup(r => r.GetProductCodes()).Returns(new[] { "SOLTAG25" });
+                _productRegistryMock.Setup(r => r.Get("SOLTAG25")).Returns(new ProductProfile
+                {
+                    ProductCode = "SOLTAG25",
+                    Mode = VerificationMode.Legacy,
+                    EnableAndroidVersionCheck = true
+                });
+
+                _viewModel = new MainViewModel(
+                    _sessionLifecycleServiceMock.Object,
+                    _flowServiceFactoryMock.Object,
+                    _loggingServiceMock.Object,
+                    _storageServiceMock.Object,
+                    _adbAccessServiceMock.Object,
+                    _exportAggregationServiceMock.Object,
+                    _orderNameValidatorMock.Object,
+                    _dialogServiceMock.Object,
+                    _versionVerificationFlowServiceMock.Object,
+                    Path.GetTempPath(),
+                    _productRegistryMock.Object,
+                    parameterService: null,
+                    deviceAccessService: _deviceAccessServiceMock.Object);
+
+                _viewModel.SelectedProductCode = "SOLTAG25";
+
+                _dialogServiceMock.Setup(d => d.ChooseExportDimension())
+                    .Returns(ExportDimension.ByOrder);
+
+                _dialogServiceMock
+                    .Setup(d => d.ChooseExportRecordFilter(It.IsAny<IReadOnlyList<VerificationType>>()))
+                    .Throws(new Exception("ChooseExportRecordFilter should not be called for Legacy Android unified product"));
+
+                _storageServiceMock.Setup(s => s.GetAllOrdersAsync())
+                    .ReturnsAsync(new[] { order });
+
+                _dialogServiceMock.Setup(d => d.ChooseOrder(It.IsAny<IReadOnlyList<Order>>()))
+                    .Returns(order);
+
+                _dialogServiceMock.Setup(d => d.ChooseFolder(It.IsAny<string>(), It.IsAny<string>()))
+                    .Returns(exportRoot);
+
+                var tcs = new TaskCompletionSource<bool>();
+                _exportAggregationServiceMock
+                    .Setup(s => s.ExportByOrderIdAsync(
+                        "OrderSoltag",
+                        exportRoot,
+                        It.Is<SnVerify.Domain.Export.ExportRecordFilter>(f => f == SnVerify.Domain.Export.ExportRecordFilter.All)))
+                    .Returns(() =>
+                    {
+                        tcs.TrySetResult(true);
+                        return Task.CompletedTask;
+                    });
+
+                _viewModel.ExportCommand.Execute(null);
+                await WaitUntilAsync(() => tcs.Task.IsCompleted);
+
+                _dialogServiceMock.Verify(d => d.ChooseExportRecordFilter(It.IsAny<IReadOnlyList<VerificationType>>()), Times.Never);
+                _exportAggregationServiceMock.Verify(
+                    s => s.ExportByOrderIdAsync(
+                        "OrderSoltag",
+                        exportRoot,
+                        It.Is<SnVerify.Domain.Export.ExportRecordFilter>(f => f == SnVerify.Domain.Export.ExportRecordFilter.All)),
+                    Times.Once);
+            }
+            finally
+            {
+                if (Directory.Exists(exportRoot))
+                    Directory.Delete(exportRoot, true);
             }
         }
     }

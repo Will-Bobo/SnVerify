@@ -16,6 +16,7 @@ using SnVerify.Domain.Export;
 using SnVerify.Domain.Models;
 using SnVerify.Domain.State;
 using SnVerify.Services.Logging;
+using SnVerify.Services.Rules;
 
 namespace SnVerify.Services.Storage
 {
@@ -833,6 +834,37 @@ CREATE TABLE VerificationParameter (
             return id;
         }
 
+        /// <inheritdoc />
+        public async Task EnsureProductCodeAsync(int productId, string productCode)
+        {
+            if (productId <= 0)
+                return;
+            if (string.IsNullOrWhiteSpace(productCode))
+                return;
+
+            EnsureConnectionInitialized();
+
+            var sql = @"
+                UPDATE Product
+                SET ProductCode = @ProductCode
+                WHERE Id = @Id AND (ProductCode IS NULL OR TRIM(ProductCode) = '')";
+
+            await Task.Run(() =>
+            {
+                lock (_lockObject)
+                {
+                    if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        throw new InvalidOperationException("数据库连接未初始化或已关闭");
+                    using (var cmd = new SQLiteCommand(sql, _connection))
+                    {
+                        cmd.Parameters.AddWithValue("@ProductCode", productCode.Trim());
+                        cmd.Parameters.AddWithValue("@Id", productId);
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+            }).ConfigureAwait(false);
+        }
+
         /// <summary>
         /// 获取所有产品列表。
         /// </summary>
@@ -1453,6 +1485,8 @@ CREATE TABLE VerificationParameter (
                     ChargeBoardVersion = @ChargeBoardVersion,
                     ExpectedBoardVersion = @ExpectedBoardVersion,
                     ExpectedChargeBoardVersion = @ExpectedChargeBoardVersion,
+                    ExpectedVersion = @ExpectedVersion,
+                    ActualVersion = @ActualVersion,
                     Result = @Result,
                     FailReason = @FailReason,
                     VerifyTime = @VerifyTime
@@ -1474,6 +1508,8 @@ CREATE TABLE VerificationParameter (
                         cmd.Parameters.AddWithValue("@ChargeBoardVersion", (object)record.ChargeBoardVersion ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@ExpectedBoardVersion", (object)record.ExpectedBoardVersion ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@ExpectedChargeBoardVersion", (object)record.ExpectedChargeBoardVersion ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@ExpectedVersion", (object)record.ExpectedVersion ?? DBNull.Value);
+                        cmd.Parameters.AddWithValue("@ActualVersion", (object)record.ActualVersion ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@Result", record.Result);
                         cmd.Parameters.AddWithValue("@FailReason", (object)record.FailReason ?? DBNull.Value);
                         cmd.Parameters.AddWithValue("@VerifyTime", record.VerifyTime);
@@ -1925,7 +1961,7 @@ CREATE TABLE VerificationParameter (
                         foreach (var r in passRecords)
                             writer.WriteLine($"PASS\t{r.StickerSN}\t{r.DeviceSN}\t{r.VerifyTime:yyyy年M月d日 HH:mm:ss}");
                         foreach (var r in failRecordsDeduped)
-                            writer.WriteLine($"FAIL\t{r.StickerSN}\t{r.DeviceSN}\t{r.Result}\t{r.FailReason}\t{r.VerifyTime:yyyy年M月d日 HH:mm:ss}");
+                            writer.WriteLine($"FAIL\t{r.StickerSN}\t{r.DeviceSN}\t{r.Result}\t{FailReasonTextResolver.Resolve(r.FailReason)}\t{r.VerifyTime:yyyy年M月d日 HH:mm:ss}");
                     }
                 });
 
@@ -1953,17 +1989,16 @@ CREATE TABLE VerificationParameter (
         }
 
         /// <summary>
-        /// 写入 TestRecord 表头。列顺序：Id, 条形码SN, 设备SN, Result, FailReason, VerifyTime, 目标版本号, 设备版本号。
-        /// VersionMatch 类型（StickerSN=="-"）使用第 7、8 列；SnMatch 类型两列保持空。
+        /// 写入 TestRecord 表头。列顺序：Id, 条形码SN, 设备SN, 检验结果, 失败原因, 检验时间, 目标版本号, 设备版本号。
         /// </summary>
         private static void WriteTestRecordSheetHeader(ExcelWorksheet sheet)
         {
             sheet.Cells[1, 1].Value = "Id";
             sheet.Cells[1, 2].Value = "条形码SN";
             sheet.Cells[1, 3].Value = "设备SN";
-            sheet.Cells[1, 4].Value = "Result";
-            sheet.Cells[1, 5].Value = "FailReason";
-            sheet.Cells[1, 6].Value = "VerifyTime";
+            sheet.Cells[1, 4].Value = "检验结果";
+            sheet.Cells[1, 5].Value = "失败原因";
+            sheet.Cells[1, 6].Value = "检验时间";
             sheet.Cells[1, 7].Value = "目标版本号";
             sheet.Cells[1, 8].Value = "设备版本号";
             using (var range = sheet.Cells[1, 1, 1, 8])
@@ -1975,7 +2010,7 @@ CREATE TABLE VerificationParameter (
         }
 
         /// <summary>
-        /// 写入 TestRecord 数据。VersionMatch（StickerSN=="-"）填充 ExpectedVersion、ActualVersion；SnMatch 两列保持空。
+        /// 写入 TestRecord 数据。FailReason 经 FailReasonTextResolver 解析（与 KM001 ErrorDetail 一致）；ExpectedVersion / ActualVersion 按记录字段导出。
         /// </summary>
         private static void WriteTestRecordSheetData(ExcelWorksheet sheet, IList<TestRecord> records, int startRow)
         {
@@ -1987,12 +2022,10 @@ CREATE TABLE VerificationParameter (
                 sheet.Cells[row, 2].Value = r.StickerSN;
                 sheet.Cells[row, 3].Value = r.DeviceSN ?? string.Empty;
                 sheet.Cells[row, 4].Value = r.Result;
-                sheet.Cells[row, 5].Value = r.FailReason ?? string.Empty;
+                sheet.Cells[row, 5].Value = FailReasonTextResolver.Resolve(r.FailReason);
                 sheet.Cells[row, 6].Value = r.VerifyTime.ToString("yyyy年M月d日 HH:mm:ss");
-                // VersionMatch（StickerSN=="-"）才填充版本列；SnMatch 保持空
-                var isVersionMatch = r.StickerSN == "-";
-                sheet.Cells[row, 7].Value = isVersionMatch ? (r.ExpectedVersion ?? string.Empty) : string.Empty;
-                sheet.Cells[row, 8].Value = isVersionMatch ? (r.ActualVersion ?? string.Empty) : string.Empty;
+                sheet.Cells[row, 7].Value = r.ExpectedVersion ?? string.Empty;
+                sheet.Cells[row, 8].Value = r.ActualVersion ?? string.Empty;
             }
             if (records.Count > 0 && sheet.Dimension != null)
                 sheet.Cells[sheet.Dimension.Address].AutoFitColumns();
@@ -2006,9 +2039,9 @@ CREATE TABLE VerificationParameter (
             sheet.Cells[1, 1].Value = "Id";
             sheet.Cells[1, 2].Value = "条形码SN";
             sheet.Cells[1, 3].Value = "设备SN";
-            sheet.Cells[1, 4].Value = "Result";
-            sheet.Cells[1, 5].Value = "FailReason";
-            sheet.Cells[1, 6].Value = "VerifyTime";
+            sheet.Cells[1, 4].Value = "检验结果";
+            sheet.Cells[1, 5].Value = "失败原因";
+            sheet.Cells[1, 6].Value = "检验时间";
             sheet.Cells[1, 7].Value = "目标版本号";
             sheet.Cells[1, 8].Value = "设备版本号";
 

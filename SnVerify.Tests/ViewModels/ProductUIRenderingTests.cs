@@ -44,7 +44,7 @@ namespace SnVerify.Tests.ViewModels
             sessionLifecycleServiceMock.Setup(m => m.Snapshot).Returns(SessionSnapshot.Idle());
             verificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
             versionVerificationFlowServiceMock.Setup(m => m.Snapshot).Returns(VerificationSnapshot.Idle());
-            flowServiceFactoryMock.Setup(f => f.Create(It.IsAny<string>(), It.IsAny<string>())).Returns(verificationFlowServiceMock.Object);
+            flowServiceFactoryMock.Setup(f => f.Create(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>())).Returns(verificationFlowServiceMock.Object);
             loggingServiceMock.Setup(m => m.Snapshot).Returns(LoggingSnapshot.Idle());
 
             return new MainViewModel(
@@ -74,6 +74,7 @@ namespace SnVerify.Tests.ViewModels
                     ProductCode = "SOLTAG25",
                     ProductDisplayName = "SOLTAG25",
                     Mode = VerificationMode.Legacy,
+                    EnableAndroidVersionCheck = true,
                     AdbConfig = null
                 });
 
@@ -118,6 +119,9 @@ namespace SnVerify.Tests.ViewModels
             vm.SelectedProductCode = "SOLTAG25";
             Assert.That(vm.IsLegacyProduct, Is.True);
             Assert.That(vm.IsPhase3Product, Is.False);
+            Assert.That(vm.ShowAndroidVersionSection, Is.True);
+            Assert.That(vm.ShowLegacyVerificationTypeCombo, Is.False);
+            Assert.That(vm.ShowVersionComparisonSection, Is.True);
 
             vm.SelectedProductCode = "KM001";
             Assert.That(vm.IsLegacyProduct, Is.False);

@@ -36,6 +36,8 @@ namespace SnVerify.Services.Rules
                     return GetResourceOrFallback("Err_BoardVersionMismatch", "芯片版本号与目标值不匹配");
                 case RuleFailReasonCodes.ChargeBoardVersionMismatch:
                     return GetResourceOrFallback("Err_ChargeBoardVersionMismatch", "充电板版本号与目标值不匹配");
+                case RuleFailReasonCodes.ProductProfileNotFound:
+                    return GetResourceOrFallback("Err_ProductProfileNotFound", "未找到产品配置");
                 default:
                     return failReasonCode;
             }
