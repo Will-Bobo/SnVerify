@@ -93,7 +93,8 @@ namespace SnVerify.Services.Storage
                                 SessionName = s.SessionName,
                                 OutputDirectory = tempDir,
                                 Filter = filter,
-                                ProductCode = productCode
+                                ProductCode = productCode,
+                                OrderName = orderId
                             };
                             await exporter.ExportAsync(context).ConfigureAwait(false);
                             var excelPath = Path.Combine(tempDir, $"{s.Id}.xlsx");
@@ -191,7 +192,8 @@ namespace SnVerify.Services.Storage
                                 SessionName = s.SessionName,
                                 OutputDirectory = tempDir,
                                 Filter = filter,
-                                ProductCode = productCode
+                                ProductCode = productCode,
+                                OrderName = orderName
                             };
                             await exporter.ExportAsync(context).ConfigureAwait(false);
                             var excelPath = Path.Combine(tempDir, $"{s.Id}.xlsx");

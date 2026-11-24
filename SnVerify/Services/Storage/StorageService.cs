@@ -159,6 +159,24 @@ CREATE TABLE IF NOT EXISTS TestRecord (
     VerifyTime                DATETIME NOT NULL,
     ExpectedVersion           TEXT,
     ActualVersion             TEXT,
+    Imei1                     TEXT,
+    Imei2                     TEXT,
+    CitValue                  TEXT,
+    AgingRebootValue          TEXT,
+    AgingResetValue           TEXT,
+    SnReadStatus              TEXT,
+    VersionReadStatus         TEXT,
+    Imei1ReadStatus           TEXT,
+    Imei2ReadStatus           TEXT,
+    WifiMacReadStatus         TEXT,
+    CitReadStatus             TEXT,
+    AgingRebootReadStatus     TEXT,
+    AgingResetReadStatus      TEXT,
+    SnJudgment                TEXT,
+    VersionJudgment           TEXT,
+    CitJudgment               TEXT,
+    AgingRebootJudgment       TEXT,
+    AgingResetJudgment        TEXT,
     FOREIGN KEY (SessionId) REFERENCES TestSession(Id)
 );";
 
@@ -317,6 +335,49 @@ CREATE TABLE ""Order_new"" (
                     await ExecuteNonQueryAsync($"ALTER TABLE TestRecord ADD COLUMN {col} TEXT");
                 }
             }
+
+            foreach (var col in Yme009RecordColumns)
+            {
+                if (!await ColumnExistsAsync("TestRecord", col))
+                {
+                    await ExecuteNonQueryAsync($"ALTER TABLE TestRecord ADD COLUMN {col} TEXT");
+                }
+            }
+        }
+
+        private static readonly string[] Yme009RecordColumns =
+        {
+            "Imei1", "Imei2", "CitValue", "AgingRebootValue", "AgingResetValue",
+            "SnReadStatus", "VersionReadStatus", "Imei1ReadStatus", "Imei2ReadStatus", "WifiMacReadStatus",
+            "CitReadStatus", "AgingRebootReadStatus", "AgingResetReadStatus",
+            "SnJudgment", "VersionJudgment", "CitJudgment", "AgingRebootJudgment", "AgingResetJudgment"
+        };
+
+        private static void ApplyYme009Columns(SQLiteDataReader reader, TestRecord record)
+        {
+            record.Imei1 = ReadOptional(reader, 15);
+            record.Imei2 = ReadOptional(reader, 16);
+            record.CitValue = ReadOptional(reader, 17);
+            record.AgingRebootValue = ReadOptional(reader, 18);
+            record.AgingResetValue = ReadOptional(reader, 19);
+            record.SnReadStatus = ReadOptional(reader, 20);
+            record.VersionReadStatus = ReadOptional(reader, 21);
+            record.Imei1ReadStatus = ReadOptional(reader, 22);
+            record.Imei2ReadStatus = ReadOptional(reader, 23);
+            record.WifiMacReadStatus = ReadOptional(reader, 24);
+            record.CitReadStatus = ReadOptional(reader, 25);
+            record.AgingRebootReadStatus = ReadOptional(reader, 26);
+            record.AgingResetReadStatus = ReadOptional(reader, 27);
+            record.SnJudgment = ReadOptional(reader, 28);
+            record.VersionJudgment = ReadOptional(reader, 29);
+            record.CitJudgment = ReadOptional(reader, 30);
+            record.AgingRebootJudgment = ReadOptional(reader, 31);
+            record.AgingResetJudgment = ReadOptional(reader, 32);
+        }
+
+        private static string ReadOptional(SQLiteDataReader reader, int ordinal)
+        {
+            return reader.IsDBNull(ordinal) ? null : reader.GetString(ordinal);
         }
 
         /// <summary>
@@ -1210,8 +1271,8 @@ CREATE TABLE VerificationParameter (
             EnsureConnectionInitialized();
 
             var sql = @"
-                INSERT INTO TestRecord (SessionId, StickerSN, DeviceSN, WifiMac, ChipId, BoardVersion, ChargeBoardVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion, Result, FailReason, VerifyTime, ExpectedVersion, ActualVersion)
-                VALUES (@SessionId, @StickerSN, @DeviceSN, @WifiMac, @ChipId, @BoardVersion, @ChargeBoardVersion, @ExpectedBoardVersion, @ExpectedChargeBoardVersion, @Result, @FailReason, @VerifyTime, @ExpectedVersion, @ActualVersion)";
+                INSERT INTO TestRecord (SessionId, StickerSN, DeviceSN, WifiMac, ChipId, BoardVersion, ChargeBoardVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion, Result, FailReason, VerifyTime, ExpectedVersion, ActualVersion, Imei1, Imei2, CitValue, AgingRebootValue, AgingResetValue, SnReadStatus, VersionReadStatus, Imei1ReadStatus, Imei2ReadStatus, WifiMacReadStatus, CitReadStatus, AgingRebootReadStatus, AgingResetReadStatus, SnJudgment, VersionJudgment, CitJudgment, AgingRebootJudgment, AgingResetJudgment)
+                VALUES (@SessionId, @StickerSN, @DeviceSN, @WifiMac, @ChipId, @BoardVersion, @ChargeBoardVersion, @ExpectedBoardVersion, @ExpectedChargeBoardVersion, @Result, @FailReason, @VerifyTime, @ExpectedVersion, @ActualVersion, @Imei1, @Imei2, @CitValue, @AgingRebootValue, @AgingResetValue, @SnReadStatus, @VersionReadStatus, @Imei1ReadStatus, @Imei2ReadStatus, @WifiMacReadStatus, @CitReadStatus, @AgingRebootReadStatus, @AgingResetReadStatus, @SnJudgment, @VersionJudgment, @CitJudgment, @AgingRebootJudgment, @AgingResetJudgment)";
 
             await Task.Run(() =>
             {
@@ -1219,27 +1280,71 @@ CREATE TABLE VerificationParameter (
                 {
                     if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
                         throw new InvalidOperationException("数据库连接未初始化或已关闭");
-                    using (var cmd = new SQLiteCommand(sql, _connection))
+                    SQLiteTransaction transaction = null;
+                    try
                     {
-                        cmd.Parameters.AddWithValue("@SessionId", record.SessionId);
-                        cmd.Parameters.AddWithValue("@StickerSN", record.StickerSN);
-                        cmd.Parameters.AddWithValue("@DeviceSN", (object)record.DeviceSN ?? DBNull.Value);
-                        cmd.Parameters.AddWithValue("@WifiMac", (object)record.WifiMac ?? DBNull.Value);
-                        cmd.Parameters.AddWithValue("@ChipId", (object)record.ChipId ?? DBNull.Value);
-                        cmd.Parameters.AddWithValue("@BoardVersion", (object)record.BoardVersion ?? DBNull.Value);
-                        cmd.Parameters.AddWithValue("@ChargeBoardVersion", (object)record.ChargeBoardVersion ?? DBNull.Value);
-                        cmd.Parameters.AddWithValue("@ExpectedBoardVersion", (object)record.ExpectedBoardVersion ?? DBNull.Value);
-                        cmd.Parameters.AddWithValue("@ExpectedChargeBoardVersion", (object)record.ExpectedChargeBoardVersion ?? DBNull.Value);
-                        cmd.Parameters.AddWithValue("@Result", record.Result);
-                        cmd.Parameters.AddWithValue("@FailReason", (object)record.FailReason ?? DBNull.Value);
-                        cmd.Parameters.AddWithValue("@VerifyTime", record.VerifyTime);
-                        cmd.Parameters.AddWithValue("@ExpectedVersion", (object)record.ExpectedVersion ?? DBNull.Value);
-                        cmd.Parameters.AddWithValue("@ActualVersion", (object)record.ActualVersion ?? DBNull.Value);
-                        cmd.ExecuteNonQuery();
-                        using (var getId = new SQLiteCommand("SELECT last_insert_rowid()", _connection))
+                        transaction = _connection.BeginTransaction();
+                        using (var cmd = new SQLiteCommand(sql, _connection, transaction))
                         {
-                            record.Id = Convert.ToInt32(getId.ExecuteScalar());
+                            cmd.Parameters.AddWithValue("@SessionId", record.SessionId);
+                            cmd.Parameters.AddWithValue("@StickerSN", record.StickerSN);
+                            cmd.Parameters.AddWithValue("@DeviceSN", (object)record.DeviceSN ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@WifiMac", (object)record.WifiMac ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@ChipId", (object)record.ChipId ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@BoardVersion", (object)record.BoardVersion ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@ChargeBoardVersion", (object)record.ChargeBoardVersion ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@ExpectedBoardVersion", (object)record.ExpectedBoardVersion ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@ExpectedChargeBoardVersion", (object)record.ExpectedChargeBoardVersion ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@Result", record.Result);
+                            cmd.Parameters.AddWithValue("@FailReason", (object)record.FailReason ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@VerifyTime", record.VerifyTime);
+                            cmd.Parameters.AddWithValue("@ExpectedVersion", (object)record.ExpectedVersion ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@ActualVersion", (object)record.ActualVersion ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@Imei1", (object)record.Imei1 ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@Imei2", (object)record.Imei2 ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@CitValue", (object)record.CitValue ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@AgingRebootValue", (object)record.AgingRebootValue ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@AgingResetValue", (object)record.AgingResetValue ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@SnReadStatus", (object)record.SnReadStatus ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@VersionReadStatus", (object)record.VersionReadStatus ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@Imei1ReadStatus", (object)record.Imei1ReadStatus ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@Imei2ReadStatus", (object)record.Imei2ReadStatus ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@WifiMacReadStatus", (object)record.WifiMacReadStatus ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@CitReadStatus", (object)record.CitReadStatus ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@AgingRebootReadStatus", (object)record.AgingRebootReadStatus ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@AgingResetReadStatus", (object)record.AgingResetReadStatus ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@SnJudgment", (object)record.SnJudgment ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@VersionJudgment", (object)record.VersionJudgment ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@CitJudgment", (object)record.CitJudgment ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@AgingRebootJudgment", (object)record.AgingRebootJudgment ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@AgingResetJudgment", (object)record.AgingResetJudgment ?? DBNull.Value);
+                            cmd.ExecuteNonQuery();
                         }
+
+                        var rowId = _connection.LastInsertRowId;
+                        if (rowId <= 0 || rowId > int.MaxValue)
+                            throw new InvalidOperationException("TestRecord 主键无效");
+                        transaction.Commit();
+                        transaction.Dispose();
+                        transaction = null;
+                        record.Id = (int)rowId;
+                    }
+                    catch (Exception)
+                    {
+                        if (transaction != null)
+                        {
+                            try
+                            {
+                                transaction.Rollback();
+                            }
+                            catch
+                            {
+                            }
+
+                            transaction.Dispose();
+                        }
+
+                        throw;
                     }
                 }
             });
@@ -1253,7 +1358,7 @@ CREATE TABLE VerificationParameter (
             EnsureConnectionInitialized();
 
             var sql = @"
-                SELECT Id, SessionId, StickerSN, DeviceSN, WifiMac, ChipId, BoardVersion, ChargeBoardVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion, Result, FailReason, VerifyTime, ExpectedVersion, ActualVersion
+                SELECT Id, SessionId, StickerSN, DeviceSN, WifiMac, ChipId, BoardVersion, ChargeBoardVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion, Result, FailReason, VerifyTime, ExpectedVersion, ActualVersion, Imei1, Imei2, CitValue, AgingRebootValue, AgingResetValue, SnReadStatus, VersionReadStatus, Imei1ReadStatus, Imei2ReadStatus, WifiMacReadStatus, CitReadStatus, AgingRebootReadStatus, AgingResetReadStatus, SnJudgment, VersionJudgment, CitJudgment, AgingRebootJudgment, AgingResetJudgment
                 FROM TestRecord WHERE SessionId = @SessionId ORDER BY VerifyTime ASC";
 
             var list = await Task.Run(() =>
@@ -1270,7 +1375,7 @@ CREATE TABLE VerificationParameter (
                         {
                             while (r.Read())
                             {
-                                results.Add(new TestRecord
+                                var record = new TestRecord
                                 {
                                     Id = r.GetInt32(0),
                                     SessionId = r.GetInt32(1),
@@ -1287,7 +1392,9 @@ CREATE TABLE VerificationParameter (
                                     VerifyTime = r.GetDateTime(12),
                                     ExpectedVersion = r.IsDBNull(13) ? null : r.GetString(13),
                                     ActualVersion = r.IsDBNull(14) ? null : r.GetString(14)
-                                });
+                                };
+                                ApplyYme009Columns(r, record);
+                                results.Add(record);
                             }
                         }
                     }
@@ -1424,7 +1531,7 @@ CREATE TABLE VerificationParameter (
             EnsureConnectionInitialized();
 
             var sql = @"
-                SELECT Id, SessionId, StickerSN, DeviceSN, WifiMac, ChipId, BoardVersion, ChargeBoardVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion, Result, FailReason, VerifyTime, ExpectedVersion, ActualVersion
+                SELECT Id, SessionId, StickerSN, DeviceSN, WifiMac, ChipId, BoardVersion, ChargeBoardVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion, Result, FailReason, VerifyTime, ExpectedVersion, ActualVersion, Imei1, Imei2, CitValue, AgingRebootValue, AgingResetValue, SnReadStatus, VersionReadStatus, Imei1ReadStatus, Imei2ReadStatus, WifiMacReadStatus, CitReadStatus, AgingRebootReadStatus, AgingResetReadStatus, SnJudgment, VersionJudgment, CitJudgment, AgingRebootJudgment, AgingResetJudgment
                 FROM TestRecord WHERE SessionId = @SessionId AND StickerSN = @StickerSN ORDER BY VerifyTime DESC LIMIT 1";
 
             return await Task.Run(() =>
@@ -1440,7 +1547,7 @@ CREATE TABLE VerificationParameter (
                         using (var r = cmd.ExecuteReader())
                         {
                             if (!r.Read()) return null;
-                            return new TestRecord
+                            var record = new TestRecord
                             {
                                 Id = r.GetInt32(0),
                                 SessionId = r.GetInt32(1),
@@ -1458,6 +1565,8 @@ CREATE TABLE VerificationParameter (
                                 ExpectedVersion = r.IsDBNull(13) ? null : r.GetString(13),
                                 ActualVersion = r.IsDBNull(14) ? null : r.GetString(14)
                             };
+                            ApplyYme009Columns(r, record);
+                            return record;
                         }
                     }
                 }

@@ -16,6 +16,7 @@ namespace SnVerify.Services.Storage
     {
         private readonly ISessionExporter _legacyExporter;
         private readonly ISessionExporter _phase3Exporter;
+        private readonly ISessionExporter _yme009Exporter;
         private readonly IProductRegistry _productRegistry;
 
         public SessionExporterFactory(IStorageService storage, IProductExportRegistry exportRegistry, IExportValueResolver valueResolver, IProductRegistry productRegistry)
@@ -27,6 +28,7 @@ namespace SnVerify.Services.Storage
             _productRegistry = productRegistry;
             _legacyExporter = new LegacySessionExporter(storage);
             _phase3Exporter = new Km001SessionExporter(storage, exportRegistry, valueResolver, productRegistry);
+            _yme009Exporter = new Yme009SessionExporter(storage);
         }
 
         /// <inheritdoc />
@@ -34,7 +36,10 @@ namespace SnVerify.Services.Storage
         {
             if (string.IsNullOrWhiteSpace(productCode))
                 return _legacyExporter;
-            var profile = _productRegistry.Get(productCode.Trim());
+            var trimmed = productCode.Trim();
+            if (string.Equals(trimmed, Yme009Product.Code, StringComparison.OrdinalIgnoreCase))
+                return _yme009Exporter;
+            var profile = _productRegistry.Get(trimmed);
             if (profile != null && profile.Mode == VerificationMode.Phase3)
                 return _phase3Exporter;
             return _legacyExporter;

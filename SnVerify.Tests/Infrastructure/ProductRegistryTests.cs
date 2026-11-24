@@ -109,6 +109,33 @@ namespace SnVerify.Tests.Infrastructure
             Assert.That(codes, Does.Contain("SOLTAG25"));
             Assert.That(codes, Does.Contain("KM001"));
             Assert.That(codes, Does.Contain("KM008"));
+            Assert.That(codes, Does.Contain(Yme009Product.Code));
+        }
+
+        [Test]
+        public void Should_RegisterIndependentProfile_When_ProductCodeIsYme009()
+        {
+            var profile = ProductRegistry.Get(Yme009Product.Code);
+
+            Assert.That(profile, Is.Not.Null);
+            Assert.That(profile.ProductCode, Is.EqualTo(Yme009Product.Code));
+            Assert.That(profile.Mode, Is.EqualTo(VerificationMode.Independent));
+            Assert.That(profile.Mode, Is.Not.EqualTo(VerificationMode.Phase3));
+            Assert.That(profile.Mode, Is.Not.EqualTo(VerificationMode.Legacy));
+            Assert.That(profile.EnableAndroidVersionCheck, Is.True);
+            Assert.That(profile.EnableChipIdCheck, Is.False);
+            Assert.That(profile.EnableWifiMacCheck, Is.False);
+            Assert.That(profile.EnableBoardVersionCheck, Is.False);
+            Assert.That(profile.EnableChargeBoardVersionCheck, Is.False);
+            Assert.That(profile.AdbConfig, Is.Null);
+        }
+
+        [Test]
+        public void Should_KeepExistingModes_When_Yme009IsRegistered()
+        {
+            Assert.That(ProductRegistry.Get("SOLTAG25").Mode, Is.EqualTo(VerificationMode.Legacy));
+            Assert.That(ProductRegistry.Get("KM001").Mode, Is.EqualTo(VerificationMode.Phase3));
+            Assert.That(ProductRegistry.Get("KM008").Mode, Is.EqualTo(VerificationMode.Phase3));
         }
     }
 }

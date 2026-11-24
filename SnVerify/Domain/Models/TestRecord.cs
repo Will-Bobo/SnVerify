@@ -91,5 +91,46 @@ namespace SnVerify.Domain.Models
         /// 实际 Android 版本号（VersionMatch 或 SN+版本联合流程使用；允许为 null）。
         /// </summary>
         public string ActualVersion { get; set; }
+
+        /// <summary>YME009 IMEI1。其他产品保持 null。</summary>
+        public string Imei1 { get; set; }
+
+        /// <summary>YME009 IMEI2。其他产品保持 null。</summary>
+        public string Imei2 { get; set; }
+
+        /// <summary>YME009 产测原始值。命令未成功时为 null。</summary>
+        public string CitValue { get; set; }
+
+        /// <summary>YME009 重启老化原始值。命令未成功时为 null。</summary>
+        public string AgingRebootValue { get; set; }
+
+        /// <summary>YME009 恢复出厂老化原始值。命令未成功时为 null。</summary>
+        public string AgingResetValue { get; set; }
+
+        public string SnReadStatus { get; set; }
+
+        public string VersionReadStatus { get; set; }
+
+        public string Imei1ReadStatus { get; set; }
+
+        public string Imei2ReadStatus { get; set; }
+
+        public string WifiMacReadStatus { get; set; }
+
+        public string CitReadStatus { get; set; }
+
+        public string AgingRebootReadStatus { get; set; }
+
+        public string AgingResetReadStatus { get; set; }
+
+        public string SnJudgment { get; set; }
+
+        public string VersionJudgment { get; set; }
+
+        public string CitJudgment { get; set; }
+
+        public string AgingRebootJudgment { get; set; }
+
+        public string AgingResetJudgment { get; set; }
     }
 }

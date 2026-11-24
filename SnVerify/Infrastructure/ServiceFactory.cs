@@ -24,6 +24,8 @@ using SnVerify.Infrastructure.DeviceAccess.Session;
 using SnVerify.Infrastructure.DeviceAccess.Command;
 using SnVerify.Infrastructure.DeviceAccess.Parser;
 using SnVerify.Infrastructure.DeviceAccess.Service;
+using SnVerify.Infrastructure.Yme009;
+using SnVerify.Services.Yme009;
 using System.Collections.Generic;
 
 namespace SnVerify.Infrastructure
@@ -128,6 +130,36 @@ namespace SnVerify.Infrastructure
             IUserDialogService dialogService = new WpfUserDialogService();
 
             // 创建 MainViewModel（需 storage/adb 用于导出与自检，logDirectory 用于导出时复制日志）
+            var yme009Scope = new Yme009RoundLogScope();
+            var yme009Discovery = new SetupApiYme009CdcDiscovery(loggingService, yme009Scope);
+            var yme009Clock = new Yme009SystemClock();
+            var yme009Delay = new Yme009SystemDelay();
+            var yme009AtSwitch = new Yme009AtAdbSwitch(
+                yme009Discovery,
+                new Yme009SerialPortFactory(),
+                yme009Clock,
+                yme009Delay,
+                Yme009AccessTiming.Default.AtReadBudget,
+                loggingService,
+                yme009Scope);
+            var yme009Devices = new Yme009ProcessAdbDeviceQuery(adbPath, processRunner, loggingService, yme009Scope);
+            var yme009Access = new Yme009DeviceAccessCoordinator(
+                yme009Discovery,
+                yme009AtSwitch,
+                yme009Devices,
+                loggingService,
+                Yme009AccessTiming.Default,
+                yme009Clock,
+                yme009Delay,
+                yme009Scope);
+            var yme009Reader = new Yme009ProcessPropertyReader(adbPath, processRunner, yme009Devices, loggingService, yme009Scope);
+            IYme009RoundCoordinator yme009Round = new Yme009RoundCoordinator(
+                yme009Access,
+                loggingService,
+                yme009Scope,
+                yme009Reader,
+                storageService);
+
             var viewModel = new MainViewModel(
                 sessionLifecycleService,
                 flowServiceFactory,
@@ -141,7 +173,8 @@ namespace SnVerify.Infrastructure
                 logDirectory,
                 productRegistry,
                 parameterService,
-                deviceAccessService);
+                deviceAccessService,
+                yme009Round);
 
             return viewModel;
         }

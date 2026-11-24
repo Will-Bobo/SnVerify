@@ -271,8 +271,8 @@
                 <ListBox x:Name="DebugLogListBox" ItemsSource="{Binding UiLogs}" 
                          FontFamily="Consolas" 
                          FontSize="12" 
-                         MinHeight="150"
-                         MaxHeight="300"
+                         MinHeight="120"
+                         MaxHeight="180"
                          ScrollViewer.HorizontalScrollBarVisibility="Auto"
                          ScrollViewer.VerticalScrollBarVisibility="Auto"
                          Background="White"
@@ -304,6 +304,8 @@
                         <RowDefinition Height="Auto"/>               <!-- Row4 KM001目标版本 -->
                         <RowDefinition Height="Auto"/>               <!-- Row5 KM001设备信息 -->
                         <RowDefinition Height="Auto"/>               <!-- Row6 FailReason -->
+                        <RowDefinition Height="Auto"/>               <!-- Row7 YME009 本轮结果 -->
+                        <RowDefinition Height="Auto"/>               <!-- Row8 YME009 本会话记录 -->
                     </Grid.RowDefinitions>
 
                     <!-- 当前SN显示（大字号，清晰可见） -->
@@ -327,7 +329,17 @@
                     </Border> -->
                     
                     <!-- 主状态卡片（居中，拟物风格：外框 + 内部状态灯） -->
-                    <Grid Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center">
+                    <Grid HorizontalAlignment="Center" VerticalAlignment="Center">
+                        <Grid.Style>
+                            <Style TargetType="Grid">
+                                <Setter Property="Grid.Row" Value="1"/>
+                                <Style.Triggers>
+                                    <DataTrigger Binding="{Binding ShowYme009Workstation}" Value="True">
+                                        <Setter Property="Visibility" Value="Collapsed"/>
+                                    </DataTrigger>
+                                </Style.Triggers>
+                            </Style>
+                        </Grid.Style>
                         <!-- 外框：中性灰色厚边框，类似设备面板上的卡槽 -->
                         <Border Style="{StaticResource ResultCardStyle}" 
                                 Width="320" Height="320"
@@ -448,21 +460,27 @@
                                      KeyDown="ScanInputTextBox_KeyDown"
                                      GotFocus="ScanInputTextBox_GotFocus"
                                      FontSize="14"
-                                     Background="White"
                                      BorderBrush="#999999"
                                      BorderThickness="1">
                                 <TextBox.Style>
                                     <Style TargetType="TextBox">
-                                        <Setter Property="IsEnabled" Value="{Binding IsScanInputEnabled}"/>
+                                        <Setter Property="IsEnabled" Value="{Binding IsScanBoxInteractive}"/>
                                         <Setter Property="Background" Value="White"/>
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsScanInputEnabled}" Value="False">
+                                            <DataTrigger Binding="{Binding IsScanBoxBusyVisual}" Value="True">
                                                 <Setter Property="Background" Value="#E0E0E0"/>
                                             </DataTrigger>
                                         </Style.Triggers>
                                     </Style>
                                 </TextBox.Style>
                             </TextBox>
+                            <TextBlock Text="{Binding Yme009ProcessPrompt}"
+                                       VerticalAlignment="Center"
+                                       Margin="12,0,0,0"
+                                       FontSize="14"
+                                       FontWeight="Bold"
+                                       Foreground="#333333"
+                                       Visibility="{Binding ShowYme009Workstation, Converter={StaticResource BoolToVisibilityConverter}}"/>
                         </StackPanel>
                     </Border>
 
@@ -514,7 +532,7 @@
                             Margin="0,8,0,4"
                             HorizontalAlignment="Center"
                             Width="800"
-                            Visibility="{Binding IsSnInfoVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+                            Visibility="{Binding ShowLegacySnInfo, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Grid>
                             <!-- Grid A：通用项目类型（非KM001），仅显示 扫码SN / 设备SN -->
                             <Grid>
@@ -855,7 +873,7 @@
 
                     <!-- Phase3 / Legacy Android 合一：版本信息匹配对比 -->
                     <Grid Grid.Row="4" Margin="0,8,0,4"
-                          Visibility="{Binding ShowVersionComparisonSection, Converter={StaticResource BoolToVisibilityConverter}}">
+                          Visibility="{Binding ShowLegacyVersionComparison, Converter={StaticResource BoolToVisibilityConverter}}">
                         <GroupBox Header="版本信息匹配对比">
                             <Grid Margin="4">
                                 <Grid.ColumnDefinitions>
@@ -959,11 +977,321 @@
                     </Grid>
 
                     <!-- 失败原因显示（仅FAIL时显示，区域更紧凑） -->
-                    <Grid Grid.Row="6" MinHeight="40" Margin="0,6,0,6">
+                    <Grid Grid.Row="6" MinHeight="40" Margin="0,6,0,6"
+                          Visibility="{Binding ShowLegacyAux, Converter={StaticResource BoolToVisibilityConverter}}">
                         <Border Style="{StaticResource ErrorDetailPanelStyle}">
                             <TextBlock Text="{Binding FailReason}" Style="{StaticResource FailReasonStyle}"/>
                         </Border>
                     </Grid>
+
+                    <TextBlock Grid.Row="7"
+                               Text="{Binding Yme009RoundSummary}"
+                               TextWrapping="Wrap"
+                               FontSize="14"
+                               Margin="0,8,0,0"
+                               Foreground="#333333"
+                               Visibility="{Binding ShowLegacyAux, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
+                    <Grid Grid.Row="1" HorizontalAlignment="Center" VerticalAlignment="Center"
+                          Visibility="{Binding ShowYme009Workstation, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Border Style="{StaticResource ResultCardStyle}"
+                                Width="320" Height="320"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="*"/>
+                                </Grid.RowDefinitions>
+                                <TextBlock Grid.Row="0"
+                                           Text="当前状态"
+                                           FontSize="14"
+                                           FontWeight="Bold"
+                                           Foreground="#555555"
+                                           HorizontalAlignment="Center"
+                                           Margin="0,0,0,8"/>
+                                <Border Grid.Row="1"
+                                        CornerRadius="10"
+                                        Padding="20"
+                                        HorizontalAlignment="Stretch"
+                                        VerticalAlignment="Stretch">
+                                    <Border.Style>
+                                        <Style TargetType="Border">
+                                            <Setter Property="Background" Value="#808080"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Pass">
+                                                    <Setter Property="Background" Value="#00CC00"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Fail">
+                                                    <Setter Property="Background" Value="#FF0000"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Running">
+                                                    <Setter Property="Background" Value="#0080FF"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Neutral">
+                                                    <Setter Property="Background" Value="#808080"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </Border.Style>
+                                    <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                                        <TextBlock>
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock" BasedOn="{StaticResource ResultTextStyle}">
+                                                    <Setter Property="Text" Value="等待扫码"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Pass">
+                                                            <Setter Property="Text" Value="PASS"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Fail">
+                                                            <Setter Property="Text" Value="FAIL"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Running">
+                                                            <Setter Property="Text" Value="检验中..."/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Neutral">
+                                                            <Setter Property="Text" Value="等待扫码"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                        <TextBlock Margin="0,8,0,0"
+                                                   FontSize="16"
+                                                   Foreground="#F0F0F0"
+                                                   Opacity="0.9"
+                                                   HorizontalAlignment="Center">
+                                            <TextBlock.Style>
+                                                <Style TargetType="TextBlock">
+                                                    <Setter Property="Text" Value="WAITING"/>
+                                                    <Style.Triggers>
+                                                        <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Pass">
+                                                            <Setter Property="Text" Value="PASS"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Fail">
+                                                            <Setter Property="Text" Value="FAIL"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Running">
+                                                            <Setter Property="Text" Value="PROCESSING"/>
+                                                        </DataTrigger>
+                                                        <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Neutral">
+                                                            <Setter Property="Text" Value="WAITING"/>
+                                                        </DataTrigger>
+                                                    </Style.Triggers>
+                                                </Style>
+                                            </TextBlock.Style>
+                                        </TextBlock>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
+                        </Border>
+                    </Grid>
+
+                    <Border Grid.Row="3"
+                            Background="#F8F8F8"
+                            BorderBrush="#DDDDDD"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="10,4"
+                            Margin="0,8,0,4"
+                            HorizontalAlignment="Stretch"
+                            Visibility="{Binding ShowYme009Workstation, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+                            <StackPanel Grid.Column="0" Margin="0,0,8,0">
+                                <TextBlock Text="扫码SN" FontSize="12" FontWeight="Bold" Foreground="#666666" Margin="0,0,0,2" HorizontalAlignment="Center"/>
+                                <TextBlock FontSize="18" Foreground="#333333" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="{Binding Yme009ScannedSnText}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Yme009ScannedSnText}" Value="">
+                                                    <Setter Property="Text" Value="--"/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                            <Rectangle Grid.Column="1" Width="1" Fill="#DDDDDD" VerticalAlignment="Stretch" Margin="0,2"/>
+                            <StackPanel Grid.Column="2" Margin="8,0">
+                                <TextBlock Text="读取SN" FontSize="12" FontWeight="Bold" Foreground="#666666" Margin="0,0,0,2" HorizontalAlignment="Center"/>
+                                <TextBlock FontSize="18" Foreground="#333333" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="{Binding Yme009DeviceSnText}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Yme009DeviceSnText}" Value="未读取">
+                                                    <Setter Property="Text" Value=""/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                            <Rectangle Grid.Column="3" Width="1" Fill="#DDDDDD" VerticalAlignment="Stretch" Margin="0,2"/>
+                            <StackPanel Grid.Column="4" Margin="8,0">
+                                <TextBlock Text="IMEI1" FontSize="12" FontWeight="Bold" Foreground="#666666" Margin="0,0,0,2" HorizontalAlignment="Center"/>
+                                <TextBlock FontSize="18" Foreground="#333333" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="{Binding Yme009Imei1Text}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Yme009Imei1Text}" Value="未读取">
+                                                    <Setter Property="Text" Value=""/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                            <Rectangle Grid.Column="5" Width="1" Fill="#DDDDDD" VerticalAlignment="Stretch" Margin="0,2"/>
+                            <StackPanel Grid.Column="6" Margin="8,0">
+                                <TextBlock Text="IMEI2" FontSize="12" FontWeight="Bold" Foreground="#666666" Margin="0,0,0,2" HorizontalAlignment="Center"/>
+                                <TextBlock FontSize="18" Foreground="#333333" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="{Binding Yme009Imei2Text}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Yme009Imei2Text}" Value="未读取">
+                                                    <Setter Property="Text" Value=""/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                            <Rectangle Grid.Column="7" Width="1" Fill="#DDDDDD" VerticalAlignment="Stretch" Margin="0,2"/>
+                            <StackPanel Grid.Column="8" Margin="8,0,0,0">
+                                <TextBlock Text="Wi-Fi MAC" FontSize="12" FontWeight="Bold" Foreground="#666666" Margin="0,0,0,2" HorizontalAlignment="Center"/>
+                                <TextBlock FontSize="18" Foreground="#333333" HorizontalAlignment="Center" TextAlignment="Center" TextWrapping="Wrap">
+                                    <TextBlock.Style>
+                                        <Style TargetType="TextBlock">
+                                            <Setter Property="Text" Value="{Binding Yme009WifiMacText}"/>
+                                            <Style.Triggers>
+                                                <DataTrigger Binding="{Binding Yme009WifiMacText}" Value="未读取">
+                                                    <Setter Property="Text" Value=""/>
+                                                </DataTrigger>
+                                            </Style.Triggers>
+                                        </Style>
+                                    </TextBlock.Style>
+                                </TextBlock>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <Grid Grid.Row="4" Margin="0,8,0,4"
+                          Visibility="{Binding ShowYme009Workstation, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <GroupBox Header="版本信息匹配对比">
+                            <Grid Margin="4">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="Auto"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
+                                <Rectangle Grid.Column="2" Width="1" Fill="#DDDDDD" Margin="12,2" VerticalAlignment="Stretch"/>
+                                <TextBlock Grid.Column="0"
+                                           Text="{Binding AndroidVersionLabel, StringFormat={}{0}：}"
+                                           Margin="0,2,8,2"
+                                           VerticalAlignment="Center"/>
+                                <TextBox Grid.Column="1"
+                                         Height="24"
+                                         Margin="0,2,0,2"
+                                         VerticalContentAlignment="Center"
+                                         Text="{Binding ExpectedAndroidVersion, UpdateSourceTrigger=PropertyChanged}"
+                                         IsEnabled="{Binding IsVersionInputEnabled}"/>
+                                <TextBlock Grid.Column="3"
+                                           Text="设备Android版本："
+                                           Margin="12,2,8,2"
+                                           VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="4"
+                                           VerticalAlignment="Center"
+                                           Margin="0,2,0,2"
+                                           Text="{Binding Yme009ActualVersionText}"/>
+                            </Grid>
+                        </GroupBox>
+                    </Grid>
+
+                    <Border Grid.Row="5" Margin="0,8,0,0" Background="#F8F8F8" BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4" Padding="8,6"
+                            Visibility="{Binding ShowYme009Workstation, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <UniformGrid Columns="5">
+                            <Border Margin="4" Padding="6" BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4">
+                                <StackPanel>
+                                    <TextBlock Text="SN 一致性" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Yme009SnJudgment}" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Yme009SnReason}" TextWrapping="Wrap" Foreground="#8B0000" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Margin="4" Padding="6" BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4">
+                                <StackPanel>
+                                    <TextBlock Text="软件版本一致性" FontWeight="Bold" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
+                                    <TextBlock Text="{Binding Yme009VersionJudgment}" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Yme009VersionReason}" TextWrapping="Wrap" Foreground="#8B0000" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Margin="4" Padding="6" BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4">
+                                <StackPanel>
+                                    <TextBlock Text="生产测试" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Yme009CitJudgment}" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Yme009CitReason}" TextWrapping="Wrap" Foreground="#8B0000" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Margin="4" Padding="6" BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4">
+                                <StackPanel>
+                                    <TextBlock Text="重启老化" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Yme009RebootJudgment}" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Yme009RebootReason}" TextWrapping="Wrap" Foreground="#8B0000" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Margin="4" Padding="6" BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4">
+                                <StackPanel>
+                                    <TextBlock Text="恢复出厂设置老化" FontWeight="Bold" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
+                                    <TextBlock Text="{Binding Yme009ResetJudgment}" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Yme009ResetReason}" TextWrapping="Wrap" Foreground="#8B0000" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+                        </UniformGrid>
+                    </Border>
+
+                    <StackPanel Grid.Row="6"
+                                Visibility="{Binding ShowYme009Workstation, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <TextBlock Text="{Binding Yme009PrimaryReason}">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource FailReasonStyle}">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Yme009PrimaryReason}" Value="">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                        <TextBlock Text="{Binding Yme009CloseNotice}" HorizontalAlignment="Center" FontSize="14" Foreground="#8B0000" TextWrapping="Wrap">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock">
+                                    <Setter Property="Visibility" Value="Visible"/>
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding Yme009CloseNotice}" Value="">
+                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
                 </Grid>
             </Border>
 
@@ -979,6 +1307,7 @@
                         FontSize="14" FontWeight="Bold"/>
                 <!-- 设备信息按钮：仅触发临时调试接口，不参与 SN 检验/自检/MES 流程 -->
                 <Button x:Name="DeviceInfoButton" Content="设备信息" Width="120" Height="45" Margin="0,5"
+                        IsEnabled="{Binding IsYme009DebugActionEnabled}"
                         Click="DeviceInfoButton_Click"
                         FontSize="14" FontWeight="Bold"/>
             </StackPanel>

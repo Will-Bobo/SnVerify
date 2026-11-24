@@ -131,6 +131,22 @@ namespace SnVerify.Infrastructure.Product
                         EnableChargeBoardVersionCheck = false,
                         EnableAndroidVersionCheck = true
                     }
+                },
+                {
+                    Yme009Product.Code,
+                    new ProductProfile
+                    {
+                        ProductCode = Yme009Product.Code,
+                        ProductDisplayName = Yme009Product.Code,
+                        Mode = VerificationMode.Independent,
+                        AdbConfig = null,
+                        FieldLabels = null,
+                        EnableChipIdCheck = false,
+                        EnableWifiMacCheck = false,
+                        EnableBoardVersionCheck = false,
+                        EnableChargeBoardVersionCheck = false,
+                        EnableAndroidVersionCheck = true
+                    }
                 }
             };
 

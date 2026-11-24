@@ -25,5 +25,8 @@ namespace SnVerify.Domain.Export
 
         /// <summary>项目类型代码（Phase3 导出必填，如 KM001、KM008）。</summary>
         public string ProductCode { get; set; }
+
+        /// <summary>订单名称。YME009 明细使用；旧产品导出器不读取。</summary>
+        public string OrderName { get; set; }
     }
 }

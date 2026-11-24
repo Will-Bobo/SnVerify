@@ -35,6 +35,15 @@ namespace SnVerify.Tests.Services.Storage
         }
 
         [Test]
+        public void GetExporter_When_Yme009_ShouldReturn_Yme009Exporter()
+        {
+            var storage = new Mock<IStorageService>(MockBehavior.Loose);
+            var f = new SessionExporterFactory(storage.Object, new ProductExportRegistry(), new DefaultExportValueResolver(), new ProductRegistryAdapter());
+            Assert.That(f.GetExporter("YME009"), Is.InstanceOf<Yme009SessionExporter>());
+            Assert.That(f.GetExporter("yme009"), Is.InstanceOf<Yme009SessionExporter>());
+        }
+
+        [Test]
         public void GetExporter_When_NullProductCode_ShouldReturn_Legacy()
         {
             var storage = new Mock<IStorageService>(MockBehavior.Loose);

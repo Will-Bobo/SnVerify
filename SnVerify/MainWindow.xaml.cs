@@ -197,6 +197,15 @@ namespace SnVerify
             if (e.Key == Key.Enter && _viewModel != null)
             {
                 var textBox = sender as System.Windows.Controls.TextBox;
+                if (textBox != null
+                    && _viewModel.ShowYme009Workstation
+                    && (_viewModel.IsProcessing || _viewModel.IsSessionEnding))
+                {
+                    _viewModel.RejectYme009BusyScan();
+                    textBox.Text = string.Empty;
+                    e.Handled = true;
+                    return;
+                }
                 if (textBox != null && !string.IsNullOrWhiteSpace(textBox.Text))
                 {
                     // 检查 Session 是否已开始（Phase 2.5）
@@ -250,6 +259,9 @@ namespace SnVerify
         /// </summary>
         private void SelfCheckButton_Click(object sender, RoutedEventArgs e)
         {
+            if (_viewModel != null && !_viewModel.IsYme009DebugActionEnabled)
+                return;
+
             var expander = this.FindName("DebugLogExpander") as System.Windows.Controls.Expander;
             if (expander != null)
             {
@@ -271,6 +283,8 @@ namespace SnVerify
         {
             if (_viewModel != null)
             {
+                if (!_viewModel.IsYme009DebugActionEnabled)
+                    return;
                 try
                 {
                     await _viewModel.ReadDeviceInfoForDebugAsync();

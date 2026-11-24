@@ -1,3 +1,4 @@
+using SnVerify.Domain.Product;
 using SnVerify.Properties;
 
 namespace SnVerify.Services.Rules
@@ -38,6 +39,22 @@ namespace SnVerify.Services.Rules
                     return GetResourceOrFallback("Err_ChargeBoardVersionMismatch", "充电板版本号与目标值不匹配");
                 case RuleFailReasonCodes.ProductProfileNotFound:
                     return GetResourceOrFallback("Err_ProductProfileNotFound", "未找到产品配置");
+                case Yme009FailReasonCodes.SnMismatch:
+                    return Yme009FailReasonCodes.SnMismatchText;
+                case Yme009FailReasonCodes.VersionMismatch:
+                    return Yme009FailReasonCodes.VersionMismatchText;
+                case Yme009FailReasonCodes.CitFail:
+                    return Yme009FailReasonCodes.CitFailText;
+                case Yme009FailReasonCodes.AgingRebootFail:
+                    return Yme009FailReasonCodes.AgingRebootFailText;
+                case Yme009FailReasonCodes.AgingResetFail:
+                    return Yme009FailReasonCodes.AgingResetFailText;
+                case Yme009FailReasonCodes.ReadFail:
+                    return Yme009FailReasonCodes.ReadFailText;
+                case Yme009FailReasonCodes.ProtocolInvalid:
+                    return Yme009FailReasonCodes.ProtocolInvalidText;
+                case Yme009FailReasonCodes.RequiredValueMissing:
+                    return Yme009FailReasonCodes.RequiredValueMissingText;
                 default:
                     return failReasonCode;
             }

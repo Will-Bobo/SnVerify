@@ -27,6 +27,7 @@ using SnVerify.Services.Rules;
 using SnVerify.Services.Session;
 using SnVerify.Services.Storage;
 using SnVerify.Services.Ui;
+using SnVerify.Services.Yme009;
 using SnVerify.Domain.Export;
 using SnVerify.Properties;
 
@@ -60,6 +61,7 @@ namespace SnVerify.ViewModels
         private readonly IProductRegistry _productRegistry;
         private readonly IParameterService _parameterService;
         private readonly IDeviceAccessService _deviceAccessService;
+        private readonly IYme009RoundCoordinator _yme009RoundCoordinator;
         private readonly string _logDirectory;
         private readonly SynchronizationContext _uiContext;
 
@@ -92,6 +94,7 @@ namespace SnVerify.ViewModels
         private string _expectedChargeBoardVersion;
         private bool _isLegacyProduct;
         private bool _isPhase3Product;
+        private bool _isIndependentProduct;
         private bool _showChipIdColumn;
         private bool _showBoardVersion;
         private bool _showChargeVersion;
@@ -208,6 +211,22 @@ namespace SnVerify.ViewModels
         }
 
         /// <summary>
+        /// 是否为独立轮次产品。此类产品不进入 Phase3 规则链，也不进入 Legacy 决策树。
+        /// </summary>
+        public bool IsIndependentProduct
+        {
+            get => _isIndependentProduct;
+            private set
+            {
+                if (_isIndependentProduct != value)
+                {
+                    _isIndependentProduct = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        /// <summary>
         /// Session 状态快照（Phase 2.5：替代 BatchSnapshot）
         /// </summary>
         public SessionSnapshot SessionSnapshot
@@ -223,8 +242,10 @@ namespace SnVerify.ViewModels
                     if (wasActive && !willBeActive)
                     {
                         _allowIdleVerificationSnapshotOverwriteOnce = true;
+                        _yme009SessionEpoch++;
                     }
 
+                    var previousSessionName = _sessionSnapshot?.SessionId;
                     _sessionSnapshot = value;
                     OnPropertyChanged();
                     OnPropertyChanged(nameof(CurrentOrderId));
@@ -238,6 +259,8 @@ namespace SnVerify.ViewModels
                     ExportCommand?.RaiseCanExecuteChanged();
                     StartVerifyCommand?.RaiseCanExecuteChanged();
                     StartVersionVerifyCommand?.RaiseCanExecuteChanged();
+                    SyncYme009SessionRecords(previousSessionName);
+                    ApplyYme009SessionBoundary(wasActive, willBeActive, previousSessionName, value?.SessionId);
                 }
             }
         }
@@ -259,6 +282,9 @@ namespace SnVerify.ViewModels
                     OnPropertyChanged(nameof(CurrentDeviceInfo));
                     OnPropertyChanged(nameof(IsProcessing));
                     OnPropertyChanged(nameof(IsScanInputEnabled));
+                    OnPropertyChanged(nameof(IsScanBoxInteractive));
+                    OnPropertyChanged(nameof(IsScanBoxBusyVisual));
+                    OnPropertyChanged(nameof(IsYme009ScanAllowed));
                     OnPropertyChanged(nameof(LastResult));
                     OnPropertyChanged(nameof(FailReason));
                     OnPropertyChanged(nameof(StatusText));
@@ -301,6 +327,11 @@ namespace SnVerify.ViewModels
             get => _scanInputText;
             set
             {
+                if (ShouldRejectYme009ScanText(value))
+                {
+                    RejectYme009BusyScan();
+                    return;
+                }
                 if (_scanInputText == value) return;
                 if (value != null && (value.IndexOf('\r') >= 0 || value.IndexOf('\n') >= 0))
                 {
@@ -355,6 +386,174 @@ namespace SnVerify.ViewModels
                 if (_statusBarMessage != value)
                 {
                     _statusBarMessage = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        private string _yme009RoundSummary = string.Empty;
+        private string _yme009RoundScannedSn = string.Empty;
+        private Yme009RoundPhase _yme009RoundPhase = Yme009RoundPhase.Idle;
+        private string _yme009ProcessPrompt = string.Empty;
+        private string _yme009Headline = string.Empty;
+        private Yme009HeadlineKind _yme009HeadlineKind = Yme009HeadlineKind.Neutral;
+        private bool _yme009HasOverallResult;
+        private string _yme009OverallText = string.Empty;
+        private string _yme009PrimaryReason = string.Empty;
+        private string _yme009SaveStatusText = Yme009WorkstationText.NotSavedRecord;
+        private string _yme009CloseNotice = string.Empty;
+        private string _yme009ScannedSnText = string.Empty;
+        private string _yme009DeviceSnText = Yme009WorkstationText.NotRead;
+        private string _yme009ActualVersionText = Yme009WorkstationText.NotRead;
+        private string _yme009SnJudgment = Yme009WorkstationText.WaitingItem;
+        private string _yme009SnReason = string.Empty;
+        private string _yme009SnRaw = string.Empty;
+        private string _yme009VersionJudgment = Yme009WorkstationText.WaitingItem;
+        private string _yme009VersionReason = string.Empty;
+        private string _yme009CitJudgment = Yme009WorkstationText.WaitingItem;
+        private string _yme009CitReason = string.Empty;
+        private string _yme009CitRaw = string.Empty;
+        private string _yme009RebootJudgment = Yme009WorkstationText.WaitingItem;
+        private string _yme009RebootReason = string.Empty;
+        private string _yme009RebootRaw = string.Empty;
+        private string _yme009ResetJudgment = Yme009WorkstationText.WaitingItem;
+        private string _yme009ResetReason = string.Empty;
+        private string _yme009ResetRaw = string.Empty;
+        private string _yme009Imei1Text = Yme009WorkstationText.NotRead;
+        private string _yme009Imei2Text = Yme009WorkstationText.NotRead;
+        private string _yme009WifiMacText = Yme009WorkstationText.NotRead;
+
+        /// <summary>
+        /// YME009 本轮检测摘要。其他产品保持空白。
+        /// </summary>
+        public string Yme009RoundSummary
+        {
+            get => _yme009RoundSummary ?? string.Empty;
+            private set
+            {
+                if (_yme009RoundSummary != value)
+                {
+                    _yme009RoundSummary = value ?? string.Empty;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public Yme009RoundPhase Yme009RoundPhase => _yme009RoundPhase;
+        public string Yme009ProcessPrompt => _yme009ProcessPrompt ?? string.Empty;
+        public string Yme009Headline => _yme009Headline ?? string.Empty;
+        public Yme009HeadlineKind Yme009HeadlineKind => _yme009HeadlineKind;
+        public bool Yme009HasOverallResult => _yme009HasOverallResult;
+        public string Yme009OverallText => _yme009OverallText ?? string.Empty;
+        public string Yme009PrimaryReason => _yme009PrimaryReason ?? string.Empty;
+        public string Yme009SaveStatusText => _yme009SaveStatusText ?? string.Empty;
+        public string Yme009CloseNotice => _yme009CloseNotice ?? string.Empty;
+        public string Yme009ScannedSnText => _yme009ScannedSnText ?? string.Empty;
+        public string Yme009DeviceSnText => _yme009DeviceSnText ?? string.Empty;
+        public string Yme009ActualVersionText => _yme009ActualVersionText ?? string.Empty;
+        public string Yme009SnJudgment => _yme009SnJudgment ?? string.Empty;
+        public string Yme009SnReason => _yme009SnReason ?? string.Empty;
+        public string Yme009SnRaw => _yme009SnRaw ?? string.Empty;
+        public string Yme009VersionJudgment => _yme009VersionJudgment ?? string.Empty;
+        public string Yme009VersionReason => _yme009VersionReason ?? string.Empty;
+        public string Yme009CitJudgment => _yme009CitJudgment ?? string.Empty;
+        public string Yme009CitReason => _yme009CitReason ?? string.Empty;
+        public string Yme009CitRaw => _yme009CitRaw ?? string.Empty;
+        public string Yme009RebootJudgment => _yme009RebootJudgment ?? string.Empty;
+        public string Yme009RebootReason => _yme009RebootReason ?? string.Empty;
+        public string Yme009RebootRaw => _yme009RebootRaw ?? string.Empty;
+        public string Yme009ResetJudgment => _yme009ResetJudgment ?? string.Empty;
+        public string Yme009ResetReason => _yme009ResetReason ?? string.Empty;
+        public string Yme009ResetRaw => _yme009ResetRaw ?? string.Empty;
+        public string Yme009Imei1Text => _yme009Imei1Text ?? string.Empty;
+        public string Yme009Imei2Text => _yme009Imei2Text ?? string.Empty;
+        public string Yme009WifiMacText => _yme009WifiMacText ?? string.Empty;
+
+        private readonly ObservableCollection<Yme009SessionRecordRow> _yme009SessionRecords = new ObservableCollection<Yme009SessionRecordRow>();
+        private int _yme009SessionRecordQueryId;
+        private string _yme009SessionRecordHeader = string.Empty;
+
+        public ObservableCollection<Yme009SessionRecordRow> Yme009SessionRecords => _yme009SessionRecords;
+
+        public string Yme009SessionRecordHeader
+        {
+            get => _yme009SessionRecordHeader ?? string.Empty;
+            private set
+            {
+                if (_yme009SessionRecordHeader != value)
+                {
+                    _yme009SessionRecordHeader = value ?? string.Empty;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public bool ShowYme009SessionRecords => Yme009Product.IsMatch(_currentProductProfile);
+
+        public bool ShowYme009Workstation => ShowYme009SessionRecords;
+
+        public bool ShowLegacyResultCard => !ShowYme009Workstation;
+
+        public bool ShowLegacySnInfo => IsSnInfoVisible && !ShowYme009Workstation;
+
+        public bool ShowLegacyVersionComparison => ShowVersionComparisonSection && !ShowYme009Workstation;
+
+        public bool ShowLegacyAux => !ShowYme009Workstation;
+
+        public bool ShowYme009SessionRecordEmpty => ShowYme009SessionRecords && _yme009SessionRecords.Count == 0;
+
+        private int _yme009PassCount;
+        private int _yme009BusinessFailCount;
+        private int _yme009ReadExceptionCount;
+        private string _yme009PassRateText = string.Empty;
+
+        public int Yme009PassCount
+        {
+            get => _yme009PassCount;
+            private set
+            {
+                if (_yme009PassCount != value)
+                {
+                    _yme009PassCount = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public int Yme009BusinessFailCount
+        {
+            get => _yme009BusinessFailCount;
+            private set
+            {
+                if (_yme009BusinessFailCount != value)
+                {
+                    _yme009BusinessFailCount = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public int Yme009ReadExceptionCount
+        {
+            get => _yme009ReadExceptionCount;
+            private set
+            {
+                if (_yme009ReadExceptionCount != value)
+                {
+                    _yme009ReadExceptionCount = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public string Yme009PassRateText
+        {
+            get => _yme009PassRateText ?? string.Empty;
+            private set
+            {
+                if (_yme009PassRateText != value)
+                {
+                    _yme009PassRateText = value ?? string.Empty;
                     OnPropertyChanged();
                 }
             }
@@ -422,6 +621,7 @@ namespace SnVerify.ViewModels
                     OnPropertyChanged(nameof(IsScanInputVisible));
                     OnPropertyChanged(nameof(IsVersionInputVisible));
                     OnPropertyChanged(nameof(IsSnInfoVisible));
+                    OnPropertyChanged(nameof(ShowLegacySnInfo));
                     OnPropertyChanged(nameof(IsVersionInfoVisible));
                     OnPropertyChanged(nameof(ExpectedVersionDisplay));
                     StartVersionVerifyCommand?.RaiseCanExecuteChanged();
@@ -458,9 +658,11 @@ namespace SnVerify.ViewModels
                     OnPropertyChanged();
                     OnPropertyChanged(nameof(ShowLegacyVerificationTypeCombo));
                     OnPropertyChanged(nameof(ShowVersionComparisonSection));
+                    OnPropertyChanged(nameof(ShowLegacyVersionComparison));
                     OnPropertyChanged(nameof(IsScanInputVisible));
                     OnPropertyChanged(nameof(IsVersionInputVisible));
                     OnPropertyChanged(nameof(IsSnInfoVisible));
+                    OnPropertyChanged(nameof(ShowLegacySnInfo));
                     OnPropertyChanged(nameof(IsVersionInfoVisible));
                 }
             }
@@ -550,6 +752,23 @@ namespace SnVerify.ViewModels
         public bool IsScanInputEnabled => !IsProcessing && !IsSelfChecking;
 
         /// <summary>
+        /// YME009 检测中仍接收扫码枪。其他产品在处理中保持禁用。
+        /// </summary>
+        public bool IsScanBoxInteractive => !IsSelfChecking && !(IsProcessing && !ShowYme009Workstation);
+
+        public bool IsScanBoxBusyVisual => IsProcessing || IsSelfChecking;
+
+        public bool IsSessionEnding => _sessionEnding;
+
+        public bool IsYme009ScanAllowed =>
+            ShowYme009Workstation && IsSessionActive && !IsProcessing && !IsSelfChecking && !_sessionEnding;
+
+        /// <summary>
+        /// YME009 轮次进行中禁止自检和设备信息调试。其他产品保持可用。
+        /// </summary>
+        public bool IsYme009DebugActionEnabled => !IsYme009RoundGate();
+
+        /// <summary>
         /// 当前 SN（用于显示）
         /// </summary>
         public string CurrentSn => VerificationSnapshot?.CurrentSn ?? "";
@@ -633,7 +852,12 @@ namespace SnVerify.ViewModels
         /// <summary>
         /// 是否正在处理（用于显示）
         /// </summary>
-        public bool IsProcessing => VerificationSnapshot?.IsProcessing ?? false;
+        private bool _yme009RoundBusy;
+        private bool _sessionEnding;
+        private int _yme009SessionEpoch;
+        private int _yme009ActiveRoundEpoch;
+
+        public bool IsProcessing => _yme009RoundBusy || (VerificationSnapshot?.IsProcessing ?? false);
 
         /// <summary>
         /// 是否正在自检（用于禁用自检按钮）
@@ -648,6 +872,9 @@ namespace SnVerify.ViewModels
                     _isSelfChecking = value;
                     OnPropertyChanged(nameof(IsSelfChecking));
                     OnPropertyChanged(nameof(IsScanInputEnabled));
+                    OnPropertyChanged(nameof(IsScanBoxInteractive));
+                    OnPropertyChanged(nameof(IsScanBoxBusyVisual));
+                    OnPropertyChanged(nameof(IsYme009ScanAllowed));
                     SelfCheckCommand?.RaiseCanExecuteChanged();
                     StartVerifyCommand?.RaiseCanExecuteChanged(); // 规则 8：自检期间禁用人工检验
                     StartVersionVerifyCommand?.RaiseCanExecuteChanged();
@@ -860,7 +1087,8 @@ namespace SnVerify.ViewModels
             string logDirectory,
             IProductRegistry productRegistry = null,
             IParameterService parameterService = null,
-            IDeviceAccessService deviceAccessService = null)
+            IDeviceAccessService deviceAccessService = null,
+            IYme009RoundCoordinator yme009RoundCoordinator = null)
         {
             _sessionLifecycleService = sessionLifecycleService ?? throw new ArgumentNullException(nameof(sessionLifecycleService));
             _flowServiceFactory = flowServiceFactory ?? throw new ArgumentNullException(nameof(flowServiceFactory));
@@ -875,6 +1103,7 @@ namespace SnVerify.ViewModels
             _productRegistry = productRegistry ?? new ProductRegistryAdapter();
             _parameterService = parameterService;
             _deviceAccessService = deviceAccessService;
+            _yme009RoundCoordinator = yme009RoundCoordinator;
             _uiContext = SynchronizationContext.Current ?? new SynchronizationContext();
 
             _verificationFlowService = _flowServiceFactory.Create("session_idle", null);
@@ -891,12 +1120,12 @@ namespace SnVerify.ViewModels
 
             // 规则 3/5/8：自检期间禁用 Start/End/导出；检验中也禁用 Start/End/导出（防止重复点击/并发操作）。
             StartBatchCommand = new RelayCommand(async () => await StartBatchAsync(), () => CanExecuteStartBatch());
-            EndBatchCommand = new RelayCommand(async () => await EndBatchAsync(), () => IsSessionActive && !IsSelfChecking && !IsProcessing);
+            EndBatchCommand = new RelayCommand(async () => await EndBatchAsync(), () => IsSessionActive && !IsSelfChecking && !IsProcessing && !_sessionEnding);
             // 导出：仅在进行中的测试时段（开始测试→结束测试）不可用，其余时间均可点击
             ExportCommand = new RelayCommand(async () => await ExportAsync(), () => !IsSessionActive);
             // 规则 8：自检期间禁用人工检验；未点击「开始测试」时人工检验置灰
             StartVerifyCommand = new RelayCommand(async () => await StartVerifyAsync(), () => IsSessionActive && !IsProcessing && !IsSelfChecking);
-            SelfCheckCommand = new RelayCommand(async () => await SelfCheckAsync(), () => !IsSelfChecking);
+            SelfCheckCommand = new RelayCommand(async () => await SelfCheckAsync(), () => !IsSelfChecking && IsYme009DebugActionEnabled);
             StartVersionVerifyCommand = new RelayCommand(async () => await StartVersionVerifyAsync(), () => CanExecuteStartVersionVerify());
 
             _snapshotUpdateTimer = new Timer(UpdateSnapshots, null, TimeSpan.Zero, TimeSpan.FromMilliseconds(500));
@@ -985,12 +1214,17 @@ namespace SnVerify.ViewModels
                 CurrentProductDisplay = "--";
                 IsLegacyProduct = false;
                 IsPhase3Product = false;
+                IsIndependentProduct = false;
                 ShowChipIdColumn = false;
                 ShowBoardVersion = false;
                 ShowChargeVersion = false;
                 ShowWifiMac = false;
                 ShowAndroidVersionSection = false;
                 RaiseFieldLabelChanged();
+                OnPropertyChanged(nameof(ShowYme009SessionRecords));
+                OnPropertyChanged(nameof(ShowYme009SessionRecordEmpty));
+                NotifyYme009Chrome();
+                ClearYme009SessionRecords();
                 return;
             }
 
@@ -1000,20 +1234,26 @@ namespace SnVerify.ViewModels
                 CurrentProductDisplay = $"{SelectedProductCode} [未知]";
                 IsLegacyProduct = false;
                 IsPhase3Product = false;
+                IsIndependentProduct = false;
                 ShowChipIdColumn = false;
                 ShowBoardVersion = false;
                 ShowChargeVersion = false;
                 ShowWifiMac = false;
                 ShowAndroidVersionSection = false;
                 RaiseFieldLabelChanged();
+                OnPropertyChanged(nameof(ShowYme009SessionRecords));
+                OnPropertyChanged(nameof(ShowYme009SessionRecordEmpty));
+                NotifyYme009Chrome();
+                ClearYme009SessionRecords();
                 return;
             }
 
-            var modeText = _currentProductProfile.Mode == VerificationMode.Phase3 ? "Phase3模式" : "Legacy模式";
+            var modeText = GetProductModeText(_currentProductProfile.Mode);
             CurrentProductDisplay = $"{_currentProductProfile.ProductCode} [{modeText}]";
 
              IsLegacyProduct = _currentProductProfile.Mode == VerificationMode.Legacy;
              IsPhase3Product = _currentProductProfile.Mode == VerificationMode.Phase3;
+             IsIndependentProduct = _currentProductProfile.Mode == VerificationMode.Independent;
             ShowChipIdColumn = _currentProductProfile.EnableChipIdCheck;
             ShowBoardVersion = _currentProductProfile.EnableBoardVersionCheck;
             ShowChargeVersion = _currentProductProfile.EnableChargeBoardVersionCheck;
@@ -1023,6 +1263,30 @@ namespace SnVerify.ViewModels
                 CurrentVerificationType = VerificationType.SnMatch;
             SanitizeExpectedVersionsForCurrentProfile();
             RaiseFieldLabelChanged();
+            OnPropertyChanged(nameof(ShowYme009SessionRecords));
+            OnPropertyChanged(nameof(ShowYme009SessionRecordEmpty));
+            NotifyYme009Chrome();
+            SyncYme009SessionRecords();
+        }
+
+        private void NotifyYme009Chrome()
+        {
+            OnPropertyChanged(nameof(ShowYme009Workstation));
+            OnPropertyChanged(nameof(ShowLegacyResultCard));
+            OnPropertyChanged(nameof(ShowLegacySnInfo));
+            OnPropertyChanged(nameof(ShowLegacyVersionComparison));
+            OnPropertyChanged(nameof(ShowLegacyAux));
+            OnPropertyChanged(nameof(IsScanBoxInteractive));
+            OnPropertyChanged(nameof(IsYme009ScanAllowed));
+        }
+
+        private static string GetProductModeText(VerificationMode mode)
+        {
+            if (mode == VerificationMode.Phase3)
+                return "Phase3模式";
+            if (mode == VerificationMode.Legacy)
+                return "Legacy模式";
+            return "独立轮次";
         }
 
         /// <summary>
@@ -1252,8 +1516,10 @@ namespace SnVerify.ViewModels
                     return;
                 }
 
-                // Legacy Android 合一检验：目标 Android 版本必填
-                if (ShowAndroidVersionSection && !IsPhase3Product &&
+                // Legacy Android 合一检验：目标 Android 版本必填。
+                // 独立轮次（YME009）使用自己的目标软件版本规则，不套用这条文案。
+                if (!IsIndependentProduct &&
+                    ShowAndroidVersionSection && !IsPhase3Product &&
                     string.IsNullOrWhiteSpace(ExpectedAndroidVersion?.Trim()))
                 {
                     _dialogService.ShowWarning("目标 Android 版本号不能为空", "校验失败");
@@ -1267,6 +1533,10 @@ namespace SnVerify.ViewModels
                     _dialogService.ShowWarning($"命名校验不通过：{validationMessage}", "校验失败");
                     return;
                 }
+
+                if (Yme009Product.IsMatch(_currentProductProfile) &&
+                    await TryRejectYme009StartAsync(projectId, orderId).ConfigureAwait(true))
+                    return;
 
                 // Phase3：目标版本至少填写一项，否则无法进行校验，提前提示并阻止开始测试。
                 if (IsPhase3Product)
@@ -1295,7 +1565,7 @@ namespace SnVerify.ViewModels
                 string productCode = null;
                 if (!string.IsNullOrWhiteSpace(SelectedProductCode))
                 {
-                    if (IsPhase3Product || (_currentProductProfile?.EnableAndroidVersionCheck ?? false))
+                    if (IsPhase3Product || IsIndependentProduct || (_currentProductProfile?.EnableAndroidVersionCheck ?? false))
                         productCode = SelectedProductCode.Trim();
                 }
                 var sessionId = await System.Threading.Tasks.Task.Run(() =>
@@ -1374,12 +1644,16 @@ namespace SnVerify.ViewModels
         /// <remarks>规则 3：End 前检查当前 Session 是否有 TestRecord；无则状态栏提示「本次操作无效/已忽略」且不执行 End。</remarks>
         private async System.Threading.Tasks.Task EndBatchAsync()
         {
+            if (_sessionEnding)
+                return;
+
+            var sessionId = SessionSnapshot?.SessionId;
+            if (string.IsNullOrWhiteSpace(sessionId) || !IsSessionActive)
+                return;
+
+            SetSessionEnding(true);
             try
             {
-                var sessionId = SessionSnapshot?.SessionId;
-                if (string.IsNullOrWhiteSpace(sessionId))
-                    return;
-
                 // 规则 3：End 前检查当前 Session 是否有 TestRecord；无则状态栏提示并忽略本次操作。
                 var records = await _storageService.GetTestRecordsBySessionAsync(sessionId);
                 if (records == null || records.Count == 0)
@@ -1405,6 +1679,10 @@ namespace SnVerify.ViewModels
             catch (Exception)
             {
                 // 错误已由 Service 写日志
+            }
+            finally
+            {
+                SetSessionEnding(false);
             }
         }
 
@@ -1511,6 +1789,7 @@ namespace SnVerify.ViewModels
                 {
                     _loggingService.LogError("导出失败：无法删除已存在的 ZIP 文件：" + ex.Message, ex);
                     LoggingSnapshot = _loggingService.Snapshot;
+                    StatusBarMessage = "导出失败";
                     return;
                 }
             }
@@ -1524,11 +1803,13 @@ namespace SnVerify.ViewModels
                     await _exportAggregationService.ExportByOrderIdAsync(selectedId, selectedFolder, exportFilter);
                 _loggingService.LogInfo($"导出成功: {(exportDimension == ExportDimension.ByProject ? "项目" : "订单")}={selectedId}, 目录={selectedFolder}");
                 LoggingSnapshot = _loggingService.Snapshot;
+                StatusBarMessage = "导出成功";
             }
             catch (Exception ex)
             {
                 _loggingService.LogError("导出失败: " + ex.Message, ex);
                 LoggingSnapshot = _loggingService.Snapshot;
+                StatusBarMessage = "导出失败";
             }
         }
 
@@ -1589,6 +1870,8 @@ namespace SnVerify.ViewModels
         {
             if (IsSelfChecking)
                 return; // 防止重复调用
+            if (IsYme009RoundGate())
+                return;
 
             try
             {
@@ -1793,6 +2076,9 @@ namespace SnVerify.ViewModels
         /// </summary>
         public async System.Threading.Tasks.Task ReadDeviceInfoForDebugAsync()
         {
+            if (IsYme009RoundGate())
+                return;
+
             try
             {
                 var result = await _adbAccessService.ReadDeviceInfoAsync();
@@ -1817,6 +2103,374 @@ namespace SnVerify.ViewModels
                 _loggingService.LogError("设备信息读取异常: " + ex.Message, ex);
                 LoggingSnapshot = _loggingService.Snapshot;
             }
+        }
+
+        /// <summary>
+        /// YME009 开始测试前置校验。返回 true 表示已拒绝开始，调用方不得创建 Session。
+        /// </summary>
+        private async System.Threading.Tasks.Task<bool> TryRejectYme009StartAsync(string projectId, string orderId)
+        {
+            var preliminary = Yme009TargetSoftwareVersionRule.Evaluate(ExpectedAndroidVersion, Array.Empty<string>());
+            if (preliminary.Rejection == Yme009TargetSoftwareVersionRejection.Missing)
+            {
+                _dialogService.ShowWarning("目标软件版本不能为空", "校验失败");
+                return true;
+            }
+
+            IReadOnlyList<string> existing;
+            try
+            {
+                existing = await Yme009OrderTargetVersionQuery
+                    .LoadExpectedAndroidVersionsAsync(_storageService, projectId, orderId)
+                    .ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError("读取订单目标软件版本失败: " + ex.Message, ex);
+                _dialogService.ShowWarning("无法确认该订单已有的目标软件版本，已拒绝开始测试。", "校验失败");
+                return true;
+            }
+
+            var decision = Yme009TargetSoftwareVersionRule.Evaluate(ExpectedAndroidVersion, existing);
+            if (decision.IsAllowed)
+                return false;
+
+            if (decision.Rejection == Yme009TargetSoftwareVersionRejection.Missing)
+            {
+                _dialogService.ShowWarning("目标软件版本不能为空", "校验失败");
+                return true;
+            }
+
+            _dialogService.ShowWarning(
+                $"该订单已有目标软件版本「{decision.EstablishedVersion}」，与当前填写不一致。改变目标软件版本必须使用新的订单号。",
+                "校验失败");
+            return true;
+        }
+
+        /// <summary>
+        /// YME009 扫码挂载点。设备接入成功后由轮次协调完成属性读取、判定、保存和收尾。
+        /// </summary>
+        private async System.Threading.Tasks.Task EnterIndependentProductRoundAsync(string trimmedSn)
+        {
+            if (!Yme009Product.IsMatch(_currentProductProfile))
+            {
+                var code = _currentProductProfile?.ProductCode ?? "";
+                _loggingService.LogWarning("独立产品没有专属轮次挂载点，已拒绝进入现有检验路径: " + code);
+                _dialogService.ShowWarning("当前产品没有可用的检验入口", "校验失败");
+                ScanInputText = "";
+                return;
+            }
+
+            if (_yme009RoundCoordinator == null)
+            {
+                _loggingService.LogInfo("YME009 扫码进入专属轮次挂载点，本阶段不执行设备检测: SN=" + trimmedSn);
+                StatusBarMessage = "已进入 YME009 检测入口";
+                ScanInputText = "";
+                return;
+            }
+
+            if (_sessionEnding || !IsSessionActive)
+                return;
+
+            var roundEpoch = _yme009SessionEpoch;
+            var roundSessionName = _sessionSnapshot?.SessionId;
+            _yme009ActiveRoundEpoch = roundEpoch;
+            SetYme009RoundBusy(true);
+            _yme009RoundScannedSn = trimmedSn ?? string.Empty;
+            ApplyYme009Snapshot(Yme009WorkstationSnapshot.Running(_yme009RoundScannedSn, Yme009WorkstationText.Connecting));
+            StatusBarMessage = Yme009WorkstationText.Connecting;
+            Yme009RoundSummary = string.Empty;
+            var progress = new Progress<Yme009OperatorStage>(ApplyYme009Stage);
+            try
+            {
+                var sessionId = 0;
+                var sessionName = _sessionLifecycleService?.GetCurrentSessionId();
+                if (_storageService != null && !string.IsNullOrWhiteSpace(sessionName))
+                {
+                    var internalId = await _storageService.GetInternalSessionIdBySessionNameAsync(sessionName).ConfigureAwait(true);
+                    sessionId = internalId ?? 0;
+                }
+
+                _yme009RoundCoordinator.UseProgress(progress);
+                _yme009RoundCoordinator.UseInspection(new Yme009InspectionRequest(sessionId, ExpectedAndroidVersion));
+                var result = await _yme009RoundCoordinator.RunAsync(trimmedSn, CancellationToken.None).ConfigureAwait(true);
+                _loggingService.LogInfo("YME009 扫码进入专属轮次挂载点: SN=" + trimmedSn + "，" + result.OperatorText.Replace(Environment.NewLine, " | "));
+                if (IsYme009RoundStillCurrent(roundEpoch, roundSessionName))
+                {
+                    Yme009RoundSummary = result.OperatorText;
+                    var snapshot = Yme009WorkstationSnapshot.FromResult(result, _yme009RoundScannedSn);
+                    ApplyYme009Snapshot(snapshot);
+                    StatusBarMessage = string.IsNullOrEmpty(snapshot.ProcessPrompt) ? snapshot.Headline : snapshot.ProcessPrompt;
+                    if (result.RecordSaved)
+                        await RefreshYme009SessionRecordsAsync().ConfigureAwait(true);
+                }
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError("YME009 设备接入未能完成: SN=" + trimmedSn, ex);
+                if (IsYme009RoundStillCurrent(roundEpoch, roundSessionName))
+                {
+                    var fault = Yme009WorkstationSnapshot.Fault(_yme009RoundScannedSn);
+                    ApplyYme009Snapshot(fault);
+                    StatusBarMessage = fault.ProcessPrompt;
+                }
+            }
+            finally
+            {
+                _yme009RoundCoordinator.UseProgress(null);
+                ScanInputText = "";
+                SetYme009RoundBusy(false);
+            }
+        }
+
+        private void ApplyYme009SessionBoundary(bool wasActive, bool willBeActive, string previousSessionName, string nextSessionName)
+        {
+            if (!ShowYme009Workstation)
+                return;
+            if (!willBeActive)
+            {
+                ApplyYme009Snapshot(Yme009WorkstationSnapshot.IdleCleared());
+                _yme009RoundScannedSn = string.Empty;
+                return;
+            }
+
+            var started = !wasActive;
+            var changed = !string.Equals(previousSessionName, nextSessionName, StringComparison.Ordinal);
+            if (started || changed)
+            {
+                ApplyYme009Snapshot(Yme009WorkstationSnapshot.IdleWaiting());
+                _yme009RoundScannedSn = string.Empty;
+            }
+        }
+
+        private bool IsYme009RoundStillCurrent(int epoch, string sessionName)
+        {
+            return epoch == _yme009SessionEpoch
+                && IsSessionActive
+                && string.Equals(sessionName, _sessionSnapshot?.SessionId, StringComparison.Ordinal);
+        }
+
+        private void ApplyYme009Stage(Yme009OperatorStage stage)
+        {
+            if (_yme009RoundPhase != Yme009RoundPhase.Running)
+                return;
+            if (_yme009ActiveRoundEpoch != _yme009SessionEpoch || !IsSessionActive)
+                return;
+            var prompt = Yme009WorkstationSnapshot.StagePrompt(stage);
+            ApplyYme009Snapshot(Yme009WorkstationSnapshot.Running(_yme009RoundScannedSn, prompt));
+            StatusBarMessage = prompt;
+        }
+
+        private void ApplyYme009Snapshot(Yme009WorkstationSnapshot snapshot)
+        {
+            snapshot = snapshot ?? Yme009WorkstationSnapshot.IdleCleared();
+            _yme009RoundPhase = snapshot.Phase;
+            _yme009ProcessPrompt = snapshot.ProcessPrompt ?? string.Empty;
+            _yme009Headline = snapshot.Headline ?? string.Empty;
+            _yme009HeadlineKind = snapshot.HeadlineKind;
+            _yme009HasOverallResult = snapshot.HasOverallResult;
+            _yme009OverallText = snapshot.OverallText ?? string.Empty;
+            _yme009PrimaryReason = snapshot.PrimaryReason ?? string.Empty;
+            _yme009SaveStatusText = snapshot.SaveStatusText ?? string.Empty;
+            _yme009CloseNotice = snapshot.CloseNotice ?? string.Empty;
+            _yme009ScannedSnText = snapshot.ScannedSn ?? string.Empty;
+            _yme009DeviceSnText = snapshot.DeviceSnText ?? string.Empty;
+            _yme009ActualVersionText = snapshot.ActualVersionText ?? string.Empty;
+            _yme009SnJudgment = snapshot.SnJudgment ?? string.Empty;
+            _yme009SnReason = snapshot.SnReason ?? string.Empty;
+            _yme009SnRaw = snapshot.SnRaw ?? string.Empty;
+            _yme009VersionJudgment = snapshot.VersionJudgment ?? string.Empty;
+            _yme009VersionReason = snapshot.VersionReason ?? string.Empty;
+            _yme009CitJudgment = snapshot.CitJudgment ?? string.Empty;
+            _yme009CitReason = snapshot.CitReason ?? string.Empty;
+            _yme009CitRaw = snapshot.CitRaw ?? string.Empty;
+            _yme009RebootJudgment = snapshot.RebootJudgment ?? string.Empty;
+            _yme009RebootReason = snapshot.RebootReason ?? string.Empty;
+            _yme009RebootRaw = snapshot.RebootRaw ?? string.Empty;
+            _yme009ResetJudgment = snapshot.ResetJudgment ?? string.Empty;
+            _yme009ResetReason = snapshot.ResetReason ?? string.Empty;
+            _yme009ResetRaw = snapshot.ResetRaw ?? string.Empty;
+            _yme009Imei1Text = snapshot.Imei1Text ?? string.Empty;
+            _yme009Imei2Text = snapshot.Imei2Text ?? string.Empty;
+            _yme009WifiMacText = snapshot.WifiMacText ?? string.Empty;
+            OnPropertyChanged(nameof(Yme009RoundPhase));
+            OnPropertyChanged(nameof(Yme009ProcessPrompt));
+            OnPropertyChanged(nameof(Yme009Headline));
+            OnPropertyChanged(nameof(Yme009HeadlineKind));
+            OnPropertyChanged(nameof(Yme009HasOverallResult));
+            OnPropertyChanged(nameof(Yme009OverallText));
+            OnPropertyChanged(nameof(Yme009PrimaryReason));
+            OnPropertyChanged(nameof(Yme009SaveStatusText));
+            OnPropertyChanged(nameof(Yme009CloseNotice));
+            OnPropertyChanged(nameof(Yme009ScannedSnText));
+            OnPropertyChanged(nameof(Yme009DeviceSnText));
+            OnPropertyChanged(nameof(Yme009ActualVersionText));
+            OnPropertyChanged(nameof(Yme009SnJudgment));
+            OnPropertyChanged(nameof(Yme009SnReason));
+            OnPropertyChanged(nameof(Yme009SnRaw));
+            OnPropertyChanged(nameof(Yme009VersionJudgment));
+            OnPropertyChanged(nameof(Yme009VersionReason));
+            OnPropertyChanged(nameof(Yme009CitJudgment));
+            OnPropertyChanged(nameof(Yme009CitReason));
+            OnPropertyChanged(nameof(Yme009CitRaw));
+            OnPropertyChanged(nameof(Yme009RebootJudgment));
+            OnPropertyChanged(nameof(Yme009RebootReason));
+            OnPropertyChanged(nameof(Yme009RebootRaw));
+            OnPropertyChanged(nameof(Yme009ResetJudgment));
+            OnPropertyChanged(nameof(Yme009ResetReason));
+            OnPropertyChanged(nameof(Yme009ResetRaw));
+            OnPropertyChanged(nameof(Yme009Imei1Text));
+            OnPropertyChanged(nameof(Yme009Imei2Text));
+            OnPropertyChanged(nameof(Yme009WifiMacText));
+            OnPropertyChanged(nameof(IsYme009ScanAllowed));
+        }
+
+        private bool IsYme009RoundGate()
+        {
+            return _yme009RoundBusy && Yme009Product.IsMatch(_currentProductProfile);
+        }
+
+        private bool IsYme009ScanBlocked()
+        {
+            return Yme009Product.IsMatch(_currentProductProfile) && (_yme009RoundBusy || _sessionEnding);
+        }
+
+        private bool ShouldRejectYme009ScanText(string value)
+        {
+            if (!IsYme009ScanBlocked())
+                return false;
+            return !string.IsNullOrEmpty(value);
+        }
+
+        /// <summary>
+        /// 忙碌或会话结束过程中拒绝扫码。不写入新 SN，并把输入同步为空。
+        /// </summary>
+        public void RejectYme009BusyScan()
+        {
+            if (!IsYme009ScanBlocked())
+                return;
+            if (IsYme009RoundGate())
+                StatusBarMessage = Yme009WorkstationText.BusyScan;
+            _scanInputText = string.Empty;
+            OnPropertyChanged(nameof(ScanInputText));
+        }
+
+        private void SetSessionEnding(bool ending)
+        {
+            if (_sessionEnding == ending)
+                return;
+            _sessionEnding = ending;
+            OnPropertyChanged(nameof(IsSessionEnding));
+            OnPropertyChanged(nameof(IsYme009ScanAllowed));
+            EndBatchCommand?.RaiseCanExecuteChanged();
+        }
+
+        private void SyncYme009SessionRecords()
+        {
+            SyncYme009SessionRecords(_sessionSnapshot?.SessionId);
+        }
+
+        private void SyncYme009SessionRecords(string previousSessionName)
+        {
+            if (!ShowYme009SessionRecords
+                || _sessionSnapshot == null
+                || !_sessionSnapshot.IsActive
+                || string.IsNullOrWhiteSpace(_sessionSnapshot.SessionId))
+            {
+                ClearYme009SessionRecords();
+                return;
+            }
+
+            if (!string.Equals(previousSessionName, _sessionSnapshot.SessionId, StringComparison.Ordinal))
+                ClearYme009SessionRecords();
+            _ = RefreshYme009SessionRecordsAsync();
+        }
+
+        private void ClearYme009SessionRecords()
+        {
+            _yme009SessionRecordQueryId++;
+            Yme009SessionRecordHeader = string.Empty;
+            if (_yme009SessionRecords.Count > 0)
+                _yme009SessionRecords.Clear();
+            ApplyYme009SessionStatistics(Yme009SessionStatistics.Empty);
+            OnPropertyChanged(nameof(ShowYme009SessionRecordEmpty));
+        }
+
+        private async System.Threading.Tasks.Task RefreshYme009SessionRecordsAsync()
+        {
+            var sessionName = _sessionSnapshot != null && _sessionSnapshot.IsActive
+                ? _sessionSnapshot.SessionId
+                : null;
+            var serviceSessionName = _sessionLifecycleService?.GetCurrentSessionId();
+            if (!ShowYme009SessionRecords
+                || string.IsNullOrWhiteSpace(sessionName)
+                || !string.Equals(sessionName, serviceSessionName, StringComparison.Ordinal))
+            {
+                ClearYme009SessionRecords();
+                return;
+            }
+
+            var queryId = ++_yme009SessionRecordQueryId;
+            var header = "产品=" + (_currentProductProfile.ProductCode ?? string.Empty)
+                + "  项目=" + (ProjectName ?? string.Empty)
+                + "  订单=" + (_sessionSnapshot.OrderId ?? string.Empty)
+                + "  会话=" + sessionName;
+            IReadOnlyList<TestRecord> records;
+            try
+            {
+                records = await _storageService.GetTestRecordsBySessionAsync(sessionName).ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError("YME009 读取本会话记录失败。会话=" + sessionName, ex);
+                return;
+            }
+
+            if (queryId != _yme009SessionRecordQueryId)
+                return;
+            if (!ShowYme009SessionRecords)
+                return;
+            var currentServiceSession = _sessionLifecycleService?.GetCurrentSessionId();
+            if (!string.Equals(currentServiceSession, sessionName, StringComparison.Ordinal))
+                return;
+            if (_sessionSnapshot == null
+                || !_sessionSnapshot.IsActive
+                || !string.Equals(_sessionSnapshot.SessionId, sessionName, StringComparison.Ordinal))
+                return;
+
+            var rows = Yme009SessionRecordDisplay.Project(records);
+            var statistics = Yme009SessionStatistics.Summarize(records);
+            Yme009SessionRecordHeader = header;
+            _yme009SessionRecords.Clear();
+            for (var i = 0; i < rows.Count; i++)
+                _yme009SessionRecords.Add(rows[i]);
+            ApplyYme009SessionStatistics(statistics);
+            OnPropertyChanged(nameof(ShowYme009SessionRecordEmpty));
+        }
+
+        private void ApplyYme009SessionStatistics(Yme009SessionStatistics statistics)
+        {
+            var value = statistics ?? Yme009SessionStatistics.Empty;
+            Yme009PassCount = value.PassCount;
+            Yme009BusinessFailCount = value.BusinessFailCount;
+            Yme009ReadExceptionCount = value.ReadExceptionCount;
+            Yme009PassRateText = value.PassRateText;
+        }
+
+        private void SetYme009RoundBusy(bool busy)
+        {
+            _yme009RoundBusy = busy;
+            OnPropertyChanged(nameof(IsProcessing));
+            OnPropertyChanged(nameof(IsScanInputEnabled));
+            OnPropertyChanged(nameof(IsScanBoxInteractive));
+            OnPropertyChanged(nameof(IsScanBoxBusyVisual));
+            OnPropertyChanged(nameof(IsYme009ScanAllowed));
+            OnPropertyChanged(nameof(IsYme009DebugActionEnabled));
+            StartBatchCommand.RaiseCanExecuteChanged();
+            EndBatchCommand.RaiseCanExecuteChanged();
+            StartVerifyCommand.RaiseCanExecuteChanged();
+            StartVersionVerifyCommand.RaiseCanExecuteChanged();
+            SelfCheckCommand?.RaiseCanExecuteChanged();
         }
 
         /// <summary>
@@ -1847,6 +2501,12 @@ namespace SnVerify.ViewModels
             if (IsSelfChecking)
                 return;
 
+            if (IsYme009ScanBlocked())
+            {
+                RejectYme009BusyScan();
+                return;
+            }
+
             if (IsProcessing)
             {
                 // 正在处理中，忽略新的扫码输入
@@ -1869,6 +2529,12 @@ namespace SnVerify.ViewModels
             try
             {
                 var trimmedSn = sn.Trim();
+
+                if (_currentProductProfile?.Mode == VerificationMode.Independent)
+                {
+                    await EnterIndependentProductRoundAsync(trimmedSn).ConfigureAwait(true);
+                    return;
+                }
 
                 // 根据产品模式选择 Legacy 或 Phase3 流程入口，UI 仅负责路由，不参与规则判断。
                 if (IsPhase3Product && !string.IsNullOrWhiteSpace(SelectedProductCode))
