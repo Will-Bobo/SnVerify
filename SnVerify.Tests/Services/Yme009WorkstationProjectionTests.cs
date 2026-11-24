@@ -80,7 +80,7 @@ namespace SnVerify.Tests.Services
             var snapshot = Yme009WorkstationSnapshot.FromResult(result, "SN-1");
 
             Assert.That(snapshot.OverallText, Is.EqualTo("PASS"));
-            Assert.That(snapshot.SaveStatusText, Is.EqualTo(Yme009WorkstationText.SaveFailed));
+            Assert.That(snapshot.SaveStatusText, Is.EqualTo(Yme009WorkstationText.RecordNotSaved));
         }
 
         [Test]

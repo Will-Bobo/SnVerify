@@ -14,6 +14,7 @@ using System.Threading.Tasks;
 using OfficeOpenXml;
 using SnVerify.Domain.Export;
 using SnVerify.Domain.Models;
+using SnVerify.Domain.Product;
 using SnVerify.Domain.State;
 using SnVerify.Services.Logging;
 using SnVerify.Services.Rules;
@@ -959,6 +960,44 @@ CREATE TABLE VerificationParameter (
                 }
             });
             return list.AsReadOnly();
+        }
+
+        /// <summary>
+        /// 按内部 SessionId 读取项目名和订单名。
+        /// </summary>
+        public async Task<Yme009BatchScope> GetYme009BatchScopeBySessionIdAsync(int sessionId)
+        {
+            if (sessionId <= 0)
+                throw new ArgumentException("SessionId 必须大于 0", nameof(sessionId));
+
+            EnsureConnectionInitialized();
+            const string sql = @"
+                SELECT p.ProductName, o.OrderName
+                FROM TestSession s
+                INNER JOIN ""Order"" o ON s.OrderId = o.Id
+                INNER JOIN Product p ON o.ProductId = p.Id
+                WHERE s.Id = @SessionId
+                LIMIT 1";
+
+            return await Task.Run(() =>
+            {
+                lock (_lockObject)
+                {
+                    if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        throw new InvalidOperationException("数据库连接未初始化或已关闭");
+
+                    using (var cmd = new SQLiteCommand(sql, _connection))
+                    {
+                        cmd.Parameters.AddWithValue("@SessionId", sessionId);
+                        using (var reader = cmd.ExecuteReader())
+                        {
+                            if (!reader.Read() || reader.IsDBNull(0) || reader.IsDBNull(1))
+                                return null;
+                            return new Yme009BatchScope(reader.GetString(0), reader.GetString(1));
+                        }
+                    }
+                }
+            });
         }
 
         /// <summary>

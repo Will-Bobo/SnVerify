@@ -163,7 +163,7 @@ namespace SnVerify.Services.Yme009
             snapshot.PrimaryReason = pass ? string.Empty : FailReasonTextResolverSafe(decision.FailReason);
             snapshot.SaveStatusText = result.RecordSaved && result.RecordId > 0
                 ? Yme009WorkstationText.Saved
-                : Yme009WorkstationText.SaveFailed;
+                : Yme009WorkstationText.RecordNotSaved;
             snapshot.CloseNotice = result.Close != null && result.Close.Disposition == Yme009CloseDisposition.Failed
                 ? Yme009WorkstationText.CloseFailed
                 : string.Empty;
@@ -287,6 +287,7 @@ namespace SnVerify.Services.Yme009
         public const string NotSavedRecord = "未保存记录";
         public const string Saved = "已保存";
         public const string SaveFailed = "保存失败";
+        public const string RecordNotSaved = "记录未保存";
         public const string CloseFailed = "收尾异常，本次检测结果不变";
         public const string WaitingItem = "等待";
     }

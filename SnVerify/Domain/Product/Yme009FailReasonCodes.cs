@@ -1,7 +1,7 @@
 namespace SnVerify.Domain.Product
 {
     /// <summary>
-    /// YME009 主失败码。不复用 KM / Legacy 的失败码。
+    /// YME009 主失败码。历史 PASS 命中使用既有 SN_DUPLICATE，其余不复用 KM / Legacy 失败码。
     /// </summary>
     public static class Yme009FailReasonCodes
     {
@@ -13,6 +13,8 @@ namespace SnVerify.Domain.Product
         public const string ReadFail = "YME009_READ_FAIL";
         public const string ProtocolInvalid = "YME009_PROTOCOL_INVALID";
         public const string RequiredValueMissing = "YME009_REQUIRED_VALUE_MISSING";
+        public const string PassHistoryQueryFail = "YME009_PASS_HISTORY_QUERY_FAIL";
+        public const string SnDuplicate = "SN_DUPLICATE";
 
         public const string SnMismatchText = "扫码 SN 与设备 SN 不一致";
         public const string VersionMismatchText = "软件版本与目标版本不一致";
@@ -22,6 +24,7 @@ namespace SnVerify.Domain.Product
         public const string ReadFailText = "设备读取失败";
         public const string ProtocolInvalidText = "产测或老化数据无法识别";
         public const string RequiredValueMissingText = "必要判定数据缺失";
+        public const string PassHistoryQueryFailText = "历史检验记录查询失败";
         public const string ItemSnMismatch = "SN 不匹配";
         public const string ItemVersionMismatch = "软件版本不匹配";
         public const string ItemRequiredMissing = "必要字段缺失";
@@ -36,14 +39,16 @@ namespace SnVerify.Domain.Product
                 || failReason == VersionMismatch
                 || failReason == CitFail
                 || failReason == AgingRebootFail
-                || failReason == AgingResetFail;
+                || failReason == AgingResetFail
+                || failReason == SnDuplicate;
         }
 
         public static bool IsReadException(string failReason)
         {
             return failReason == ReadFail
                 || failReason == ProtocolInvalid
-                || failReason == RequiredValueMissing;
+                || failReason == RequiredValueMissing
+                || failReason == PassHistoryQueryFail;
         }
     }
 }

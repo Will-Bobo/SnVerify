@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using SnVerify.Domain.Export;
 using SnVerify.Domain.Models;
+using SnVerify.Domain.Product;
 using SnVerify.Domain.State;
 
 namespace SnVerify.Services.Storage
@@ -116,6 +117,11 @@ namespace SnVerify.Services.Storage
         /// 根据 Session 内部 Id 解析所属 Product 的 ProductCode（Session → Order → Product → ProductCode）；无匹配或为空时返回 null。
         /// </summary>
         Task<string> GetProductCodeBySessionIdAsync(int sessionId);
+
+        /// <summary>
+        /// 按 TestSession.Id 读取所属 Product.ProductName 与 Order.OrderName。没有匹配行时返回 null。
+        /// </summary>
+        Task<Yme009BatchScope> GetYme009BatchScopeBySessionIdAsync(int sessionId);
 
         /// <summary>
         /// 创建订单记录，返回自增 Id。

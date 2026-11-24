@@ -484,6 +484,7 @@ namespace SnVerify.Tests.Services
             logging.Setup(item => item.LogInfo(It.IsAny<string>())).Callback<string>(lines.Add);
             logging.Setup(item => item.LogError(It.IsAny<string>(), It.IsAny<Exception>())).Callback<string, Exception>((message, _) => lines.Add(message));
             var storage = new Mock<IStorageService>();
+            SetupNoHistoricalPass(storage);
             storage.Setup(item => item.SaveTestRecordAsync(It.IsAny<TestRecord>())).ThrowsAsync(new InvalidOperationException("db"));
             var round = new Yme009RoundCoordinator(harness.Coordinator, logging.Object, null, new StubPropertyReader { Raw = PassRaw("SN-1") }, storage.Object);
 
@@ -621,6 +622,202 @@ namespace SnVerify.Tests.Services
             Assert.That(cancelResult.CleanedUp, Is.True);
         }
 
+        [Test]
+        public async Task Should_SaveDuplicateFail_When_HistoricalPassExists()
+        {
+            var harness = CreateHarness();
+            PrepareUniqueDevice(harness);
+            var saved = new List<TestRecord>();
+            string queriedSn = null;
+            var storage = new Mock<IStorageService>();
+            storage.Setup(item => item.GetYme009BatchScopeBySessionIdAsync(3))
+                .ReturnsAsync(new Yme009BatchScope("YME009", "ORD-1"));
+            storage.Setup(item => item.IsStickerSnPassedInBatchAsync("YME009", "ORD-1", It.IsAny<string>()))
+                .Callback<string, string, string>((_, __, sn) => queriedSn = sn)
+                .ReturnsAsync(true);
+            storage.Setup(item => item.SaveTestRecordAsync(It.IsAny<TestRecord>()))
+                .Callback<TestRecord>(record =>
+                {
+                    saved.Add(record);
+                    record.Id = 21;
+                })
+                .Returns(Task.CompletedTask);
+            var raw = new Yme009RawBuilder()
+                .DeviceSn(Yme009FieldRaw.Succeeded(" SN-1 "))
+                .ProductionTest(Yme009FieldRaw.Succeeded("0"))
+                .Build();
+            var round = new Yme009RoundCoordinator(harness.Coordinator, Mock.Of<ILoggingService>(), null, new StubPropertyReader { Raw = raw }, storage.Object);
+            round.UseInspection(new Yme009InspectionRequest(3, "SW-1"));
+
+            var result = await round.RunAsync("SN-1", CancellationToken.None);
+            var snapshot = Yme009WorkstationSnapshot.FromResult(result, "SN-1");
+
+            Assert.That(queriedSn, Is.EqualTo("SN-1"));
+            Assert.That(queriedSn, Is.Not.EqualTo(" SN-1 "));
+            Assert.That(saved, Has.Count.EqualTo(1));
+            Assert.That(saved[0].Result, Is.EqualTo("FAIL"));
+            Assert.That(saved[0].FailReason, Is.EqualTo(Yme009FailReasonCodes.SnDuplicate));
+            Assert.That(saved[0].StickerSN, Is.EqualTo("SN-1"));
+            Assert.That(result.Decision.ProductionTest, Is.EqualTo(Yme009ItemJudgment.Fail));
+            Assert.That(result.Decision.DeviceSn, Is.EqualTo(Yme009ItemJudgment.Pass));
+            Assert.That(result.Decision.AgingReboot, Is.EqualTo(Yme009ItemJudgment.Pass));
+            Assert.That(result.Decision.AgingReset, Is.EqualTo(Yme009ItemJudgment.Pass));
+            Assert.That(result.Decision.SoftwareVersion, Is.EqualTo(Yme009ItemJudgment.Pass));
+            Assert.That(result.RecordSaved, Is.True);
+            Assert.That(snapshot.PrimaryReason, Is.EqualTo("设备SN已经检验"));
+            Assert.That(snapshot.SaveStatusText, Is.EqualTo(Yme009WorkstationText.Saved));
+            Assert.That(snapshot.SaveStatusText, Is.Not.EqualTo(Yme009WorkstationText.RecordNotSaved));
+        }
+
+        [Test]
+        public async Task Should_QueryTrimmedScannedSn_When_DeviceSnTextDiffersOnlyByWhitespace()
+        {
+            var harness = CreateHarness();
+            PrepareUniqueDevice(harness);
+            string queriedSn = null;
+            var storage = new Mock<IStorageService>();
+            storage.Setup(item => item.GetYme009BatchScopeBySessionIdAsync(3))
+                .ReturnsAsync(new Yme009BatchScope("YME009", "ORD-1"));
+            storage.Setup(item => item.IsStickerSnPassedInBatchAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+                .Callback<string, string, string>((_, __, sn) => queriedSn = sn)
+                .ReturnsAsync(false);
+            storage.Setup(item => item.SaveTestRecordAsync(It.IsAny<TestRecord>()))
+                .Callback<TestRecord>(record => record.Id = 22)
+                .Returns(Task.CompletedTask);
+            var raw = new Yme009RawBuilder().DeviceSn(Yme009FieldRaw.Succeeded(" SN-1 ")).Build();
+            var round = new Yme009RoundCoordinator(harness.Coordinator, Mock.Of<ILoggingService>(), null, new StubPropertyReader { Raw = raw }, storage.Object);
+            round.UseInspection(new Yme009InspectionRequest(3, "SW-1"));
+
+            var result = await round.RunAsync("  SN-1", CancellationToken.None);
+
+            Assert.That(queriedSn, Is.EqualTo("SN-1"));
+            Assert.That(result.Decision.Result, Is.EqualTo("PASS"));
+            Assert.That(result.Decision.FailReason, Is.Null);
+        }
+
+        [Test]
+        public async Task Should_NotQueryHistory_When_ScannedSnDiffersFromDeviceSn()
+        {
+            var harness = CreateHarness();
+            PrepareUniqueDevice(harness);
+            var saved = new List<TestRecord>();
+            var storage = new Mock<IStorageService>();
+            storage.Setup(item => item.SaveTestRecordAsync(It.IsAny<TestRecord>()))
+                .Callback<TestRecord>(record =>
+                {
+                    saved.Add(record);
+                    record.Id = 23;
+                })
+                .Returns(Task.CompletedTask);
+            var raw = new Yme009RawBuilder()
+                .DeviceSn(Yme009FieldRaw.Succeeded("DEV-9"))
+                .AgingReboot(Yme009FieldRaw.Succeeded("0"))
+                .Build();
+            var round = new Yme009RoundCoordinator(harness.Coordinator, Mock.Of<ILoggingService>(), null, new StubPropertyReader { Raw = raw }, storage.Object);
+            round.UseInspection(new Yme009InspectionRequest(3, "SW-1"));
+
+            var result = await round.RunAsync("SN-1", CancellationToken.None);
+
+            storage.Verify(item => item.GetYme009BatchScopeBySessionIdAsync(It.IsAny<int>()), Times.Never);
+            storage.Verify(item => item.IsStickerSnPassedInBatchAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            Assert.That(saved[0].Result, Is.EqualTo("FAIL"));
+            Assert.That(saved[0].FailReason, Is.EqualTo(Yme009FailReasonCodes.SnMismatch));
+            Assert.That(result.Decision.DeviceSn, Is.EqualTo(Yme009ItemJudgment.Fail));
+            Assert.That(result.Decision.AgingReboot, Is.EqualTo(Yme009ItemJudgment.Fail));
+            Assert.That(result.Decision.ProductionTest, Is.EqualTo(Yme009ItemJudgment.Pass));
+            Assert.That(result.Decision.FailReason, Is.Not.EqualTo(Yme009FailReasonCodes.SnDuplicate));
+            Assert.That(result.Decision.FailReason, Is.Not.EqualTo(Yme009FailReasonCodes.PassHistoryQueryFail));
+        }
+
+        [Test]
+        public async Task Should_NotQueryHistory_When_DeviceSnTimesOut()
+        {
+            var harness = CreateHarness();
+            PrepareUniqueDevice(harness);
+            var storage = new Mock<IStorageService>();
+            storage.Setup(item => item.SaveTestRecordAsync(It.IsAny<TestRecord>()))
+                .Callback<TestRecord>(record => record.Id = 24)
+                .Returns(Task.CompletedTask);
+            var round = new Yme009RoundCoordinator(
+                harness.Coordinator,
+                Mock.Of<ILoggingService>(),
+                null,
+                new StubPropertyReader { Raw = new Yme009RawBuilder().DeviceSn(Yme009FieldRaw.TimedOut()).Build() },
+                storage.Object);
+            round.UseInspection(new Yme009InspectionRequest(3, "SW-1"));
+
+            var result = await round.RunAsync("SN-1", CancellationToken.None);
+
+            storage.Verify(item => item.IsStickerSnPassedInBatchAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            Assert.That(result.Decision.Result, Is.EqualTo("FAIL"));
+            Assert.That(result.Decision.FailReason, Is.EqualTo(Yme009FailReasonCodes.ReadFail));
+            Assert.That(result.Decision.FailReason, Is.Not.EqualTo(Yme009FailReasonCodes.SnMismatch));
+            Assert.That(result.Decision.SoftwareVersion, Is.EqualTo(Yme009ItemJudgment.Pass));
+            Assert.That(result.Decision.ProductionTest, Is.EqualTo(Yme009ItemJudgment.Pass));
+        }
+
+        [Test]
+        public async Task Should_SaveQueryFailure_When_HistoryLookupThrows()
+        {
+            var harness = CreateHarness();
+            PrepareUniqueDevice(harness);
+            var saved = new List<TestRecord>();
+            var storage = new Mock<IStorageService>();
+            storage.Setup(item => item.GetYme009BatchScopeBySessionIdAsync(It.IsAny<int>()))
+                .ThrowsAsync(new InvalidOperationException("db"));
+            storage.Setup(item => item.SaveTestRecordAsync(It.IsAny<TestRecord>()))
+                .Callback<TestRecord>(record =>
+                {
+                    saved.Add(record);
+                    record.Id = 25;
+                })
+                .Returns(Task.CompletedTask);
+            var raw = new Yme009RawBuilder()
+                .DeviceSn(Yme009FieldRaw.Succeeded("SN-1"))
+                .ProductionTest(Yme009FieldRaw.Succeeded("0"))
+                .Build();
+            var round = new Yme009RoundCoordinator(harness.Coordinator, Mock.Of<ILoggingService>(), null, new StubPropertyReader { Raw = raw }, storage.Object);
+            round.UseInspection(new Yme009InspectionRequest(3, "SW-1"));
+
+            var result = await round.RunAsync("SN-1", CancellationToken.None);
+            var snapshot = Yme009WorkstationSnapshot.FromResult(result, "SN-1");
+
+            Assert.That(saved, Has.Count.EqualTo(1));
+            Assert.That(saved[0].Result, Is.EqualTo("FAIL"));
+            Assert.That(saved[0].FailReason, Is.EqualTo(Yme009FailReasonCodes.PassHistoryQueryFail));
+            Assert.That(saved[0].FailReason, Is.Not.EqualTo(Yme009FailReasonCodes.SnDuplicate));
+            Assert.That(result.Decision.Bucket, Is.EqualTo(Yme009StatisticBucket.ReadException));
+            Assert.That(result.Decision.ProductionTest, Is.EqualTo(Yme009ItemJudgment.Fail));
+            Assert.That(result.Decision.DeviceSn, Is.EqualTo(Yme009ItemJudgment.Pass));
+            Assert.That(result.RecordSaved, Is.True);
+            Assert.That(snapshot.PrimaryReason, Is.EqualTo(Yme009FailReasonCodes.PassHistoryQueryFailText));
+            Assert.That(snapshot.OverallText, Is.EqualTo("FAIL"));
+        }
+
+        [Test]
+        public async Task Should_ShowRecordNotSaved_When_QueryFailureCannotBeSaved()
+        {
+            var harness = CreateHarness();
+            PrepareUniqueDevice(harness);
+            var storage = new Mock<IStorageService>();
+            storage.Setup(item => item.GetYme009BatchScopeBySessionIdAsync(It.IsAny<int>()))
+                .ReturnsAsync((Yme009BatchScope)null);
+            storage.Setup(item => item.SaveTestRecordAsync(It.IsAny<TestRecord>()))
+                .ThrowsAsync(new InvalidOperationException("db"));
+            var round = new Yme009RoundCoordinator(harness.Coordinator, Mock.Of<ILoggingService>(), null, new StubPropertyReader { Raw = PassRaw("SN-1") }, storage.Object);
+            round.UseInspection(new Yme009InspectionRequest(3, "SW-1"));
+
+            var result = await round.RunAsync("SN-1", CancellationToken.None);
+            var snapshot = Yme009WorkstationSnapshot.FromResult(result, "SN-1");
+
+            Assert.That(result.RecordSaved, Is.False);
+            Assert.That(result.Decision.Result, Is.EqualTo("FAIL"));
+            Assert.That(result.Decision.FailReason, Is.EqualTo(Yme009FailReasonCodes.PassHistoryQueryFail));
+            Assert.That(snapshot.SaveStatusText, Is.EqualTo("记录未保存"));
+            Assert.That(snapshot.OverallText, Is.EqualTo("FAIL"));
+            storage.Verify(item => item.SaveTestRecordAsync(It.IsAny<TestRecord>()), Times.Once);
+        }
+
         private static void PrepareUniqueDevice(Harness harness)
         {
             harness.Discovery.Enqueue(One("A", "COM3"), One("A", "COM3"), One("A", "COM3"), One("A", "COM4"), One("A", "COM5"));
@@ -632,6 +829,14 @@ namespace SnVerify.Tests.Services
             return new Yme009RawBuilder().DeviceSn(Yme009FieldRaw.Succeeded(serial)).Build();
         }
 
+        private static void SetupNoHistoricalPass(Mock<IStorageService> storage)
+        {
+            storage.Setup(item => item.GetYme009BatchScopeBySessionIdAsync(It.IsAny<int>()))
+                .ReturnsAsync(new Yme009BatchScope("P-YME", "ORD-YME"));
+            storage.Setup(item => item.IsStickerSnPassedInBatchAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync(false);
+        }
+
         private static Yme009RoundCoordinator CreateInspectionRound(
             Harness harness,
             Yme009RawAttributeSet raw,
@@ -639,6 +844,7 @@ namespace SnVerify.Tests.Services
             Action<TestRecord> accept)
         {
             var storage = new Mock<IStorageService>();
+            SetupNoHistoricalPass(storage);
             storage.Setup(item => item.SaveTestRecordAsync(It.IsAny<TestRecord>()))
                 .Callback<TestRecord>(record =>
                 {

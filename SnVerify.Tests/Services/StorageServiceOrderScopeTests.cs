@@ -7,6 +7,7 @@ using System.IO;
 using System.Threading.Tasks;
 using NUnit.Framework;
 using SnVerify.Domain.Models;
+using SnVerify.Domain.Product;
 using SnVerify.Services.Storage;
 
 namespace SnVerify.Tests.Services
@@ -134,6 +135,78 @@ namespace SnVerify.Tests.Services
             // 在 Batch (A, ORDER_A) 中 SN2 没有 PASS 记录
             var inBatchA_SN2 = await _storage.IsStickerSnPassedInBatchAsync("PA", "ORDER_A", "SN2");
             Assert.That(inBatchA_SN2, Is.False, "Batch (PA, ORDER_A) 中 SN2 无 PASS 记录，应返回 false");
+        }
+
+        [Test]
+        public async Task Should_MatchOnlyPassInSameProjectAndOrder_When_QueryingHistoricalPass()
+        {
+            await _storage.InitializeAsync();
+            var productA = await _storage.CreateProductAsync(new Product { ProductName = "YME009", ProductCode = "CODE-9", CreatedAt = DateTime.Now });
+            var productB = await _storage.CreateProductAsync(new Product { ProductName = "OTHER", CreatedAt = DateTime.Now });
+            var orderA = await _storage.CreateOrderAsync(new Order { ProductId = productA, OrderName = "ORD-A", CreatedAt = DateTime.Now });
+            var orderB = await _storage.CreateOrderAsync(new Order { ProductId = productA, OrderName = "ORD-B", CreatedAt = DateTime.Now });
+            var orderOther = await _storage.CreateOrderAsync(new Order { ProductId = productB, OrderName = "ORD-A", CreatedAt = DateTime.Now });
+            var current = await _storage.CreateSessionAsync(new TestSession { OrderId = orderA, SessionName = "ORD-A_1", StartTime = DateTime.Now });
+            var previous = await _storage.CreateSessionAsync(new TestSession { OrderId = orderA, SessionName = "ORD-A_0", StartTime = DateTime.Now });
+            var otherOrder = await _storage.CreateSessionAsync(new TestSession { OrderId = orderB, SessionName = "ORD-B_1", StartTime = DateTime.Now });
+            var otherProject = await _storage.CreateSessionAsync(new TestSession { OrderId = orderOther, SessionName = "OTHER_1", StartTime = DateTime.Now });
+
+            await _storage.SaveTestRecordAsync(Record(previous, "SN-FAIL", "FAIL"));
+            await _storage.SaveTestRecordAsync(Record(previous, "SN-TIME", "TIMEOUT"));
+            await _storage.SaveTestRecordAsync(Record(previous, "SN-PASS", "PASS"));
+            await _storage.SaveTestRecordAsync(Record(current, "SN-CURRENT", "PASS"));
+            await _storage.SaveTestRecordAsync(Record(otherOrder, "SN-ORDER", "PASS"));
+            await _storage.SaveTestRecordAsync(Record(otherProject, "SN-PROJECT", "PASS"));
+
+            var scope = await _storage.GetYme009BatchScopeBySessionIdAsync(current);
+
+            Assert.That(scope.ProductName, Is.EqualTo("YME009"));
+            Assert.That(scope.OrderName, Is.EqualTo("ORD-A"));
+            Assert.That(await _storage.IsStickerSnPassedInBatchAsync(scope.ProductName, scope.OrderName, "SN-NONE"), Is.False);
+            Assert.That(await _storage.IsStickerSnPassedInBatchAsync(scope.ProductName, scope.OrderName, "SN-FAIL"), Is.False);
+            Assert.That(await _storage.IsStickerSnPassedInBatchAsync(scope.ProductName, scope.OrderName, "SN-TIME"), Is.False);
+            Assert.That(await _storage.IsStickerSnPassedInBatchAsync(scope.ProductName, scope.OrderName, "SN-PASS"), Is.True);
+            Assert.That(await _storage.IsStickerSnPassedInBatchAsync(scope.ProductName, scope.OrderName, "SN-CURRENT"), Is.True);
+            Assert.That(await _storage.IsStickerSnPassedInBatchAsync(scope.ProductName, scope.OrderName, "SN-ORDER"), Is.False);
+            Assert.That(await _storage.IsStickerSnPassedInBatchAsync(scope.ProductName, scope.OrderName, "SN-PROJECT"), Is.False);
+            Assert.That(await _storage.IsStickerSnPassedInBatchAsync("CODE-9", scope.OrderName, "SN-PASS"), Is.False);
+        }
+
+        [Test]
+        public async Task Should_KeepHistoricalPass_When_NewFailRecordIsInserted()
+        {
+            await _storage.InitializeAsync();
+            var product = await _storage.CreateProductAsync(new Product { ProductName = "YME009", CreatedAt = DateTime.Now });
+            var order = await _storage.CreateOrderAsync(new Order { ProductId = product, OrderName = "ORD-A", CreatedAt = DateTime.Now });
+            var session = await _storage.CreateSessionAsync(new TestSession { OrderId = order, SessionName = "ORD-A_1", StartTime = DateTime.Now });
+            var pass = Record(session, "SN-1", "PASS");
+            pass.DeviceSN = "DEVICE";
+            pass.VerifyTime = new DateTime(2026, 11, 24, 8, 0, 0);
+            await _storage.SaveTestRecordAsync(pass);
+            var fail = Record(session, "SN-1", "FAIL");
+            fail.FailReason = Yme009FailReasonCodes.SnDuplicate;
+            fail.VerifyTime = new DateTime(2026, 11, 24, 8, 1, 0);
+            await _storage.SaveTestRecordAsync(fail);
+
+            var records = await _storage.GetTestRecordsBySessionAsync(session);
+
+            Assert.That(records.Count, Is.EqualTo(2));
+            Assert.That(records[0].Result, Is.EqualTo("PASS"));
+            Assert.That(records[1].Result, Is.EqualTo("FAIL"));
+            Assert.That(records[1].FailReason, Is.EqualTo("SN_DUPLICATE"));
+            Assert.That(await _storage.IsStickerSnPassedInBatchAsync("YME009", "ORD-A", "SN-1"), Is.True);
+        }
+
+        private static TestRecord Record(int sessionId, string stickerSn, string result)
+        {
+            return new TestRecord
+            {
+                SessionId = sessionId,
+                StickerSN = stickerSn,
+                DeviceSN = "DEV-" + stickerSn,
+                Result = result,
+                VerifyTime = DateTime.Now
+            };
         }
 
         [Test]

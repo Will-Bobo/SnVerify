@@ -55,6 +55,8 @@ namespace SnVerify.Services.Rules
                     return Yme009FailReasonCodes.ProtocolInvalidText;
                 case Yme009FailReasonCodes.RequiredValueMissing:
                     return Yme009FailReasonCodes.RequiredValueMissingText;
+                case Yme009FailReasonCodes.PassHistoryQueryFail:
+                    return Yme009FailReasonCodes.PassHistoryQueryFailText;
                 default:
                     return failReasonCode;
             }

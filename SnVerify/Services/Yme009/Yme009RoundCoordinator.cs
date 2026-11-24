@@ -198,12 +198,16 @@ namespace SnVerify.Services.Yme009
 
             Report(Yme009OperatorStage.Reading);
             var raw = await _reader.ReadAsync(access.Connection, cancellationToken).ConfigureAwait(false);
+            var attributes = Yme009AttributeParser.Parse(raw);
             var decision = Yme009InspectionJudge.Judge(
                 scannedSn,
                 inspection.TargetSoftwareVersion,
-                Yme009AttributeParser.Parse(raw));
+                attributes);
             if (decision.IsSessionParameterInvalid)
                 return new InspectionOutcome { Note = "目标软件版本不能为空，记录未保存" };
+
+            var history = await ResolvePassHistoryAsync(inspection.SessionId, scannedSn, attributes).ConfigureAwait(false);
+            decision = Yme009PassHistoryDecision.Apply(decision, scannedSn, history);
 
             var record = Yme009TestRecordMapper.Create(
                 inspection.SessionId,
@@ -233,6 +237,38 @@ namespace SnVerify.Services.Yme009
                 _scope,
                 "记录已保存。SessionId=" + inspection.SessionId + "，TestRecordId=" + record.Id + "，SN=" + (scannedSn ?? string.Empty) + "，判定=" + decision.Result));
             return new InspectionOutcome { Decision = decision, Saved = true, RecordId = record.Id };
+        }
+
+        private async Task<Yme009PassHistoryQueryDisposition> ResolvePassHistoryAsync(
+            int sessionId,
+            string scannedSn,
+            Yme009ParsedAttributes attributes)
+        {
+            if (!Yme009PassHistoryDecision.CanQueryHistory(attributes, scannedSn))
+                return Yme009PassHistoryQueryDisposition.NotEvaluated;
+
+            try
+            {
+                var scope = await _storage.GetYme009BatchScopeBySessionIdAsync(sessionId).ConfigureAwait(false);
+                if (scope == null
+                    || string.IsNullOrWhiteSpace(scope.ProductName)
+                    || string.IsNullOrWhiteSpace(scope.OrderName))
+                {
+                    _logging.LogError(Yme009AccessLog.Line(_scope, "历史 PASS 查询缺少项目名或订单名。SessionId=" + sessionId), null);
+                    return Yme009PassHistoryQueryDisposition.QueryFailed;
+                }
+
+                var stickerSn = Yme009TextComparison.Normalize(scannedSn);
+                var passed = await _storage.IsStickerSnPassedInBatchAsync(scope.ProductName, scope.OrderName, stickerSn).ConfigureAwait(false);
+                return passed
+                    ? Yme009PassHistoryQueryDisposition.HistoricalPass
+                    : Yme009PassHistoryQueryDisposition.NoHistoricalPass;
+            }
+            catch (Exception ex)
+            {
+                _logging.LogError(Yme009AccessLog.Line(_scope, "历史 PASS 查询失败。SessionId=" + sessionId + "，SN=" + (scannedSn ?? string.Empty)), ex);
+                return Yme009PassHistoryQueryDisposition.QueryFailed;
+            }
         }
 
         private static string DescribeRound(

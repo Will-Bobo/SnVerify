@@ -120,6 +120,7 @@
     <Compile Include="Domain\Product\Yme009ResultClassifier.cs" />
     <Compile Include="Domain\Product\Yme009SessionStatistics.cs" />
     <Compile Include="Domain\Product\Yme009InspectionJudge.cs" />
+    <Compile Include="Domain\Product\Yme009PassHistoryDecision.cs" />
     <Compile Include="Domain\Product\Yme009CdcRecognition.cs" />
     <Compile Include="Domain\Product\Yme009CdcUniquenessGate.cs" />
     <Compile Include="Domain\Product\Yme009AtExchange.cs" />
