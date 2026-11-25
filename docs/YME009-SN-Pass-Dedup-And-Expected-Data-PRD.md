@@ -1,6 +1,6 @@
 # YME009 SN PASS 去重与项目预期数据校验 PRD
 
-**文档版本：** V1.0  
+**文档版本：** V1.1  
 **文档状态：** 草稿，待用户审核  
 **复杂度：** L2  
 **项目名称：** YME009 包装上位机  
@@ -41,7 +41,6 @@ Type、Status、Source 分开记录。源码核实不是 Confirmed 决策。
 |---|---|---|
 | OQ-015 | 空数据文件 | 只有表头、没有设备记录的 Excel 如何处理，尚未确认。本文也不把其他空数据处理写成现行规则 |
 | OQ-016 | 需求 A 与需求 B 的衔接 | 需求 A 命中历史 PASS 后，是否仍继续执行需求 B，尚未确认。先执行 A 再执行 B 只是未确认建议 |
-| OQ-020 | 替换失败 | 替换文件没有通过预校验时，上一次待用配置是否保留，尚未确认 |
 
 OQ-018、OQ-019 仍开放，但不阻塞开始测试前的文件暂存，也不阻塞开始测试时的写入。见第 8.1 节。
 
@@ -122,7 +121,7 @@ YME009 当前一轮检测只比较本轮读取结果。`Yme009InspectionJudge.Ju
 | BR-A02 | Constraint | 历史 FAIL、TIMEOUT 或读取异常记录不得当作历史 PASS | Confirmed | User Explicit | Commitment | 本次说明：「历史 FAIL、TIMEOUT 或读取异常记录不应被当作历史 PASS」 |
 | BR-A03 | Constraint | 本次不改变 Excel 数据校验的职责和规则 | Confirmed | User Explicit | Commitment | 本次说明：「本次不改变 Excel 数据校验的职责和规则」 |
 | DEC-A01 | Decision | 目标是与既有项目的对应规则保持一致；规则不一致时列出差异，不在本文选定或合并 | Superseded | User Explicit | Commitment | V0.1 原状态为 Confirmed。原证据：「与既有项目的对应规则保持一致」以及「不要擅自选择或合并」。V0.2 由 DEC-A02、DEC-A03、BR-A06、BR-A07、BR-A08、BR-A10 替代 |
-| DEC-A02 | Decision | 本 PRD 的 SN PASS 去重规则，替代包装 PRD V0.8 D08 第 6–8 条及第 17 条第 2 条中与“不查重、不继承查重、前一次结果不决定本次结果”相冲突的表述。包装 PRD 文件本次不修改。该项规则自 V0.2 起以本 PRD 为依据，现行版本为 V1.0。D08 中不冲突的条款不失效 | Confirmed | User Explicit | Commitment | 本次确认：「用户确认本次 SN PASS 去重需求替代包装 PRD V0.8 D08 中与之冲突的不查重规则」 |
+| DEC-A02 | Decision | 本 PRD 的 SN PASS 去重规则，替代包装 PRD V0.8 D08 第 6–8 条及第 17 条第 2 条中与“不查重、不继承查重、前一次结果不决定本次结果”相冲突的表述。包装 PRD 文件本次不修改。该项规则自 V0.2 起以本 PRD 为依据，现行版本为 V1.1。D08 中不冲突的条款不失效 | Confirmed | User Explicit | Commitment | 本次确认：「用户确认本次 SN PASS 去重需求替代包装 PRD V0.8 D08 中与之冲突的不查重规则」 |
 | DEC-A03 | Decision | 查重范围与 KM001/KM008 相同，必须同时满足相同项目名、相同订单名和扫码 SN，且只计 `Result = 'PASS'`。范围覆盖该项目名和订单名下的全部 Session，包含当前 Session。不是只按项目名查重，不是只查当前 Session，不跨项目名，不跨订单，也不是全库查重 | Confirmed | User Explicit | Commitment | V0.2：「项目名 + 订单名 + SN，跨 Session，不跨项目和订单」。V0.3 再次确认与 KM001/KM008 相同，并明确“相同项目名”不能理解成只按项目名查重 |
 | BR-A04 | Constraint | 项目名指 `Product.ProductName`，不是 `ProductCode`。其他项目名、其他订单下的 PASS 不参与当前查重 | Confirmed | User Explicit | Commitment | 本次确认：「不跨项目名」「不跨订单」。项目名与产品类型的区分沿用本文已记录的源码关联 |
 | BR-A06 | Constraint | 先用 YME009 现有文本比较判断扫码 SN 与设备 Device SN。两者一致才按扫码 SN 查询历史 PASS；不一致则沿用原有 SN 不一致判定，不执行该查询 | Confirmed | User Explicit | Commitment | 本次确认：「沿用 KM001/KM008 的匹配门禁」四步。比较实现见第 4.2.5 节，不另加大小写转换或模糊匹配 |
@@ -353,7 +352,7 @@ V0.7 使用的状态提示是「正在准备测试数据」。V0.8 起改为第 
 | BR-B39 | Constraint | 正在导入数据时，状态文案为「正在导入 Excel 预期数据，请稍候。」禁止重复点击开始测试。导入在后台异步执行，不阻塞 UI。导入完成的文案为「预期数据导入完成。」可以显示实际导入记录数量，不要求操作员额外确认。待测试表示预期数据已经关联当前 Session，测试数据准备就绪，随后沿用现有测试启动流程 | Confirmed | User Explicit | Commitment | 本次确认的三条状态说明 |
 | BR-B40 | Constraint | 文件丢失、文件指纹变化、文件读取失败或数据库事务失败时，不能进入待测试。显示明确错误原因，允许操作员处理问题后重新尝试。重复点击或异步任务重复执行，不得创建重复 Session 或重复导入 | Confirmed | User Explicit | Commitment | 本次确认的异常处理和重复启动限制 |
 
-原始 Excel 不要求长期保存。见 BR-B03。`ExpectedDataSet` 与 `ExpectedDevice` 只表示开始测试事务中的一次导入和其中的设备明细，不表示现有代码已经具备这些对象，也不表示关联前可以先写入一条 SessionId 为空的记录。表名、字段、索引和事务实现仍见 DEC-B01。替换文件的预校验如果失败，上一次待用配置是否保留，见 OQ-020。
+原始 Excel 不要求长期保存。见 BR-B03。`ExpectedDataSet` 与 `ExpectedDevice` 只表示开始测试事务中的一次导入和其中的设备明细，不表示现有代码已经具备这些对象，也不表示关联前可以先写入一条 SessionId 为空的记录。表名、字段、索引和事务实现仍见 DEC-B01。替换文件的预校验如果失败，上一次已经预检成功的待用文件继续保留，见 BR-B45。失败文件不能成为待用文件，也不能覆盖上一次成功结果。
 
 ### 5.4.1 开始测试的界面状态
 
@@ -448,6 +447,9 @@ V0.7 不修改需求 A 已确认的判定逻辑、错误码、失败原因优先
 | DEC-B08 | Decision | 新检测记录保存身份状态和身份说明。重新读取时必须能还原该轮状态和必要说明。不修改已经保存的历史记录。没有身份字段的旧记录不解释成未启用、未执行、PASS 或 FAIL | Confirmed | User Explicit | Commitment | 本次确认持久化目标是历史可还原。OQ-018 仍未决定是否另存预期值 |
 | DEC-B09 | Decision | YME009 综合结果取值为 PASS、FAIL、UNRESOLVED。PASS 表示检测通过。FAIL 表示已经得到明确失败结论。UNRESOLVED 表示记录已保存，但必要的身份校验未能完成，不能判定 PASS，也不能认定为身份 FAIL。它不是身份状态，也不复用 TIMEOUT | Confirmed | User Explicit | Commitment | V1.0 确认。关闭 OQ-017 的结果取值问题 |
 | BR-B43 | Constraint | 身份状态为 QueryUnresolved 时，不得写成身份 PASS 或身份 FAIL。五项或需求 A 已经产生明确 FAIL 时，综合结果保持 FAIL，不用 UNRESOLVED 覆盖该 FAIL 或 FailReason。没有明确 FAIL 时，综合结果为 UNRESOLVED。历史 PASS 查询只识别 Result = 'PASS'，UNRESOLVED 不参与命中 | Confirmed | User Explicit | Commitment | V1.0 确认优先级和查重边界。不改变五项判定，也不改变需求 A 的失败优先级 |
+| DEC-B10 | Decision | YME009 检测任务开始后持久化为 Running，并保留开始时间。操作员结束任务时持久化为 Completed，并写入结束时间。程序异常退出或被关闭不改变进行中状态，也不增加中断状态。重启后只恢复唯一一条 Status 为 Running 的 YME009 任务及其原 DataSet。多条 Running 时不按时间猜测，阻止自动开始并提示错误。没有 Running 时才允许新建。历史 Status 为 NULL 的 Session 不恢复、不回填、不删除 | Confirmed | User Explicit | Commitment | V1.1 确认。复用 TestSession.Status 与 EndTime。状态值使用现有模型约定 Running / Completed。恢复以持久化 Session 身份为准 |
+| BR-B44 | Constraint | 新建任务开始测试后 Session 为 Running。进程退出后该状态保持 Running。操作员结束任务后为 Completed 且 EndTime 有值。已结束任务不能再恢复为进行中，也不能替换其预期数据。导入失败回滚后不得留下看起来正常进行中的 Session。正式导入成功的事务提交时即为 Running | Confirmed | User Explicit | Commitment | V1.1 确认。不把 EndTime 为空单独解释为进行中 |
+| BR-B45 | Constraint | 新建任务开始前可以多次选择和预检 Excel。最后一次预检成功的文件是正式导入文件。预检失败不覆盖上一次预检成功的文件；此前没有成功文件时，失败后仍然没有待导入文件。开始测试必须重新校验文件，不能只相信上一次预检。Session 进入 Running 后禁止选择、清除、重新预检和替换当前 DataSet。结束当前任务并新建 Session 后才允许选择新的 Excel | Confirmed | User Explicit | Commitment | V1.1 确认。关闭 OQ-020。替换只发生在开始前的内存暂存，不删除历史 DataSet |
 
 DEC-B07 保留 V0.9 尚未选定综合结果取值时的原文。V1.0 由 DEC-B09 选定 `UNRESOLVED`。旧记录的身份字段为空时保持空白，不补成 NotEnabled。
 
@@ -505,7 +507,7 @@ stateDiagram-v2
 
 - 对应需求：REQ-B01、REQ-B02、REQ-B09、REQ-B10、BR-B02、BR-B27、BR-B34、BR-B35、DEC-B05、DEC-B06。
 - 表达目的：预校验只在选择或重新导入时进入待用。已配置 Excel 后，开始测试经过正在导入数据、导入完成和待测试。只有事务提交成功才锁定。
-- 未知内容：替换文件没有通过预校验时，上一次待用配置是否保留，见 OQ-020。本图不画这条转换。只有表头、没有设备记录时能否进入待用，见 OQ-015。导入完成的具体停留时长没有规定。
+- 替换文件没有通过预校验时，上一次预检成功的待用文件保留，见 BR-B45。只有表头、没有设备记录时能否进入待用，见 OQ-015。导入完成的具体停留时长没有规定。
 - 图形状态：待审核。
 - 推导内容：无。`Importing` 是「正在导入数据」，`ImportDone` 是「导入完成」，`ReadyToTest` 是「待测试」。失败回到待用，不进入待测试，也不留下部分数据库写入。未配置 Excel 时不经过这三段导入状态。图中不表示关闭程序后还要清理未关联数据集。
 
@@ -601,7 +603,7 @@ flowchart TD
 | 存在 PSK、SSID 等非校验列 | 忽略，不因这些列本身导入失败 | BR-B08 |
 | 清除当前待用 Excel | 清除内存暂存。不启用预期数据校验，不写入数据库，也不执行身份校验 | BR-B34 |
 | 开始测试前替换 Excel，且新文件预校验成功 | 更新内存暂存。替换前不存在未关联的持久化数据集 | BR-B34、DEC-B05 |
-| 开始测试前替换 Excel，且新文件预校验失败 | 新文件不得成为待用配置。上一次待用配置是否保留，见 OQ-020 | BR-B09、OQ-020 |
+| 开始测试前替换 Excel，且新文件预校验失败 | 新文件不得成为待用配置。上一次预检成功的文件继续作为待导入文件 | BR-B09、BR-B45 |
 | 程序关闭或异常退出，且测试尚未开始 | 内存暂存失效，下次需要重新导入。不因此设计未关联数据集清理 | BR-B34 |
 | 开始测试后更换或清除 Excel | 不允许 | BR-B02、BR-B27 |
 | 未配置 Excel 时点击开始测试 | 沿用原有开始测试流程，不显示正在导入数据、导入完成或待测试 | BR-B39、REQ-B10 |
@@ -657,6 +659,7 @@ flowchart TD
 | OQ-012 | Open Question | 扫码 SN 与设备 Device SN 不一致、去重查询门禁不满足时，去重项自身如何显示 | Superseded | User Explicit | Commitment | V0.4 及以前为 Open。V0.5 关闭：不产生去重 PASS 或 FAIL，见 BR-A15 |
 | OQ-013 | Open Question | 历史 PASS 查询失败、超时或其他异常时：去重项如何判定？本轮是否继续执行原有五项？如何进行综合判定？是否保存本轮 TestRecord？不允许把查询异常当作未命中 | Superseded | User Explicit | Commitment | V0.4 及以前为 Open。V0.5 关闭：不得视为未命中，最终不允许 PASS，继续原有五项并尝试保存。V0.6 进一步确认为 `Result = FAIL`，专用失败码归入 ReadException，见 BR-A16 |
 | OQ-017 | Open Question | 预期数据查询异常已经确认不能综合 PASS，且身份状态必须保持 QueryUnresolved。尚未确认的是：不新增综合结果状态、也不把该状态写成身份 FAIL 时，TestRecord.Result 使用哪个已有值 | Superseded | User Explicit | Commitment | V0.6 起为完全未决。V0.9 由 DEC-B07 确认不能 PASS，并保留取值问题。V1.0 确认第三种综合结果 UNRESOLVED，见 DEC-B09、BR-B43。不复用 TIMEOUT，也不写成身份 FAIL |
+| OQ-020 | Open Question | 替换文件没有通过预校验时，上一次已经通过预校验的待用配置是否保留 | Superseded | User Explicit | Commitment | V0.7 起为 Open。V1.1 确认：预检失败不覆盖上一次预检成功的待用文件；此前没有成功文件时，失败后仍然没有待导入文件。见 BR-B45 |
 | OQ-007 | Open Question | 建议的 `Yme009ExpectedDataSet`、`Yme009ExpectedDevice` 是否能由现有 StorageService、Session 生命周期和迁移机制承接。开始测试失败时，尚未关联的数据集如何保留或丢弃，本次没有单独确认 | Superseded | User Explicit | Deferral | V0.4 原状态为 Open。原问题是：Session 创建前已确认的预期数据如何保持，以及开始失败时是否丢弃。V0.7 由 DEC-B05、BR-B33、BR-B34 关闭其中已经确认的部分：开始前只做内存文件暂存；开始失败时已开始的事务整体回滚；不产生未关联数据集，因此不需要对应清理。当时仍未决定、且本轮没有确认的事项拆到 OQ-017、OQ-018、OQ-019 |
 
 ### 8.1 仍待确认
@@ -666,8 +669,7 @@ flowchart TD
 | OQ-015 | Open Question | 只有表头、没有设备记录的 Excel 如何处理 | Open | User Explicit | Deferral | 本次确认：「只有表头、没有设备记录的 Excel 如何处理，目前尚未正式确认」，以及「不要擅自将其写成已确认规则，也不要擅自增加其他空数据处理逻辑」。因此整行空白是否算设备记录也不写成通过或失败 |
 | OQ-016 | Open Question | 需求 A 命中历史 PASS 后，是否仍继续执行需求 B 的 Excel 身份查询和比对 | Open | User Explicit | Deferral | 本次确认：「需求 A 命中后是否仍继续执行需求 B，目前尚未作为正式规则明确确认」。先执行 A 再执行 B 只是同一段中的建议，不是已确认规则 |
 | OQ-018 | Open Question | 是否需要把预期值额外保存到 TestRecord | Open | Agent Inference | NotApplicable | V0.6 第 8.1 节将该事项列为仍未决定。V0.9 确认身份状态和说明单独保存，并且不要求保存预期值；是否另外保存预期值仍未决定。它不改变 DEC-B05 的开始测试写入规则 |
-| OQ-019 | Open Question | 开始测试事务已经提交，但正式测试尚未开始，或者 Session 随即结束时，已经写入的预期数据如何处理 | Open | Agent Inference | NotApplicable | V0.6 第 8.1 节原文是「关联成功但测试尚未实际开始就结束 Session」。本次只确认提交成功后才进入正式测试，没有确认提交后的提前结束如何处理 |
-| OQ-020 | Open Question | 替换文件没有通过预校验时，上一次已经通过预校验的待用配置是否保留 | Open | Agent Inference | NotApplicable | 本次确认了替换成功时更新内存暂存，以及失败文件不得使用。没有确认失败替换是否清除上一次待用配置 |
+| OQ-019 | Open Question | 开始测试事务已经提交，但正式测试尚未开始，或者 Session 随即结束时，已经写入的预期数据如何处理 | Open | Agent Inference | NotApplicable | V0.6 第 8.1 节原文是「关联成功但测试尚未实际开始就结束 Session」。本次只确认提交成功后才进入正式测试，没有确认提交后的提前结束如何处理。V1.1 只确认已提交导入保持 Running 并可恢复，不关闭本项 |
 
 **已被替代的 OQ-007 技术核实。** 以下文字保留 V0.4 至 V0.6 的只读核实记录，不再作为现行方案。OQ-007 的状态是 Superseded，现行方案是 DEC-B05。
 
@@ -719,7 +721,7 @@ flowchart TD
 | AC-B02 | REQ-B02、BR-B09、BR-B31、BR-B32 | 文件不是 `.xlsx`、不存在、无法打开或无法读取，必要表头缺失，表头重复，必要字段空值，或 SN 去掉首尾空格后重复时，弹窗为「导入失败」，包含具体原因，且该文件不能成为当前待用配置。只读取第一个 Sheet。不因 SN 长度、IMEI 长度、IMEI 校验算法、WIFIMAC 格式、MAC 冒号、短横线或点号、非必要字段完整性或其他身份真实性检查而失败。只有表头、没有设备记录的结果不在本条验收，见 OQ-015 |
 | AC-B03 | BR-B06、BR-B07、BR-B08、BR-B23、BR-B31 | 只按已提供的两种表头兼容。必要列在第一行按名称识别；大小写和首尾空格不影响表头识别；列顺序变化不影响识别；PSK、SSID、SSID_5G、QR、IMEI3 被忽略。不把全部设备记录加载到内存 |
 | AC-B04 | REQ-B09、BR-B33、BR-B34 | 预校验成功后显示文件名和记录数量，该文件成为当前待用配置，不需要单独的「确认使用」。内存只保留路径、文件名、记录数量、SHA-256 和是否通过预校验，不保存完整设备记录。清除后不启用预期数据校验，也不写入 SQLite |
-| AC-B05 | BR-B02、BR-B27、BR-B34 | 开始测试前可以替换或清除 Excel。替换且预校验成功时更新内存暂存。清除只清除内存暂存。开始测试事务提交成功后不能更换，也不能清除。替换预校验失败后的原配置去留不在本条验收，见 OQ-020 |
+| AC-B05 | BR-B02、BR-B27、BR-B34、BR-B45 | 开始测试前可以多次预检并替换 Excel。最后一次预检成功的文件成为待导入文件。预检失败保留上一次成功文件；没有成功文件时不得导入失败文件。清除只清除内存暂存。Session 进入 Running 后不能更换，也不能清除 |
 | AC-B06 | DEC-B05、DEC-B06、BR-B10、BR-B33、BR-B35、BR-B36、BR-B37 | 开始测试前不把 DataSet 或 Device 写入 SQLite。开始测试不重复表头、空值或 SN 重复检查，只检查文件存在、可访问和 SHA-256。指纹不一致时立即停止，并提示重新导入；重新导入执行完整预校验。指纹一致后按既定解析规则逐行写入。同一次文件流同步计算 SHA-256，结束时不一致则回滚，且不为该核对再完整读取一遍。同一事务中创建 TestSession、ExpectedDataSet、逐行写入 ExpectedDevice 并关联到该 Session。提交成功后才进入导入完成和待测试。失败不进入待测试。不留下部分 Session 或部分关联。不验收表名、字段、索引、SQL 和进度条 |
 | AC-B16 | REQ-B10、BR-B38、BR-B39 | 已配置 Excel 时，现有测试页状态区依次显示「正在导入数据」「导入完成」「待测试」。文案分别是「正在导入 Excel 预期数据，请稍候。」和「预期数据导入完成。」导入期间禁止重复点击开始测试，后台执行且不阻塞 UI。导入完成可以显示实际导入记录数量，不要求操作员确认，并自动进入待测试。待测试表示预期数据已关联当前 Session。随后沿用现有测试启动流程。不新增页面，不重构现有 UI。未配置 Excel 时不出现这三个状态，沿用原有开始测试流程 |
 | AC-B17 | BR-B40 | 文件丢失、指纹变化、读取失败或事务失败时不进入待测试，并显示明确错误原因。操作员处理问题后可以重新尝试。重复点击或异步任务重复执行时，不创建第二个 Session，也不做第二次导入 |
@@ -735,7 +737,7 @@ flowchart TD
 | AC-B18 | DEC-B09、BR-B43 | 预期数据查询失败、超时或数据库异常时，身份状态为 QueryUnresolved。不得显示或保存为身份 PASS、身份 FAIL、TIMEOUT，也不得说明成 Excel 中不存在该设备。五项或需求 A 已有明确 FAIL 时，综合结果保持该 FAIL。没有明确 FAIL 时，`Result = UNRESOLVED`。UNRESOLVED 不构成历史 PASS。已经完成的五项和需求 A 不被该异常丢弃 |
 | AC-B19 | BR-B41、DEC-B08 | 新记录独立保存身份状态和必要说明，且不改变该记录的 FailReason。重新读取后能区分未启用、未执行、PASS、FAIL、QueryUnresolved 和 HistoricalPassUnresolved，并能还原不存在设备、不匹配字段、实际值无效或查询异常说明。不要求保存 Excel 预期值。旧记录没有这些字段时，不显示成上述任一状态 |
 
-查询异常不得按 AC-A11 判为「SN重复检测」通过，按 AC-A15 验收。需求 B 的预期数据查询异常按 AC-B18 验收。OQ-015、OQ-016、OQ-018、OQ-019、OQ-020 不写入验收标准。需求 B 的 Excel 校验规则不因 AC-A13 的优先级而改变。AC-A13 也不表示需求 A 命中后仍执行需求 B。
+查询异常不得按 AC-A11 判为「SN重复检测」通过，按 AC-A15 验收。需求 B 的预期数据查询异常按 AC-B18 验收。OQ-015、OQ-016、OQ-018、OQ-019 不写入验收标准。需求 B 的 Excel 校验规则不因 AC-A13 的优先级而改变。AC-A13 也不表示需求 A 命中后仍执行需求 B。
 
 ---
 
@@ -743,7 +745,7 @@ flowchart TD
 
 | ID | 冲突 | 处理 |
 |---|---|---|
-| C-001 | 包装 PRD V0.8 D08 第 6–8 条及第 17 条第 2 条中“不查重、不继承查重、前一次结果不决定本次结果”，与本 PRD 的 SN PASS 去重冲突 | 用户已确认由本 PRD 替代这些冲突表述。该决定自 V0.2 生效，现行版本为 V1.0。OQ-001 关闭并指向 DEC-A02。包装 PRD 文件本次不修改。D08 的其他规则不失效，包括不设数据库唯一约束、每轮新增记录、不覆盖历史和不设人工解锁。第 6 条里“不禁止再次启动检测”也不冲突：命中后仍完成本轮五项，并在综合判定后保存记录。后续修订包装 PRD 时再同步对应条款 |
+| C-001 | 包装 PRD V0.8 D08 第 6–8 条及第 17 条第 2 条中“不查重、不继承查重、前一次结果不决定本次结果”，与本 PRD 的 SN PASS 去重冲突 | 用户已确认由本 PRD 替代这些冲突表述。该决定自 V0.2 生效，现行版本为 V1.1。OQ-001 关闭并指向 DEC-A02。包装 PRD 文件本次不修改。D08 的其他规则不失效，包括不设数据库唯一约束、每轮新增记录、不覆盖历史和不设人工解锁。第 6 条里“不禁止再次启动检测”也不冲突：命中后仍完成本轮五项，并在综合判定后保存记录。后续修订包装 PRD 时再同步对应条款 |
 
 没有发现需求 A 与需求 B 之间已经确认的规则冲突。二者的数据来源和启用条件不同。V0.8 没有把「先执行需求 A，再执行需求 B」写成现行规则。BR-A14 与 OQ-016 不冲突：前者只在多个失败同时存在时选择一个主失败原因，后者表示需求 A 命中后是否还执行需求 B 尚未确认。
 
@@ -753,7 +755,7 @@ flowchart TD
 
 | 文档 | 关系 |
 |---|---|
-| `docs/YME009-Packaging-Station-PRD.md` V0.8 | 既有 YME009 基线。与去重冲突的 D08 表述自本 PRD V0.2 起被替代，现行版本为 V1.0；该文件本次未修改 |
+| `docs/YME009-Packaging-Station-PRD.md` V0.8 | 既有 YME009 基线。与去重冲突的 D08 表述自本 PRD V0.2 起被替代，现行版本为 V1.1；该文件本次未修改 |
 | `docs/YME009-Phase5D-Workstation-UI-Design.md` | 当前五项名称和结果卡片的既有设计。本文要求复用结果卡片，并复用现有测试页状态区显示导入状态。不修改该文档 |
 | `docs/YME009-Technical-Design.md` | 既有技术设计。表结构和导入实现留待后续技术设计，本次未修改 |
 
@@ -765,6 +767,7 @@ flowchart TD
 
 | 版本 | 日期 | 说明 |
 |---|---|---|
+| V1.1 | 2026-11-25 | 确认 YME009 Session 生命周期。开始测试持久化为 Running，操作员结束持久化为 Completed 并写入结束时间。异常退出不改为已结束。重启只恢复唯一 Running 任务及其原 DataSet；多条 Running 不猜测并阻止自动开始。新建任务开始前多次预检，最后一次成功文件作为正式导入文件，失败预检不覆盖上一次成功文件。任务开始后禁止替换预期数据。历史 Status 为 NULL 的 Session 不恢复、不回填、不删除。OQ-020 关闭。 |
 | V1.0 | 2026-11-25 | 综合结果增加 UNRESOLVED。预期数据查询异常保持身份状态 QueryUnresolved；已有明确 FAIL 时不覆盖该 FAIL，否则综合结果为 UNRESOLVED。UNRESOLVED 不进入历史 PASS，也不复用 TIMEOUT。身份状态和说明继续独立保存。OQ-017 关闭。 |
 | V0.9 | 2026-11-25 | 确认预期数据查询异常不能综合 PASS，身份状态保持 QueryUnresolved，不得当成身份 PASS、身份 FAIL 或不存在该设备。TestRecord.Result 的取值仍待确认。确认身份状态和身份说明独立保存，不覆盖 FailReason，不保存 Excel 预期值。OQ-016 及 HistoricalPassUnresolved 仍未决。 |
 | V0.8 | 2026-11-24 | 预校验只在选择或重新导入时执行。开始测试只核对文件存在、可访问和指纹，不重复表头、空值和 SN 重复检查。正式导入对同一次文件流计算 SHA-256，结束时不一致则回滚。已配置 Excel 时，现有测试页依次显示正在导入数据、导入完成和待测试。未配置 Excel 时沿用原有开始测试流程。 |

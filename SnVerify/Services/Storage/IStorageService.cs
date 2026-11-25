@@ -279,6 +279,28 @@ namespace SnVerify.Services.Storage
         /// </summary>
         Task<Yme009ExpectedDeviceLookup> FindYme009ExpectedDeviceAsync(int sessionId, string sn);
 
+        /// <summary>
+        /// 查询产品代码为 YME009 且 Status 为 Running 的任务。
+        /// 不把 Status 为 NULL 或 EndTime 为空当成进行中。
+        /// </summary>
+        Task<IReadOnlyList<Yme009RunningSession>> GetYme009RunningSessionsAsync();
+
+        /// <summary>
+        /// 将指定 YME009 任务标为进行中。只更新 Status 为 NULL 或已经是 Running 的行，不改写已结束任务。
+        /// </summary>
+        Task MarkYme009SessionRunningAsync(string sessionName);
+
+        /// <summary>
+        /// 操作员结束任务时，把进行中的 YME009 任务标为已结束并写入结束时间。
+        /// 不是 Running 的行保持原样。
+        /// </summary>
+        Task CompleteYme009SessionAsync(string sessionName);
+
+        /// <summary>
+        /// 进行中或已结束的 YME009 任务不允许替换预期数据。历史 NULL 状态不在这里推断。
+        /// </summary>
+        Task EnsureYme009ExpectedDataReplaceAllowedAsync(int sessionId);
+
         void Dispose();
     }
 }

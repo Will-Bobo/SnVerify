@@ -139,19 +139,21 @@ namespace SnVerify.Tests.ViewModels
                     Assert.That(vm.Yme009StatusDetail, Is.EqualTo(Yme009ExpectedOperatorText.ImportingDetail));
                     return new Yme009ExpectedStartResult(true, sessionName, 11, 3, null, "预期数据导入完成。共 3 条。");
                 });
-            session.Setup(s => s.StartSession(sessionName, "ORD"))
+            session.Setup(s => s.StartSessionAsync(sessionName, "ORD"))
                 .Callback(() =>
                 {
                     activated = true;
                     session.Setup(x => x.Snapshot).Returns(SessionSnapshot.Active(sessionName, "ORD", DateTime.Now));
-                });
+                })
+                .Returns(Task.CompletedTask);
 
             vm.StartBatchCommand.Execute(null);
             await WaitUntilAsync(() => vm.Yme009StatusTitle == Yme009ExpectedOperatorText.ReadyTitle, 4000);
 
             session.Verify(s => s.CreateAndStartSession(
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
-            session.Verify(s => s.StartSession(sessionName, "ORD"), Times.Once);
+            session.Verify(s => s.StartSessionAsync(sessionName, "ORD"), Times.Once);
+            session.Verify(s => s.StartSession(sessionName, "ORD"), Times.Never);
             Assert.That(vm.SessionSnapshot.IsActive, Is.True);
             Assert.That(vm.IsYme009ExpectedImporting, Is.False);
         }
@@ -173,6 +175,7 @@ namespace SnVerify.Tests.ViewModels
             await WaitUntilAsync(() => !vm.IsYme009ExpectedImporting && vm.Yme009StatusTitle == "等待扫码", 3000);
 
             session.Verify(s => s.StartSession(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+            session.Verify(s => s.StartSessionAsync(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
             session.Verify(s => s.CreateAndStartSession(
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
             Assert.That(vm.SessionSnapshot == null || !vm.SessionSnapshot.IsActive, Is.True);
@@ -197,8 +200,9 @@ namespace SnVerify.Tests.ViewModels
                     Interlocked.Increment(ref calls);
                     return gate.Task;
                 });
-            session.Setup(s => s.StartSession(sessionName, "ORD"))
-                .Callback(() => session.Setup(x => x.Snapshot).Returns(SessionSnapshot.Active(sessionName, "ORD", DateTime.Now)));
+            session.Setup(s => s.StartSessionAsync(sessionName, "ORD"))
+                .Callback(() => session.Setup(x => x.Snapshot).Returns(SessionSnapshot.Active(sessionName, "ORD", DateTime.Now)))
+                .Returns(Task.CompletedTask);
 
             vm.StartBatchCommand.Execute(null);
             await WaitUntilAsync(() => vm.IsYme009ExpectedImporting);
@@ -208,7 +212,8 @@ namespace SnVerify.Tests.ViewModels
             Assert.That(calls, Is.EqualTo(1));
             gate.SetResult(new Yme009ExpectedStartResult(true, sessionName, 12, 1, null, "预期数据导入完成。共 1 条。"));
             await WaitUntilAsync(() => vm.Yme009StatusTitle == Yme009ExpectedOperatorText.ReadyTitle, 4000);
-            session.Verify(s => s.StartSession(sessionName, "ORD"), Times.Once);
+            session.Verify(s => s.StartSessionAsync(sessionName, "ORD"), Times.Once);
+            session.Verify(s => s.StartSession(sessionName, "ORD"), Times.Never);
         }
 
         [Test]
@@ -221,8 +226,9 @@ namespace SnVerify.Tests.ViewModels
             await StageAsync(vm, dialog, expected, @"D:\expected.xlsx", "expected.xlsx", 1);
             expected.Setup(s => s.StartAsync(It.IsAny<Yme009ExpectedStartRequest>()))
                 .ReturnsAsync(new Yme009ExpectedStartResult(true, sessionName, 13, 1, null, "预期数据导入完成。共 1 条。"));
-            session.Setup(s => s.StartSession(sessionName, "ORD"))
-                .Callback(() => session.Setup(x => x.Snapshot).Returns(SessionSnapshot.Active(sessionName, "ORD", DateTime.Now)));
+            session.Setup(s => s.StartSessionAsync(sessionName, "ORD"))
+                .Callback(() => session.Setup(x => x.Snapshot).Returns(SessionSnapshot.Active(sessionName, "ORD", DateTime.Now)))
+                .Returns(Task.CompletedTask);
 
             vm.StartBatchCommand.Execute(null);
             await WaitUntilAsync(() => vm.IsSessionActive, 4000);

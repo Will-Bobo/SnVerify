@@ -112,6 +112,7 @@
     <Compile Include="Domain\Models\Product.cs" />
     <Compile Include="Domain\Product\VerificationMode.cs" />
     <Compile Include="Domain\Product\Yme009Product.cs" />
+    <Compile Include="Domain\Product\Yme009SessionLifecycle.cs" />
     <Compile Include="Domain\Product\Yme009TargetSoftwareVersionRule.cs" />
     <Compile Include="Domain\Product\Yme009TextComparison.cs" />
     <Compile Include="Domain\Product\Yme009Attributes.cs" />

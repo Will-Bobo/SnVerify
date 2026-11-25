@@ -28,6 +28,7 @@ namespace SnVerify.Domain.Product
         public const string ParseFailed = "EXPECTED_PARSE_FAILED";
         public const string UnresolvedNoDeviceRows = "EXPECTED_UNRESOLVED_NO_DEVICE_ROWS";
         public const string UnresolvedBlankRow = "EXPECTED_UNRESOLVED_BLANK_ROW";
+        public const string SessionStillRunning = "EXPECTED_SESSION_STILL_RUNNING";
     }
 
     public static class Yme009ExpectedFields
@@ -550,6 +551,10 @@ namespace SnVerify.Domain.Product
         public const string WriteFailed = "预期数据写入失败，测试未开始。";
         public const string UnresolvedFile = "只有表头或整行空白时如何处理尚未确认，该文件不能成为当前待用配置。";
         public const string CommittedButStartFailed = "预期数据已经写入，但测试启动未能完成。";
+        public const string ExpectedDataLocked = "当前检测任务的预期数据已锁定，不能替换。";
+        public const string SessionStillRunning = "已有未结束的检测任务，不能导入新的预期数据。";
+        public const string MultipleRunningSessions = "存在多个未结束的检测任务，已停止自动恢复。请先处理重复任务后再继续。";
+        public const string MultipleRunningSessionsTitle = "无法恢复检测任务";
 
         public static string ForPrecheck(string reason)
         {

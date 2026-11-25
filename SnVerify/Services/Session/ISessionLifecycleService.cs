@@ -3,6 +3,7 @@
 /// Phase 2.5 阶段 2：Session 生命周期服务，与 Start/End 按钮逻辑挂接。Batch 退场后由本服务替代 IBatchManager 的 Session 语义。
 /// </remarks>
 
+using System.Threading.Tasks;
 using SnVerify.Domain.Models;
 using SnVerify.Domain.State;
 
@@ -37,6 +38,16 @@ namespace SnVerify.Services.Session
         /// 开始已存在的 Session，并保留订单名。不创建新的 TestSession。
         /// </summary>
         void StartSession(string sessionId, string orderId);
+
+        /// <summary>
+        /// 异步开始已存在的 Session。供 UI 线程调用，不在调用方同步等待数据库。
+        /// </summary>
+        Task StartSessionAsync(string sessionId);
+
+        /// <summary>
+        /// 异步开始已存在的 Session，并保留订单名。不创建新的 TestSession。
+        /// </summary>
+        Task StartSessionAsync(string sessionId, string orderId);
 
         /// <summary>
         /// 结束当前活动 Session。

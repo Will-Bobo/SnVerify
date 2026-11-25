@@ -42,6 +42,25 @@ namespace SnVerify.Services.ExpectedData
             if (string.IsNullOrWhiteSpace(request.ProjectId) || string.IsNullOrWhiteSpace(request.OrderId))
                 throw new ArgumentException("项目名和订单名不能为空。", nameof(request));
 
+            var runningPending = _storage.GetYme009RunningSessionsAsync();
+            if (runningPending != null)
+            {
+                var running = await runningPending.ConfigureAwait(false);
+                if (running != null && running.Count > 0)
+                {
+                    try
+                    {
+                        await _storage.EnsureYme009ExpectedDataReplaceAllowedAsync(running[0].SessionId).ConfigureAwait(false);
+                    }
+                    catch (InvalidOperationException)
+                    {
+                        return Fail(Yme009ExpectedReadReasons.SessionStillRunning, Yme009ExpectedOperatorText.SessionStillRunning);
+                    }
+
+                    return Fail(Yme009ExpectedReadReasons.SessionStillRunning, Yme009ExpectedOperatorText.SessionStillRunning);
+                }
+            }
+
             var path = request.File.FilePath;
             if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
                 return Fail(Yme009ExpectedReadReasons.FileUnreadable, Yme009ExpectedOperatorText.FileUnavailable);

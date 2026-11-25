@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Concurrent;
 using System.Data.SQLite;
 using System.IO;
 using System.Threading;
@@ -276,6 +277,390 @@ namespace SnVerify.Tests.ViewModels
                 It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Once);
         }
 
+        [Test]
+        public async Task Should_EnableStart_When_NewTaskHasNoRunningSession()
+        {
+            using (var host = await Host.CreateAsync())
+            {
+                Assert.That(host.Vm.StartBatchCommand.CanExecute(null), Is.True);
+                Assert.That(host.Vm.IsStartBatchLocked, Is.False);
+
+                await host.StageFileAsync("a.xlsx", "SN-A");
+                Assert.That(host.Vm.StartBatchCommand.CanExecute(null), Is.True);
+                host.Vm.StartBatchCommand.Execute(null);
+                await WaitUntilAsync(() => host.Vm.IsSessionReadyForTest, 5000);
+
+                Assert.That(host.Vm.StartBatchCommand.CanExecute(null), Is.False);
+                Assert.That(host.Vm.IsStartBatchLocked, Is.True);
+                Assert.That(Count(host, "SELECT COUNT(*) FROM TestSession"), Is.EqualTo(1));
+                Assert.That(Scalar(host, "SELECT FileName FROM Yme009ExpectedDataSet"), Is.EqualTo("a.xlsx"));
+            }
+        }
+
+        [Test]
+        public async Task Should_RestoreOriginalSessionAndDataSet_When_ProcessRestarts()
+        {
+            using (var host = await Host.CreateAsync())
+            {
+                await host.StageFileAsync("expected.xlsx", "SN-1");
+                host.Vm.StartBatchCommand.Execute(null);
+                await WaitUntilAsync(() => host.Vm.IsSessionReadyForTest, 5000);
+
+                var running = await host.Storage.GetYme009RunningSessionsAsync();
+                Assert.That(running, Has.Count.EqualTo(1));
+                Assert.That(Scalar(host, "SELECT Status FROM TestSession"), Is.EqualTo(Yme009SessionStatus.Running));
+                var sessionName = running[0].SessionName;
+                var sessionId = running[0].SessionId;
+                host.Parameter.Setup(item => item.GetParameterAsync(sessionId))
+                    .ReturnsAsync(new VerificationParameter
+                    {
+                        SessionId = sessionId,
+                        ExpectedAndroidVersion = "SW-1"
+                    });
+
+                var restarted = host.OpenRestarted();
+                await WaitUntilAsync(() =>
+                    restarted.IsSessionActive
+                    && !restarted.IsSessionReadyForTest
+                    && restarted.StartBatchCommand.CanExecute(null)
+                    && !restarted.IsStartBatchLocked, 5000);
+
+                Assert.That(restarted.SelectYme009ExpectedFileCommand.CanExecute(null), Is.False);
+                Assert.That(restarted.ClearYme009ExpectedFileCommand.CanExecute(null), Is.False);
+                restarted.VerificationSnapshot = VerificationSnapshot.Processing("SN-1");
+                Assert.That(restarted.StartBatchCommand.CanExecute(null), Is.False);
+                Assert.That(restarted.IsStartBatchLocked, Is.True);
+                restarted.VerificationSnapshot = VerificationSnapshot.Idle();
+                Assert.That(restarted.StartBatchCommand.CanExecute(null), Is.True);
+
+                restarted.StartBatchCommand.Execute(null);
+                await WaitUntilAsync(() => restarted.IsSessionReadyForTest, 5000);
+
+                Assert.That(restarted.StartBatchCommand.CanExecute(null), Is.False);
+                Assert.That(restarted.IsStartBatchLocked, Is.True);
+                Assert.That(restarted.SelectYme009ExpectedFileCommand.CanExecute(null), Is.False);
+                Assert.That(restarted.ClearYme009ExpectedFileCommand.CanExecute(null), Is.False);
+                Assert.That(Count(host, "SELECT COUNT(*) FROM TestSession"), Is.EqualTo(1));
+                Assert.That(Count(host, "SELECT COUNT(*) FROM Yme009ExpectedDataSet"), Is.EqualTo(1));
+                Assert.That(Scalar(host, "SELECT Status FROM TestSession"), Is.EqualTo(Yme009SessionStatus.Running));
+                Assert.That(host.Lifecycle.GetCurrentSessionId(), Is.EqualTo(sessionName));
+                Assert.That(restarted.SessionSnapshot.SessionId, Is.EqualTo(sessionName));
+                Assert.That(restarted.ProjectIdInput, Is.EqualTo("P"));
+                Assert.That(restarted.OrderIdInput, Is.EqualTo("ORD"));
+                Assert.That(restarted.ExpectedAndroidVersion, Is.EqualTo("SW-1"));
+                Assert.That(restarted.Yme009ExpectedSummary, Does.Contain("expected.xlsx"));
+                Assert.That(restarted.SelectYme009ExpectedFileCommand.CanExecute(null), Is.False);
+                Assert.That(restarted.ClearYme009ExpectedFileCommand.CanExecute(null), Is.False);
+
+                var restoredId = await host.Storage.GetInternalSessionIdBySessionNameAsync(sessionName);
+                Assert.That(restoredId, Is.EqualTo(sessionId));
+                Assert.That(await host.Storage.SessionHasYme009ExpectedDataSetAsync(restoredId.Value), Is.True);
+                var device = await host.Storage.FindYme009ExpectedDeviceAsync(restoredId.Value, "SN-1");
+                Assert.That(device.Found, Is.True);
+                Assert.That(device.Device.WifiMac, Is.EqualTo("48:C8:62:16:BF:1F"));
+
+                restarted.StartBatchCommand.Execute(null);
+                await Task.Delay(200);
+                Assert.That(Count(host, "SELECT COUNT(*) FROM TestSession"), Is.EqualTo(1));
+            }
+        }
+
+        [Test]
+        public async Task Should_NotRestoreCompletedOrHistoricalNullSession()
+        {
+            using (var host = await Host.CreateAsync())
+            {
+                await host.StageFileAsync("expected.xlsx", "SN-1");
+                host.Vm.StartBatchCommand.Execute(null);
+                await WaitUntilAsync(() => host.Vm.IsSessionReadyForTest, 5000);
+                var sessionId = Convert.ToInt32(Scalar(host, "SELECT Id FROM TestSession"));
+
+                host.Vm.EndBatchCommand.Execute(null);
+                await WaitUntilAsync(() => !host.Vm.IsSessionActive);
+                Assert.That(Scalar(host, "SELECT Status FROM TestSession"), Is.EqualTo(Yme009SessionStatus.Completed));
+                Assert.That(Scalar(host, "SELECT EndTime FROM TestSession"), Is.Not.Null.And.Not.EqualTo(DBNull.Value));
+
+                var afterEnd = host.OpenRestarted();
+                await AssertStaysInactiveAsync(afterEnd);
+                Assert.That(Count(host, "SELECT COUNT(*) FROM TestSession"), Is.EqualTo(1));
+                Assert.That(Scalar(host, "SELECT Status FROM TestSession"), Is.EqualTo(Yme009SessionStatus.Completed));
+
+                Execute(host, "UPDATE TestSession SET Status = NULL, EndTime = NULL WHERE Id = " + sessionId);
+                var historical = host.OpenRestarted();
+                await AssertStaysInactiveAsync(historical);
+                Assert.That(Count(host, "SELECT COUNT(*) FROM TestSession"), Is.EqualTo(1));
+                Assert.That(Count(host, "SELECT COUNT(*) FROM Yme009ExpectedDataSet"), Is.EqualTo(1));
+                Assert.That(Scalar(host, "SELECT Status FROM TestSession"), Is.Null.Or.EqualTo(DBNull.Value));
+                Assert.That(Scalar(host, "SELECT EndTime FROM TestSession"), Is.Null.Or.EqualTo(DBNull.Value));
+            }
+        }
+
+        [Test]
+        public async Task Should_StopAutoRestore_When_MultipleRunningSessionsExist()
+        {
+            using (var host = await Host.CreateAsync())
+            {
+                await host.StageFileAsync("expected.xlsx", "SN-1");
+                host.Vm.StartBatchCommand.Execute(null);
+                await WaitUntilAsync(() => host.Vm.IsSessionReadyForTest, 5000);
+                Execute(host, @"
+INSERT INTO TestSession (SessionName, OrderId, StartTime, EndTime, Status)
+SELECT 'ORD_EXTRA', OrderId, StartTime, NULL, 'Running' FROM TestSession LIMIT 1");
+                var warnings = host.WarningCount;
+
+                var restarted = host.OpenRestarted();
+                await WaitUntilAsync(() => host.WarningCount > warnings);
+                await AssertStaysInactiveAsync(restarted);
+
+                Assert.That(host.LastWarning, Does.Contain("多个未结束的检测任务"));
+                Assert.That(Count(host, "SELECT COUNT(*) FROM TestSession"), Is.EqualTo(2));
+                Assert.That(Count(host, "SELECT COUNT(*) FROM Yme009ExpectedDataSet"), Is.EqualTo(1));
+                Assert.That(await host.Storage.GetYme009RunningSessionsAsync(), Has.Count.EqualTo(2));
+            }
+        }
+
+        [Test]
+        public async Task Should_ImportLastSuccessfulPrecheck_When_FileIsReplacedBeforeStart()
+        {
+            using (var host = await Host.CreateAsync())
+            {
+                await host.StageFileAsync("a.xlsx", "SN-A");
+                await host.StageFileAsync("b.xlsx", "SN-B");
+                host.Vm.StartBatchCommand.Execute(null);
+                await WaitUntilAsync(() => host.Vm.IsSessionReadyForTest, 5000);
+
+                Assert.That(Scalar(host, "SELECT FileName FROM Yme009ExpectedDataSet"), Is.EqualTo("b.xlsx"));
+                var sessionId = Convert.ToInt32(Scalar(host, "SELECT Id FROM TestSession"));
+                Assert.That((await host.Storage.FindYme009ExpectedDeviceAsync(sessionId, "SN-B")).Found, Is.True);
+                Assert.That((await host.Storage.FindYme009ExpectedDeviceAsync(sessionId, "SN-A")).Found, Is.False);
+                Assert.That(host.Vm.SelectYme009ExpectedFileCommand.CanExecute(null), Is.False);
+                Assert.That(host.Vm.ClearYme009ExpectedFileCommand.CanExecute(null), Is.False);
+                Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                    await host.Storage.EnsureYme009ExpectedDataReplaceAllowedAsync(sessionId));
+            }
+        }
+
+        [Test]
+        public async Task Should_KeepLastSuccessfulFile_When_NextPrecheckFails()
+        {
+            using (var host = await Host.CreateAsync())
+            {
+                await host.StageFileAsync("a.xlsx", "SN-A");
+                var summary = host.Vm.Yme009ExpectedSummary;
+                await host.StageInvalidAsync("bad.xlsx");
+
+                Assert.That(host.Vm.Yme009ExpectedSummary, Is.EqualTo(summary));
+                host.Vm.StartBatchCommand.Execute(null);
+                await WaitUntilAsync(() => host.Vm.IsSessionReadyForTest, 5000);
+
+                Assert.That(Scalar(host, "SELECT FileName FROM Yme009ExpectedDataSet"), Is.EqualTo("a.xlsx"));
+                var sessionId = Convert.ToInt32(Scalar(host, "SELECT Id FROM TestSession"));
+                Assert.That((await host.Storage.FindYme009ExpectedDeviceAsync(sessionId, "SN-A")).Found, Is.True);
+            }
+        }
+
+        [Test]
+        public async Task Should_NotImportFailedFile_When_NoPrecheckSucceeded()
+        {
+            using (var host = await Host.CreateAsync())
+            {
+                await host.StageInvalidAsync("bad.xlsx");
+
+                Assert.That(host.Vm.Yme009ExpectedSummary, Is.EqualTo("未选择"));
+                host.Vm.StartBatchCommand.Execute(null);
+                await WaitUntilAsync(() => host.Vm.IsSessionReadyForTest, 5000);
+
+                Assert.That(Count(host, "SELECT COUNT(*) FROM TestSession"), Is.EqualTo(1));
+                Assert.That(Count(host, "SELECT COUNT(*) FROM Yme009ExpectedDataSet"), Is.EqualTo(0));
+                Assert.That(Scalar(host, "SELECT Status FROM TestSession"), Is.EqualTo(Yme009SessionStatus.Running));
+                Assert.That(host.Vm.SelectYme009ExpectedFileCommand.CanExecute(null), Is.False);
+                Assert.That(host.Vm.ClearYme009ExpectedFileCommand.CanExecute(null), Is.False);
+            }
+        }
+
+        [Test, Timeout(8000)]
+        public async Task Should_FinishRestoreOnPumpedContext_When_OneRunningSessionExists()
+        {
+            using (var host = await Host.CreateAsync())
+            {
+                await host.StageFileAsync("expected.xlsx", "SN-1");
+                host.Vm.StartBatchCommand.Execute(null);
+                await WaitUntilAsync(() => host.Vm.IsSessionReadyForTest, 5000);
+                var sessionName = host.Lifecycle.GetCurrentSessionId();
+                var sessionId = Convert.ToInt32(Scalar(host, "SELECT Id FROM TestSession"));
+
+                var context = new QueueSynchronizationContext();
+                var previous = SynchronizationContext.Current;
+                SynchronizationContext.SetSynchronizationContext(context);
+                MainViewModel restarted = null;
+                try
+                {
+                    restarted = host.OpenRestarted(false);
+                    var restore = restarted.RestoreYme009RunningSessionAsync();
+                    PumpUntil(context, restore);
+
+                    Assert.That(restore.Status, Is.EqualTo(TaskStatus.RanToCompletion));
+                    Assert.That(restarted.IsSessionActive, Is.True);
+                    Assert.That(restarted.IsSessionReadyForTest, Is.False);
+                    Assert.That(restarted.StartBatchCommand.CanExecute(null), Is.True);
+                    Assert.That(restarted.IsStartBatchLocked, Is.False);
+                    Assert.That(restarted.SessionSnapshot.SessionId, Is.EqualTo(sessionName));
+                    Assert.That(Count(host, "SELECT COUNT(*) FROM TestSession"), Is.EqualTo(1));
+                }
+                finally
+                {
+                    SynchronizationContext.SetSynchronizationContext(previous);
+                }
+
+                var restoredId = await host.Storage.GetInternalSessionIdBySessionNameAsync(sessionName);
+                Assert.That(restoredId, Is.EqualTo(sessionId));
+                Assert.That(await host.Storage.SessionHasYme009ExpectedDataSetAsync(restoredId.Value), Is.True);
+                Assert.That((await host.Storage.FindYme009ExpectedDeviceAsync(restoredId.Value, "SN-1")).Found, Is.True);
+            }
+        }
+
+        [Test, Timeout(8000)]
+        public async Task Should_ReportMultipleRunningSessionsWithoutBlockingDispatcher()
+        {
+            using (var host = await Host.CreateAsync())
+            {
+                await host.StageFileAsync("expected.xlsx", "SN-1");
+                host.Vm.StartBatchCommand.Execute(null);
+                await WaitUntilAsync(() => host.Vm.IsSessionReadyForTest, 5000);
+                Execute(host, @"
+INSERT INTO TestSession (SessionName, OrderId, StartTime, EndTime, Status)
+SELECT 'ORD_EXTRA', OrderId, StartTime, NULL, 'Running' FROM TestSession LIMIT 1");
+                var warnings = host.WarningCount;
+                var context = new QueueSynchronizationContext();
+                var previous = SynchronizationContext.Current;
+                SynchronizationContext.SetSynchronizationContext(context);
+                try
+                {
+                    var restarted = host.OpenRestarted(false);
+                    var restore = restarted.RestoreYme009RunningSessionAsync();
+                    PumpUntil(context, restore);
+
+                    Assert.That(restore.Status, Is.EqualTo(TaskStatus.RanToCompletion));
+                    Assert.That(restarted.IsSessionActive, Is.False);
+                    Assert.That(host.WarningCount, Is.GreaterThan(warnings));
+                    Assert.That(host.LastWarning, Does.Contain("多个未结束的检测任务"));
+                    Assert.That(Count(host, "SELECT COUNT(*) FROM TestSession"), Is.EqualTo(2));
+                }
+                finally
+                {
+                    SynchronizationContext.SetSynchronizationContext(previous);
+                }
+            }
+        }
+
+        [Test, Timeout(8000)]
+        public async Task Should_LeaveNewTaskAvailable_When_PumpedRestoreFindsNoRunningSession()
+        {
+            using (var host = await Host.CreateAsync())
+            {
+                var context = new QueueSynchronizationContext();
+                var previous = SynchronizationContext.Current;
+                SynchronizationContext.SetSynchronizationContext(context);
+                MainViewModel restarted = null;
+                try
+                {
+                    restarted = host.OpenRestarted(false);
+                    var restore = restarted.RestoreYme009RunningSessionAsync();
+                    PumpUntil(context, restore);
+                    Assert.That(restore.Status, Is.EqualTo(TaskStatus.RanToCompletion));
+                    Assert.That(restarted.IsSessionActive, Is.False);
+                }
+                finally
+                {
+                    SynchronizationContext.SetSynchronizationContext(previous);
+                }
+
+                restarted.ProjectIdInput = "P";
+                restarted.OrderIdInput = "ORD";
+                restarted.ExpectedAndroidVersion = "SW-1";
+                restarted.StartBatchCommand.Execute(null);
+                await WaitUntilAsync(() => restarted.IsSessionReadyForTest, 5000);
+                Assert.That(Count(host, "SELECT COUNT(*) FROM TestSession"), Is.EqualTo(1));
+                Assert.That(Scalar(host, "SELECT Status FROM TestSession"), Is.EqualTo(Yme009SessionStatus.Running));
+            }
+        }
+
+        [Test, Timeout(8000)]
+        public void Should_ShowRestoreErrorWithoutBlockingDispatcher_When_ActivationThrows()
+        {
+            var session = new Mock<ISessionLifecycleService>();
+            var dialog = new Mock<IUserDialogService>();
+            var storage = new Mock<IStorageService>();
+            var parameter = new Mock<IParameterService>();
+            var logging = new Mock<ILoggingService>();
+            var flowFactory = new Mock<IVerificationFlowServiceFactory>();
+            var versionFlow = new Mock<IVersionVerificationFlowService>();
+            logging.Setup(item => item.Snapshot).Returns(LoggingSnapshot.Idle());
+            versionFlow.Setup(item => item.Snapshot).Returns(VerificationSnapshot.Idle());
+            flowFactory.Setup(item => item.Create(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+                .Returns(Mock.Of<IVerificationFlowService>(item => item.Snapshot == VerificationSnapshot.Idle()));
+            session.Setup(item => item.Snapshot).Returns(SessionSnapshot.Idle());
+            storage.Setup(item => item.GetYme009RunningSessionsAsync())
+                .ReturnsAsync(new[]
+                {
+                    new Yme009RunningSession(8, "S-FAIL", "ORD", "P", Yme009Product.Code, "expected.xlsx", 1)
+                });
+            parameter.Setup(item => item.GetParameterAsync(8)).ReturnsAsync((VerificationParameter)null);
+            session.Setup(item => item.StartSessionAsync("S-FAIL", "ORD"))
+                .ThrowsAsync(new InvalidOperationException("数据库不可用"));
+            string warning = null;
+            dialog.Setup(item => item.ShowWarning(It.IsAny<string>(), It.IsAny<string>()))
+                .Callback<string, string>((message, title) => warning = message);
+
+            var vm = new MainViewModel(
+                session.Object,
+                flowFactory.Object,
+                logging.Object,
+                storage.Object,
+                Mock.Of<IAdbAccessService>(),
+                Mock.Of<IExportAggregationService>(),
+                Mock.Of<IOrderNameValidator>(),
+                dialog.Object,
+                versionFlow.Object,
+                Path.GetTempPath(),
+                new ProductRegistryAdapter(),
+                parameter.Object,
+                Mock.Of<IDeviceAccessService>(),
+                Mock.Of<IYme009RoundCoordinator>());
+            vm.SuppressAutomaticYme009Restore = true;
+            vm.SelectedProductCode = Yme009Product.Code;
+
+            var context = new QueueSynchronizationContext();
+            var previous = SynchronizationContext.Current;
+            SynchronizationContext.SetSynchronizationContext(context);
+            try
+            {
+                var restore = vm.RestoreYme009RunningSessionAsync();
+                PumpUntil(context, restore);
+                Assert.That(restore.Status, Is.EqualTo(TaskStatus.RanToCompletion));
+            }
+            finally
+            {
+                SynchronizationContext.SetSynchronizationContext(previous);
+            }
+
+            Assert.That(vm.IsSessionActive, Is.False);
+            Assert.That(warning, Is.EqualTo("无法恢复未结束的检测任务。"));
+            session.Verify(item => item.StartSession(It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        private static void PumpUntil(QueueSynchronizationContext context, Task task, int timeoutMs = 5000)
+        {
+            var start = DateTime.UtcNow;
+            while (!task.IsCompleted)
+            {
+                if ((DateTime.UtcNow - start).TotalMilliseconds > timeoutMs)
+                    Assert.Fail("恢复流程没有在可泵送的同步上下文中完成，调用链仍在阻塞 Dispatcher。");
+                if (!context.Drain())
+                    Thread.Sleep(10);
+            }
+        }
+
         private static MainViewModel CreateNoExcelViewModel(
             ISessionLifecycleService session,
             IYme009RoundCoordinator round,
@@ -345,6 +730,30 @@ namespace SnVerify.Tests.ViewModels
             return new[] { sn, "48:C8:62:16:BF:1F", "111111111111111", "222222222222222" };
         }
 
+        private static async Task AssertStaysInactiveAsync(MainViewModel viewModel)
+        {
+            var start = DateTime.UtcNow;
+            while ((DateTime.UtcNow - start).TotalMilliseconds < 1000)
+            {
+                if (viewModel.IsSessionActive)
+                    Assert.Fail("不应自动恢复该 Session。");
+                await Task.Delay(20);
+            }
+        }
+
+        private static void Execute(Host host, string sql)
+        {
+            using (var connection = new SQLiteConnection("Data Source=" + host.DatabasePath + ";Version=3;"))
+            {
+                connection.Open();
+                using (var command = connection.CreateCommand())
+                {
+                    command.CommandText = sql;
+                    command.ExecuteNonQuery();
+                }
+            }
+        }
+
         private static async Task WaitUntilAsync(Func<bool> predicate, int timeoutMs = 3000)
         {
             var start = DateTime.UtcNow;
@@ -367,6 +776,7 @@ namespace SnVerify.Tests.ViewModels
             public Mock<IParameterService> Parameter { get; private set; }
             public string DatabasePath { get; private set; }
             public bool Warned { get; set; }
+            public string LastWarning { get; private set; }
             public int WarningCount { get; private set; }
             private string _directory;
             private string _stagedPath;
@@ -395,8 +805,9 @@ namespace SnVerify.Tests.ViewModels
                     .Returns(Task.CompletedTask);
                 host.Dialog.Setup(item => item.Confirm(It.IsAny<string>(), It.IsAny<string>())).Returns(true);
                 host.Dialog.Setup(item => item.ShowWarning(It.IsAny<string>(), It.IsAny<string>()))
-                    .Callback(() =>
+                    .Callback<string, string>((message, title) =>
                     {
+                        host.LastWarning = message;
                         host.Warned = true;
                         host.WarningCount++;
                     });
@@ -426,14 +837,63 @@ namespace SnVerify.Tests.ViewModels
                 return host;
             }
 
-            public async Task<string> StageAsync()
+            public Task<string> StageAsync()
             {
-                _stagedPath = Path.Combine(_directory, "expected.xlsx");
-                Yme009ExpectedWorkbookFiles.Write(_stagedPath, Yme009ExpectedWorkbookFiles.RequiredHeaders, Row("SN-1"));
+                return StageFileAsync("expected.xlsx", "SN-1");
+            }
+
+            public async Task<string> StageFileAsync(string fileName, string sn)
+            {
+                _stagedPath = Path.Combine(_directory, fileName);
+                Yme009ExpectedWorkbookFiles.Write(_stagedPath, Yme009ExpectedWorkbookFiles.RequiredHeaders, Row(sn));
                 Dialog.Setup(item => item.ChooseOpenFile(It.IsAny<string>(), It.IsAny<string>())).Returns(_stagedPath);
                 Vm.SelectYme009ExpectedFileCommand.Execute(null);
-                await WaitUntilAsync(() => Vm.Yme009ExpectedSummary.Contains("expected.xlsx"));
+                await WaitUntilAsync(() => Vm.Yme009ExpectedSummary.Contains(fileName));
                 return _stagedPath;
+            }
+
+            public async Task StageInvalidAsync(string fileName)
+            {
+                var path = Path.Combine(_directory, fileName);
+                File.WriteAllText(path, "not an xlsx");
+                var warnings = WarningCount;
+                Dialog.Setup(item => item.ChooseOpenFile(It.IsAny<string>(), It.IsAny<string>())).Returns(path);
+                Vm.SelectYme009ExpectedFileCommand.Execute(null);
+                await WaitUntilAsync(() => WarningCount > warnings);
+            }
+
+            public MainViewModel OpenRestarted(bool startRestore = true)
+            {
+                Lifecycle = new SessionLifecycleService(Storage);
+                var logging = new Mock<ILoggingService>();
+                var versionFlow = new Mock<IVersionVerificationFlowService>();
+                logging.Setup(item => item.Snapshot).Returns(LoggingSnapshot.Idle());
+                versionFlow.Setup(item => item.Snapshot).Returns(VerificationSnapshot.Idle());
+                var validator = new Mock<IOrderNameValidator>();
+                string message = null;
+                validator.Setup(item => item.Validate(It.IsAny<string>(), out message)).Returns(true);
+                var vm = new MainViewModel(
+                    Lifecycle,
+                    Flow.Object,
+                    logging.Object,
+                    Storage,
+                    Mock.Of<IAdbAccessService>(),
+                    Mock.Of<IExportAggregationService>(),
+                    validator.Object,
+                    Dialog.Object,
+                    versionFlow.Object,
+                    Path.GetTempPath(),
+                    new ProductRegistryAdapter(),
+                    Parameter.Object,
+                    Mock.Of<IDeviceAccessService>(),
+                    Round.Object,
+                    new Yme009ExpectedDataService(Storage));
+                vm.SuppressAutomaticYme009Restore = true;
+                vm.SelectedProductCode = Yme009Product.Code;
+                Vm = vm;
+                if (startRestore)
+                    vm.RestoreYme009RunningSessionAsync();
+                return vm;
             }
 
             public void Dispose()
@@ -444,6 +904,35 @@ namespace SnVerify.Tests.ViewModels
                 if (Directory.Exists(_directory))
                     Directory.Delete(_directory, true);
             }
+        }
+    }
+
+    internal sealed class QueueSynchronizationContext : SynchronizationContext
+    {
+        private readonly ConcurrentQueue<Tuple<SendOrPostCallback, object>> _queue =
+            new ConcurrentQueue<Tuple<SendOrPostCallback, object>>();
+
+        public override void Post(SendOrPostCallback callback, object state)
+        {
+            _queue.Enqueue(Tuple.Create(callback, state));
+        }
+
+        public override void Send(SendOrPostCallback callback, object state)
+        {
+            callback(state);
+        }
+
+        public bool Drain()
+        {
+            var ran = false;
+            Tuple<SendOrPostCallback, object> item;
+            while (_queue.TryDequeue(out item))
+            {
+                ran = true;
+                item.Item1(item.Item2);
+            }
+
+            return ran;
         }
     }
 }

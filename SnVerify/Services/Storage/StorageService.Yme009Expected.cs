@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Data.SQLite;
 using System.IO;
 using System.Threading.Tasks;
@@ -207,12 +208,13 @@ LIMIT 1";
         {
             const string sql = @"
 INSERT INTO TestSession (SessionName, OrderId, StartTime, EndTime, Status)
-VALUES (@SessionName, @OrderId, @StartTime, NULL, NULL)";
+VALUES (@SessionName, @OrderId, @StartTime, NULL, @Status)";
             using (var command = new SQLiteCommand(sql, _connection, transaction))
             {
                 command.Parameters.AddWithValue("@SessionName", request.SessionName);
                 command.Parameters.AddWithValue("@OrderId", request.OrderId);
                 command.Parameters.AddWithValue("@StartTime", request.StartTime);
+                command.Parameters.AddWithValue("@Status", Yme009SessionStatus.Running);
                 command.ExecuteNonQuery();
             }
 
@@ -290,6 +292,125 @@ WHERE Id = @Id";
 
             transaction.Dispose();
             transaction = null;
+        }
+
+        public async Task<IReadOnlyList<Yme009RunningSession>> GetYme009RunningSessionsAsync()
+        {
+            EnsureConnectionInitialized();
+            return await Task.Run(() =>
+            {
+                lock (_lockObject)
+                {
+                    if (_connection == null || _connection.State != System.Data.ConnectionState.Open)
+                        throw new InvalidOperationException("数据库连接未初始化或已关闭");
+
+                    const string sql = @"
+SELECT s.Id, s.SessionName, o.OrderName, p.ProductName, p.ProductCode, d.FileName, d.RecordCount
+FROM TestSession s
+INNER JOIN ""Order"" o ON o.Id = s.OrderId
+INNER JOIN Product p ON p.Id = o.ProductId
+LEFT JOIN Yme009ExpectedDataSet d ON d.SessionId = s.Id
+WHERE s.Status = @Status
+  AND p.ProductCode = @ProductCode
+ORDER BY s.Id ASC";
+                    var rows = new List<Yme009RunningSession>();
+                    using (var command = new SQLiteCommand(sql, _connection))
+                    {
+                        command.Parameters.AddWithValue("@Status", Yme009SessionStatus.Running);
+                        command.Parameters.AddWithValue("@ProductCode", Yme009Product.Code);
+                        using (var reader = command.ExecuteReader())
+                        {
+                            while (reader.Read())
+                            {
+                                rows.Add(new Yme009RunningSession(
+                                    reader.GetInt32(0),
+                                    reader.IsDBNull(1) ? string.Empty : reader.GetString(1),
+                                    reader.IsDBNull(2) ? string.Empty : reader.GetString(2),
+                                    reader.IsDBNull(3) ? string.Empty : reader.GetString(3),
+                                    reader.IsDBNull(4) ? string.Empty : reader.GetString(4),
+                                    reader.IsDBNull(5) ? string.Empty : reader.GetString(5),
+                                    reader.IsDBNull(6) ? 0 : reader.GetInt32(6)));
+                            }
+                        }
+                    }
+
+                    return (IReadOnlyList<Yme009RunningSession>)rows;
+                }
+            });
+        }
+
+        public async Task MarkYme009SessionRunningAsync(string sessionName)
+        {
+            if (string.IsNullOrWhiteSpace(sessionName))
+                return;
+
+            EnsureConnectionInitialized();
+            await Task.Run(() =>
+            {
+                lock (_lockObject)
+                {
+                    const string sql = @"
+UPDATE TestSession
+SET Status = @Running
+WHERE SessionName = @SessionName
+  AND (Status IS NULL OR Status = @Running)";
+                    using (var command = new SQLiteCommand(sql, _connection))
+                    {
+                        command.Parameters.AddWithValue("@Running", Yme009SessionStatus.Running);
+                        command.Parameters.AddWithValue("@SessionName", sessionName);
+                        command.ExecuteNonQuery();
+                    }
+                }
+            });
+        }
+
+        public async Task CompleteYme009SessionAsync(string sessionName)
+        {
+            if (string.IsNullOrWhiteSpace(sessionName))
+                return;
+
+            EnsureConnectionInitialized();
+            await Task.Run(() =>
+            {
+                lock (_lockObject)
+                {
+                    const string sql = @"
+UPDATE TestSession
+SET Status = @Completed, EndTime = @EndTime
+WHERE SessionName = @SessionName
+  AND Status = @Running";
+                    using (var command = new SQLiteCommand(sql, _connection))
+                    {
+                        command.Parameters.AddWithValue("@Completed", Yme009SessionStatus.Completed);
+                        command.Parameters.AddWithValue("@Running", Yme009SessionStatus.Running);
+                        command.Parameters.AddWithValue("@EndTime", DateTime.Now);
+                        command.Parameters.AddWithValue("@SessionName", sessionName);
+                        command.ExecuteNonQuery();
+                    }
+                }
+            });
+        }
+
+        public async Task EnsureYme009ExpectedDataReplaceAllowedAsync(int sessionId)
+        {
+            if (sessionId <= 0)
+                return;
+
+            EnsureConnectionInitialized();
+            await Task.Run(() =>
+            {
+                lock (_lockObject)
+                {
+                    const string sql = "SELECT Status FROM TestSession WHERE Id = @Id";
+                    using (var command = new SQLiteCommand(sql, _connection))
+                    {
+                        command.Parameters.AddWithValue("@Id", sessionId);
+                        var status = command.ExecuteScalar() as string;
+                        if (status == Yme009SessionStatus.Running || status == Yme009SessionStatus.Completed)
+                            throw new InvalidOperationException(Yme009ExpectedOperatorText.ExpectedDataLocked);
+                    }
+                }
+            });
         }
 
         private static bool HashesEqual(string actual, string expected)

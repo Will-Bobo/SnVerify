@@ -178,6 +178,7 @@ namespace SnVerify.Infrastructure
                 yme009Round,
                 new Yme009ExpectedDataService(storageService));
 
+            await viewModel.RestoreYme009RunningSessionAsync();
             return viewModel;
         }
 

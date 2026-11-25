@@ -69,7 +69,8 @@ namespace SnVerify.Tests.Services
             var sessions = await _storage.GetSessionsByOrderIdAsync(_orderId);
             Assert.That(sessions, Has.Count.EqualTo(1));
             Assert.That(sessions[0].Id, Is.EqualTo(result.SessionId));
-            Assert.That(sessions[0].Status, Is.Null);
+            Assert.That(sessions[0].Status, Is.EqualTo(Yme009SessionStatus.Running));
+            Assert.That(sessions[0].EndTime, Is.Null);
             Assert.That(Count("SELECT COUNT(*) FROM TestRecord"), Is.EqualTo(0));
             Assert.That(Count("SELECT COUNT(*) FROM Yme009ExpectedDataSet"), Is.EqualTo(1));
             Assert.That(Scalar("SELECT FileName FROM Yme009ExpectedDataSet"), Is.EqualTo(Path.GetFileName(path)));

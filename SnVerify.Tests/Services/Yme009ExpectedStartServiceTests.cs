@@ -132,7 +132,8 @@ namespace SnVerify.Tests.Services
             Assert.That(lifecycle.Snapshot.IsActive, Is.False);
             var sessions = await _storage.GetSessionsByOrderIdAsync(OrderId());
             Assert.That(sessions, Has.Count.EqualTo(1));
-            Assert.That(sessions[0].Status, Is.Null);
+            Assert.That(sessions[0].Status, Is.EqualTo(Yme009SessionStatus.Running));
+            Assert.That(sessions[0].EndTime, Is.Null);
             Assert.That(sessions[0].SessionName, Is.EqualTo(started.SessionName));
             Assert.That(Count("SELECT COUNT(*) FROM Yme009ExpectedDevice"), Is.EqualTo(2));
 
@@ -141,6 +142,77 @@ namespace SnVerify.Tests.Services
             Assert.That(lifecycle.Snapshot.IsActive, Is.True);
             Assert.That(lifecycle.Snapshot.SessionId, Is.EqualTo(started.SessionName));
             Assert.That(lifecycle.Snapshot.OrderId, Is.EqualTo("ORD"));
+        }
+
+        [Test]
+        public async Task Should_KeepRunningSessionAndRejectReplacement_When_ProcessDoesNotEndIt()
+        {
+            var first = Workbook(Row("SN-1"));
+            var staged = await _service.StageAsync(first);
+            var started = await _service.StartAsync(Request(staged.File));
+            Execute("INSERT INTO TestRecord (SessionId, StickerSN, Result, VerifyTime) VALUES (" + started.SessionId + ", 'SN-1', 'PASS', '2026-11-25 10:00:00')");
+
+            var again = await _service.StartAsync(Request(staged.File));
+            var running = await _storage.GetYme009RunningSessionsAsync();
+
+            Assert.That(again.Committed, Is.False);
+            Assert.That(again.Reason, Is.EqualTo(Yme009ExpectedReadReasons.SessionStillRunning));
+            Assert.That(again.OperatorMessage, Is.EqualTo(Yme009ExpectedOperatorText.SessionStillRunning));
+            Assert.That(running, Has.Count.EqualTo(1));
+            Assert.That(running[0].SessionId, Is.EqualTo(started.SessionId));
+            Assert.That(running[0].SessionName, Is.EqualTo(started.SessionName));
+            Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await _storage.EnsureYme009ExpectedDataReplaceAllowedAsync(started.SessionId));
+            Assert.That(Count("SELECT COUNT(*) FROM Yme009ExpectedDataSet"), Is.EqualTo(1));
+            Assert.That(Scalar("SELECT Result FROM TestRecord"), Is.EqualTo("PASS"));
+        }
+
+        [Test]
+        public async Task Should_KeepOldDataSet_When_CompletedSessionStartsAnotherTask()
+        {
+            var firstPath = Workbook(Row("SN-1"));
+            var firstStaged = await _service.StageAsync(firstPath);
+            var first = await _service.StartAsync(Request(firstStaged.File));
+            var firstFile = Scalar("SELECT FileName FROM Yme009ExpectedDataSet WHERE SessionId = " + first.SessionId) as string;
+            Execute("INSERT INTO TestRecord (SessionId, StickerSN, Result, VerifyTime) VALUES (" + first.SessionId + ", 'SN-1', 'PASS', '2026-11-25 10:00:00')");
+
+            await _storage.CompleteYme009SessionAsync(first.SessionName);
+
+            var completed = await _storage.GetSessionsByOrderIdAsync(OrderId());
+            Assert.That(completed[0].Status, Is.EqualTo(Yme009SessionStatus.Completed));
+            Assert.That(completed[0].EndTime, Is.Not.Null);
+            Assert.That(await _storage.GetYme009RunningSessionsAsync(), Is.Empty);
+            Assert.ThrowsAsync<InvalidOperationException>(async () =>
+                await _storage.EnsureYme009ExpectedDataReplaceAllowedAsync(first.SessionId));
+
+            var secondPath = Workbook(Row("SN-2"));
+            var secondStaged = await _service.StageAsync(secondPath);
+            var second = await _service.StartAsync(Request(secondStaged.File));
+
+            Assert.That(second.Committed, Is.True);
+            Assert.That(second.SessionId, Is.Not.EqualTo(first.SessionId));
+            Assert.That(Scalar("SELECT FileName FROM Yme009ExpectedDataSet WHERE SessionId = " + first.SessionId), Is.EqualTo(firstFile));
+            Assert.That(Scalar("SELECT Status FROM TestSession WHERE Id = " + first.SessionId), Is.EqualTo(Yme009SessionStatus.Completed));
+            Assert.That(Scalar("SELECT Result FROM TestRecord WHERE SessionId = " + first.SessionId), Is.EqualTo("PASS"));
+            Assert.That(Count("SELECT COUNT(*) FROM Yme009ExpectedDataSet"), Is.EqualTo(2));
+        }
+
+        [Test]
+        public async Task Should_IgnoreHistoricalNullSession_When_QueryingRunningTasks()
+        {
+            var path = Workbook(Row("SN-1"));
+            var staged = await _service.StageAsync(path);
+            var started = await _service.StartAsync(Request(staged.File));
+            Execute("UPDATE TestSession SET Status = NULL, EndTime = NULL WHERE Id = " + started.SessionId);
+
+            var running = await _storage.GetYme009RunningSessionsAsync();
+
+            Assert.That(running, Is.Empty);
+            Assert.That(Scalar("SELECT Status FROM TestSession WHERE Id = " + started.SessionId), Is.Null.Or.EqualTo(DBNull.Value));
+            Assert.That(Scalar("SELECT EndTime FROM TestSession WHERE Id = " + started.SessionId), Is.Null.Or.EqualTo(DBNull.Value));
+            Assert.That(Count("SELECT COUNT(*) FROM Yme009ExpectedDataSet"), Is.EqualTo(1));
+            Assert.That(Count("SELECT COUNT(*) FROM Yme009ExpectedDevice"), Is.EqualTo(1));
+            Assert.DoesNotThrowAsync(async () => await _storage.EnsureYme009ExpectedDataReplaceAllowedAsync(started.SessionId));
         }
 
         [Test]
@@ -203,6 +275,19 @@ END;";
         private static string[] Row(string sn)
         {
             return new[] { sn, "48:C8:62:16:BF:1F", "111111111111111", "222222222222222" };
+        }
+
+        private void Execute(string sql)
+        {
+            using (var connection = new System.Data.SQLite.SQLiteConnection("Data Source=" + _dbPath))
+            {
+                connection.Open();
+                using (var command = connection.CreateCommand())
+                {
+                    command.CommandText = sql;
+                    command.ExecuteNonQuery();
+                }
+            }
         }
 
         private int Count(string sql)

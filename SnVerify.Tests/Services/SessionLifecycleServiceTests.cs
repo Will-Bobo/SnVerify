@@ -4,8 +4,10 @@
 /// </remarks>
 
 using System;
+using System.Collections.Concurrent;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using NUnit.Framework;
 using SnVerify.Domain.Models;
@@ -270,6 +272,89 @@ namespace SnVerify.Tests.Services
             {
                 _sessionService.CreateAndStartSession(orderId2, orderId2, "PROJECT007");
             });
+        }
+
+        [Test, Timeout(8000)]
+        public void Should_CompleteStartSessionAsync_When_CapturedContextMustBePumped()
+        {
+            var sessionId = _sessionService.CreateAndStartSession("ORDER-ASYNC", "ORDER-ASYNC", "PROJECT-ASYNC");
+            _sessionService.EndSession();
+            var context = new QueueSynchronizationContext();
+            var previous = SynchronizationContext.Current;
+            SynchronizationContext.SetSynchronizationContext(context);
+            try
+            {
+                var task = _sessionService.StartSessionAsync(sessionId, "ORDER-ASYNC");
+                PumpUntil(context, task);
+                Assert.That(task.Status, Is.EqualTo(TaskStatus.RanToCompletion));
+                Assert.That(_sessionService.Snapshot.IsActive, Is.True);
+                Assert.That(_sessionService.Snapshot.SessionId, Is.EqualTo(sessionId));
+            }
+            finally
+            {
+                SynchronizationContext.SetSynchronizationContext(previous);
+            }
+        }
+
+        [Test, Timeout(8000)]
+        public void Should_FaultStartSessionAsync_When_SessionDoesNotExist()
+        {
+            var context = new QueueSynchronizationContext();
+            var previous = SynchronizationContext.Current;
+            SynchronizationContext.SetSynchronizationContext(context);
+            try
+            {
+                var task = _sessionService.StartSessionAsync("missing-session", "ORD");
+                PumpUntil(context, task);
+                Assert.That(task.IsFaulted, Is.True);
+                Assert.That(task.Exception.InnerException, Is.TypeOf<InvalidOperationException>());
+                Assert.That(_sessionService.Snapshot.IsActive, Is.False);
+            }
+            finally
+            {
+                SynchronizationContext.SetSynchronizationContext(previous);
+            }
+        }
+
+        private static void PumpUntil(QueueSynchronizationContext context, Task task)
+        {
+            var start = DateTime.UtcNow;
+            while (!task.IsCompleted)
+            {
+                if ((DateTime.UtcNow - start).TotalMilliseconds > 5000)
+                    Assert.Fail("StartSessionAsync 没有在可泵送的同步上下文中完成。");
+                if (!context.Drain())
+                    Thread.Sleep(10);
+            }
+        }
+
+        private sealed class QueueSynchronizationContext : SynchronizationContext
+        {
+            private readonly ConcurrentQueue<Tuple<SendOrPostCallback, object>> _queue =
+                new ConcurrentQueue<Tuple<SendOrPostCallback, object>>();
+
+            public override void Post(SendOrPostCallback callback, object state)
+            {
+                _queue.Enqueue(Tuple.Create(callback, state));
+            }
+
+            public override void Send(SendOrPostCallback callback, object state)
+            {
+                callback(state);
+            }
+
+            public bool Drain()
+            {
+                var ran = false;
+                Tuple<SendOrPostCallback, object> item;
+                while (_queue.TryDequeue(out item))
+                {
+                    ran = true;
+                    item.Item1(item.Item2);
+                }
+
+                return ran;
+            }
         }
     }
 }

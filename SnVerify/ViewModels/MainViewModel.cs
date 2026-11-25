@@ -139,6 +139,8 @@ namespace SnVerify.ViewModels
                     if (!IsSessionActive)
                         OnProductCodeChanged(oldCode, value);
                     UpdateCurrentProductProfile();
+                    if (!IsInitialization)
+                        QueueYme009SessionRestore();
                 }
             }
         }
@@ -435,6 +437,7 @@ namespace SnVerify.ViewModels
         private string _yme009Imei2Text = Yme009WorkstationText.NotRead;
         private string _yme009WifiMacText = Yme009WorkstationText.NotRead;
         private Yme009ExpectedFileStaging _yme009ExpectedFile;
+        private readonly SemaphoreSlim _yme009Lifecycle = new SemaphoreSlim(1, 1);
         private bool _yme009ExpectedImporting;
         private bool _sessionStartInProgress;
         private bool _sessionReadyForTest;
@@ -1545,6 +1548,14 @@ namespace SnVerify.ViewModels
             if (_sessionReadyForTest || _sessionStartInProgress)
                 return;
 
+            if (Yme009Product.IsMatch(_currentProductProfile))
+            {
+                if (await RestoreOrBlockYme009Async().ConfigureAwait(true))
+                    return;
+                if (_sessionReadyForTest)
+                    return;
+            }
+
             var importExpected = UsesYme009ExpectedImport();
             SetSessionStartInProgress(true);
             if (importExpected)
@@ -1649,6 +1660,8 @@ namespace SnVerify.ViewModels
                     _loggingService.StartSession(sid);
                     return sid;
                 });
+                if (Yme009Product.IsMatch(_currentProductProfile))
+                    await MarkYme009SessionRunningIfSupportedAsync(sessionId).ConfigureAwait(true);
                 await FinishStartedSessionAsync(sessionId, projectId, orderId, productCode).ConfigureAwait(true);
                 SetSessionReadyForTest(true);
             }
@@ -1675,7 +1688,7 @@ namespace SnVerify.ViewModels
             {
                 _loggingService.StartSession(sessionName);
                 await FinishStartedSessionAsync(sessionName, projectId, orderId, productCode).ConfigureAwait(true);
-                if (excelConfigured)
+                if (excelConfigured || await CurrentSessionHasExpectedDataAsync().ConfigureAwait(true))
                     SetYme009ExpectedHeadline(Yme009HeadlineKind.ReadyToTest, "WAITING");
                 SetSessionReadyForTest(true);
             }
@@ -1735,8 +1748,7 @@ namespace SnVerify.ViewModels
 
             try
             {
-                await System.Threading.Tasks.Task.Run(() =>
-                    _sessionLifecycleService.StartSession(result.SessionName, orderId)).ConfigureAwait(true);
+                await _sessionLifecycleService.StartSessionAsync(result.SessionName, orderId).ConfigureAwait(true);
                 _loggingService.StartSession(result.SessionName);
                 await FinishStartedSessionAsync(result.SessionName, projectId, orderId, productCode).ConfigureAwait(true);
                 SetYme009ExpectedHeadline(Yme009HeadlineKind.ReadyToTest, "WAITING");
@@ -1838,6 +1850,14 @@ namespace SnVerify.ViewModels
 
         private async System.Threading.Tasks.Task SelectYme009ExpectedFileAsync()
         {
+            if (await CurrentSessionExpectedDataLockedAsync().ConfigureAwait(true))
+            {
+                _dialogService.ShowWarning(
+                    Yme009ExpectedOperatorText.ExpectedDataLocked,
+                    Yme009ExpectedOperatorText.StartFailedTitle);
+                return;
+            }
+
             if (!CanSelectYme009ExpectedFile())
                 return;
 
@@ -1861,16 +1881,23 @@ namespace SnVerify.ViewModels
                 unresolved ? Yme009ExpectedOperatorText.UnresolvedTitle : Yme009ExpectedOperatorText.ImportFailedTitle);
         }
 
-        private System.Threading.Tasks.Task ClearYme009ExpectedFileAsync()
+        private async System.Threading.Tasks.Task ClearYme009ExpectedFileAsync()
         {
+            if (await CurrentSessionExpectedDataLockedAsync().ConfigureAwait(true))
+            {
+                _dialogService.ShowWarning(
+                    Yme009ExpectedOperatorText.ExpectedDataLocked,
+                    Yme009ExpectedOperatorText.StartFailedTitle);
+                return;
+            }
+
             if (!CanClearYme009ExpectedFile())
-                return System.Threading.Tasks.Task.CompletedTask;
+                return;
 
             _yme009ExpectedFile = null;
             _yme009ExpectedSummary = "未选择";
             OnPropertyChanged(nameof(Yme009ExpectedSummary));
             ClearYme009ExpectedFileCommand?.RaiseCanExecuteChanged();
-            return System.Threading.Tasks.Task.CompletedTask;
         }
 
         private void SetYme009ExpectedImporting(bool value)
@@ -2000,6 +2027,8 @@ namespace SnVerify.ViewModels
                 }
 
                 _lastEndedSessionId = sessionId;
+                if (Yme009Product.IsMatch(_currentProductProfile))
+                    await CompleteYme009SessionIfSupportedAsync(sessionId).ConfigureAwait(true);
                 _sessionLifecycleService.EndSession();
                 _loggingService.EndBatch();
                 
@@ -2437,6 +2466,214 @@ namespace SnVerify.ViewModels
             {
                 _loggingService.LogError("设备信息读取异常: " + ex.Message, ex);
                 LoggingSnapshot = _loggingService.Snapshot;
+            }
+        }
+
+        /// <summary>
+        /// 测试用来阻止属性赋值顺便启动恢复，便于把恢复放进可泵送的同步上下文。
+        /// </summary>
+        internal bool SuppressAutomaticYme009Restore { get; set; }
+
+        internal System.Threading.Tasks.Task RestoreYme009RunningSessionAsync()
+        {
+            return RestoreYme009SessionCoreAsync();
+        }
+
+        private void QueueYme009SessionRestore()
+        {
+            if (SuppressAutomaticYme009Restore || !Yme009Product.IsMatch(_currentProductProfile))
+                return;
+
+            RestoreYme009SessionOnEntry();
+        }
+
+        private async void RestoreYme009SessionOnEntry()
+        {
+            await RestoreYme009SessionCoreAsync().ConfigureAwait(true);
+        }
+
+        private async System.Threading.Tasks.Task RestoreYme009SessionCoreAsync()
+        {
+            try
+            {
+                await RestoreOrBlockYme009Async().ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError("恢复 YME009 进行中任务失败: " + ex.Message, ex);
+                _dialogService.ShowWarning(
+                    "无法恢复未结束的检测任务。",
+                    Yme009ExpectedOperatorText.MultipleRunningSessionsTitle);
+            }
+        }
+
+        /// <summary>
+        /// 返回 true 表示已经恢复唯一进行中任务，或因多个进行中任务而阻止新建。
+        /// 返回 false 表示没有可恢复任务，调用方可以新建。
+        /// </summary>
+        private async System.Threading.Tasks.Task<bool> RestoreOrBlockYme009Async()
+        {
+            if (!Yme009Product.IsMatch(_currentProductProfile))
+                return false;
+
+            if (_sessionStartInProgress)
+                return false;
+
+            var snapshot = _sessionLifecycleService.Snapshot;
+            if (snapshot != null && snapshot.IsActive)
+                return false;
+
+            await _yme009Lifecycle.WaitAsync().ConfigureAwait(true);
+            try
+            {
+                if (_sessionStartInProgress)
+                    return false;
+
+                snapshot = _sessionLifecycleService.Snapshot;
+                if (snapshot != null && snapshot.IsActive)
+                    return false;
+
+                var rows = await ReadYme009RunningSessionsAsync().ConfigureAwait(true);
+                if (rows.Count > 1)
+                {
+                    _dialogService.ShowWarning(
+                        Yme009ExpectedOperatorText.MultipleRunningSessions,
+                        Yme009ExpectedOperatorText.MultipleRunningSessionsTitle);
+                    return true;
+                }
+
+                if (rows.Count == 0)
+                    return false;
+
+                await ApplyRestoredYme009SessionAsync(rows[0]).ConfigureAwait(true);
+                return true;
+            }
+            finally
+            {
+                _yme009Lifecycle.Release();
+            }
+        }
+
+        private async System.Threading.Tasks.Task ApplyRestoredYme009SessionAsync(Yme009RunningSession row)
+        {
+            SetSessionStartInProgress(true);
+            try
+            {
+                ProjectIdInput = row.ProjectName ?? string.Empty;
+                OrderIdInput = row.OrderName ?? string.Empty;
+                var parameterPending = _parameterService.GetParameterAsync(row.SessionId);
+                if (parameterPending != null)
+                {
+                    var parameter = await parameterPending.ConfigureAwait(true);
+                    if (parameter != null && !string.IsNullOrWhiteSpace(parameter.ExpectedAndroidVersion))
+                        ExpectedAndroidVersion = parameter.ExpectedAndroidVersion;
+                }
+
+                _yme009ExpectedFile = null;
+                _yme009ExpectedSummary = string.IsNullOrWhiteSpace(row.ExpectedFileName)
+                    ? "未选择"
+                    : "已导入：" + row.ExpectedFileName + "（" + row.RecordCount + " 条）";
+                OnPropertyChanged(nameof(Yme009ExpectedSummary));
+                ClearYme009ExpectedFileCommand?.RaiseCanExecuteChanged();
+
+                await _sessionLifecycleService.StartSessionAsync(row.SessionName, row.OrderName).ConfigureAwait(true);
+                _loggingService.StartSession(row.SessionName);
+                await FinishStartedSessionAsync(
+                    row.SessionName,
+                    row.ProjectName,
+                    row.OrderName,
+                    row.ProductCode).ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                if (_sessionLifecycleService.Snapshot == null || !_sessionLifecycleService.Snapshot.IsActive)
+                    SetSessionReadyForTest(false);
+                _loggingService.LogError("恢复 YME009 进行中任务失败: " + ex.Message, ex);
+                _dialogService.ShowWarning(
+                    "无法恢复未结束的检测任务。",
+                    Yme009ExpectedOperatorText.MultipleRunningSessionsTitle);
+            }
+            finally
+            {
+                SetSessionStartInProgress(false);
+            }
+        }
+
+        private async System.Threading.Tasks.Task<IReadOnlyList<Yme009RunningSession>> ReadYme009RunningSessionsAsync()
+        {
+            var pending = _storageService.GetYme009RunningSessionsAsync();
+            if (pending == null)
+                return new Yme009RunningSession[0];
+
+            var rows = await pending.ConfigureAwait(true);
+            return rows ?? new Yme009RunningSession[0];
+        }
+
+        private async System.Threading.Tasks.Task MarkYme009SessionRunningIfSupportedAsync(string sessionName)
+        {
+            var pending = _storageService.MarkYme009SessionRunningAsync(sessionName);
+            if (pending == null)
+                return;
+
+            await pending.ConfigureAwait(true);
+        }
+
+        private async System.Threading.Tasks.Task CompleteYme009SessionIfSupportedAsync(string sessionName)
+        {
+            var pending = _storageService.CompleteYme009SessionAsync(sessionName);
+            if (pending == null)
+                return;
+
+            await pending.ConfigureAwait(true);
+        }
+
+        private async System.Threading.Tasks.Task<bool> CurrentSessionHasExpectedDataAsync()
+        {
+            var name = _sessionLifecycleService.GetCurrentSessionId();
+            if (string.IsNullOrWhiteSpace(name))
+                return false;
+
+            var idPending = _storageService.GetInternalSessionIdBySessionNameAsync(name);
+            if (idPending == null)
+                return false;
+
+            var id = await idPending.ConfigureAwait(true);
+            if (!id.HasValue || id.Value <= 0)
+                return false;
+
+            var hasPending = _storageService.SessionHasYme009ExpectedDataSetAsync(id.Value);
+            if (hasPending == null)
+                return false;
+
+            return await hasPending.ConfigureAwait(true);
+        }
+
+        private async System.Threading.Tasks.Task<bool> CurrentSessionExpectedDataLockedAsync()
+        {
+            var snapshot = _sessionLifecycleService.Snapshot;
+            if (snapshot == null || !snapshot.IsActive || string.IsNullOrWhiteSpace(snapshot.SessionId))
+                return false;
+
+            var idPending = _storageService.GetInternalSessionIdBySessionNameAsync(snapshot.SessionId);
+            if (idPending == null)
+                return true;
+
+            var id = await idPending.ConfigureAwait(true);
+            if (!id.HasValue || id.Value <= 0)
+                return true;
+
+            var guard = _storageService.EnsureYme009ExpectedDataReplaceAllowedAsync(id.Value);
+            if (guard == null)
+                return true;
+
+            try
+            {
+                await guard.ConfigureAwait(true);
+                return false;
+            }
+            catch (InvalidOperationException)
+            {
+                return true;
             }
         }
 

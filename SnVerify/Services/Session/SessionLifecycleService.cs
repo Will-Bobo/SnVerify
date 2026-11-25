@@ -4,6 +4,7 @@
 /// </remarks>
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Linq;
 using SnVerify.Domain.Models;
@@ -169,6 +170,20 @@ namespace SnVerify.Services.Session
 
         public void StartSession(string sessionId, string orderId)
         {
+            if (SynchronizationContext.Current != null)
+                throw new InvalidOperationException("StartSession 不能在 UI 同步上下文中调用，请使用 StartSessionAsync。");
+
+            StartSessionAsync(sessionId, orderId).GetAwaiter().GetResult();
+        }
+
+        /// <inheritdoc />
+        public Task StartSessionAsync(string sessionId)
+        {
+            return StartSessionAsync(sessionId, null);
+        }
+
+        public async Task StartSessionAsync(string sessionId, string orderId)
+        {
             if (string.IsNullOrWhiteSpace(sessionId))
             {
                 Snapshot = SessionSnapshot.Error("SessionId 不能为空");
@@ -184,12 +199,13 @@ namespace SnVerify.Services.Session
                 }
             }
 
-            var exists = _storage.SessionExistsAsync(sessionId).GetAwaiter().GetResult();
+            var exists = await _storage.SessionExistsAsync(sessionId).ConfigureAwait(true);
             if (!exists)
             {
                 Snapshot = SessionSnapshot.Error($"Session {sessionId} 不存在", sessionId);
                 throw new InvalidOperationException($"Session {sessionId} 不存在");
             }
+
             var startTime = DateTime.Now;
             Snapshot = SessionSnapshot.Active(sessionId, orderId, startTime);
             _logger?.LogInfo($"Session 开始: SessionId={sessionId}");
