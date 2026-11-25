@@ -443,6 +443,8 @@ namespace SnVerify.ViewModels
         private bool _sessionReadyForTest;
         private string _yme009StatusTitle = "等待扫码";
         private string _yme009StatusDetail = "WAITING";
+        private string _yme009StatusBackground = Yme009StatusPresentation.NeutralColor;
+        private string _yme009ScanSideText = string.Empty;
         private string _yme009ExpectedSummary = "未选择";
         private static readonly TimeSpan Yme009ExpectedImportDoneDelay = TimeSpan.FromMilliseconds(700);
 
@@ -468,6 +470,8 @@ namespace SnVerify.ViewModels
         public Yme009HeadlineKind Yme009HeadlineKind => _yme009HeadlineKind;
         public string Yme009StatusTitle => _yme009StatusTitle;
         public string Yme009StatusDetail => _yme009StatusDetail;
+        public string Yme009StatusBackground => _yme009StatusBackground;
+        public string Yme009ScanSideText => _yme009ScanSideText ?? string.Empty;
         public string Yme009ExpectedSummary => _yme009ExpectedSummary;
         public bool IsYme009ExpectedImporting => _yme009ExpectedImporting;
         public bool IsSessionReadyForTest => _sessionReadyForTest;
@@ -1937,67 +1941,32 @@ namespace SnVerify.ViewModels
         private void SetYme009ExpectedHeadline(Yme009HeadlineKind kind, string detail)
         {
             _yme009HeadlineKind = kind;
-            if (kind == Yme009HeadlineKind.ImportComplete)
-                _yme009StatusDetail = detail ?? string.Empty;
-            ApplyYme009StatusText();
+            ApplyYme009StatusText(kind == Yme009HeadlineKind.ImportComplete ? detail : null);
             OnPropertyChanged(nameof(Yme009HeadlineKind));
         }
 
-        private void ApplyYme009StatusText()
+        private void ApplyYme009StatusText(string importCompleteDetail = null)
         {
-            string title;
-            string detail;
-            switch (_yme009HeadlineKind)
-            {
-                case Yme009HeadlineKind.Pass:
-                    title = "PASS";
-                    detail = "PASS";
-                    break;
-                case Yme009HeadlineKind.Fail:
-                    title = "FAIL";
-                    detail = "FAIL";
-                    break;
-                case Yme009HeadlineKind.Running:
-                    title = "检验中...";
-                    detail = "PROCESSING";
-                    break;
-                case Yme009HeadlineKind.Importing:
-                    title = Yme009ExpectedOperatorText.ImportingTitle;
-                    detail = Yme009ExpectedOperatorText.ImportingDetail;
-                    break;
-                case Yme009HeadlineKind.ImportComplete:
-                    title = Yme009ExpectedOperatorText.ImportDoneTitle;
-                    detail = _yme009StatusDetail;
-                    break;
-                case Yme009HeadlineKind.ReadyToTest:
-                    title = Yme009ExpectedOperatorText.ReadyTitle;
-                    detail = "WAITING";
-                    break;
-                case Yme009HeadlineKind.Unresolved:
-                    title = Yme009ResultClassifier.UnresolvedResult;
-                    detail = Yme009ResultClassifier.UnresolvedResult;
-                    break;
-                default:
-                    title = "等待扫码";
-                    detail = "WAITING";
-                    break;
-            }
+            var display = Yme009StatusPresentation.Map(
+                _yme009HeadlineKind,
+                _yme009Headline,
+                _yme009ProcessPrompt,
+                _yme009PrimaryReason,
+                _yme009ExpectedIdentityReason,
+                importCompleteDetail ?? _yme009StatusDetail);
+            AssignStatusText(ref _yme009StatusTitle, display.Title, nameof(Yme009StatusTitle));
+            AssignStatusText(ref _yme009StatusDetail, display.Detail, nameof(Yme009StatusDetail));
+            AssignStatusText(ref _yme009StatusBackground, display.Background, nameof(Yme009StatusBackground));
+            AssignStatusText(ref _yme009ScanSideText, display.ScanSideText, nameof(Yme009ScanSideText));
+        }
 
-            if (_yme009StatusTitle != title)
-            {
-                _yme009StatusTitle = title;
-                OnPropertyChanged(nameof(Yme009StatusTitle));
-            }
-
-            if (_yme009StatusDetail != detail)
-            {
-                _yme009StatusDetail = detail;
-                OnPropertyChanged(nameof(Yme009StatusDetail));
-            }
-            else if (_yme009HeadlineKind == Yme009HeadlineKind.ImportComplete)
-            {
-                OnPropertyChanged(nameof(Yme009StatusDetail));
-            }
+        private void AssignStatusText(ref string field, string value, string propertyName)
+        {
+            value = value ?? string.Empty;
+            if (field == value)
+                return;
+            field = value;
+            OnPropertyChanged(propertyName);
         }
 
         /// <summary>

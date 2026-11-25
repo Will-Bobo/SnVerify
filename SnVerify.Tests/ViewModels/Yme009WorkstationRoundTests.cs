@@ -154,6 +154,51 @@ namespace SnVerify.Tests.ViewModels
             Assert.That(vm.Yme009StatusTitle, Is.Not.EqualTo("FAIL"));
             Assert.That(vm.Yme009StatusTitle, Is.Not.EqualTo("等待扫码"));
             Assert.That(vm.Yme009ProcessPrompt, Is.Not.EqualTo(Yme009WorkstationText.RoundIncomplete));
+            Assert.That(vm.Yme009StatusBackground, Is.EqualTo(Yme009StatusPresentation.AttentionColor));
+            Assert.That(vm.Yme009StatusDetail, Is.EqualTo(Yme009WorkstationText.UnresolvedDetail));
+            Assert.That(vm.Yme009ScanSideText, Is.Empty);
+        }
+
+        [Test]
+        public async Task Should_KeepExceptionUntilNextRunning_When_AccessFails()
+        {
+            var release = new TaskCompletionSource<Yme009RoundResult>();
+            var round = new Mock<IYme009RoundCoordinator>();
+            round.Setup(r => r.RunAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .Returns(() => release.Task);
+            var vm = Yme009ProductAccessTests.CreateForWorkstation(out var session, round.Object);
+            vm.SelectedProductCode = Yme009Product.Code;
+            vm.ExpectedAndroidVersion = "TARGET-1";
+            session.Setup(s => s.GetCurrentSessionId()).Returns("S-1");
+            vm.SessionSnapshot = SessionSnapshot.Active("S-1", "ORDER", DateTime.Now);
+
+            var first = vm.HandleScanInputAsync("SN-1");
+            release.TrySetResult(new Yme009RoundResult(
+                new Yme009AccessResult(Yme009AccessStop.WaitTimedOut, false, null, string.Empty),
+                Yme009CloseAttempt.NotAttempted(),
+                true,
+                "log"));
+            await first;
+
+            Assert.That(vm.Yme009HeadlineKind, Is.EqualTo(Yme009HeadlineKind.Exception));
+            Assert.That(vm.Yme009StatusTitle, Is.EqualTo("设备接入失败"));
+            Assert.That(vm.Yme009StatusDetail, Is.EqualTo("请检查设备连接"));
+            Assert.That(vm.Yme009StatusBackground, Is.EqualTo(Yme009StatusPresentation.AttentionColor));
+            Assert.That(vm.Yme009ScanSideText, Is.Empty);
+            Assert.That(vm.Yme009StatusTitle, Is.Not.EqualTo(Yme009WorkstationText.WaitingForScan));
+
+            release = new TaskCompletionSource<Yme009RoundResult>();
+            round.Setup(r => r.RunAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .Returns(() => release.Task);
+            var second = vm.HandleScanInputAsync("SN-2");
+
+            Assert.That(vm.Yme009StatusTitle, Is.EqualTo("检验中..."));
+            Assert.That(vm.Yme009StatusBackground, Is.EqualTo(Yme009StatusPresentation.RunningColor));
+            Assert.That(vm.Yme009ScanSideText, Is.EqualTo(Yme009WorkstationText.Connecting));
+            Assert.That(vm.Yme009StatusTitle, Is.Not.EqualTo("设备接入失败"));
+
+            release.TrySetResult(PassRound());
+            await second;
         }
 
         private static Yme009RoundResult PassRound()

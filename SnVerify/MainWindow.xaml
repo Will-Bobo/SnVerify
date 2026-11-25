@@ -501,7 +501,7 @@
                                     </Style>
                                 </TextBox.Style>
                             </TextBox>
-                            <TextBlock Text="{Binding Yme009ProcessPrompt}"
+                            <TextBlock Text="{Binding Yme009ScanSideText}"
                                        VerticalAlignment="Center"
                                        Margin="12,0,0,0"
                                        FontSize="14"
@@ -1041,38 +1041,8 @@
                                         CornerRadius="10"
                                         Padding="20"
                                         HorizontalAlignment="Stretch"
-                                        VerticalAlignment="Stretch">
-                                    <Border.Style>
-                                        <Style TargetType="Border">
-                                            <Setter Property="Background" Value="#808080"/>
-                                            <Style.Triggers>
-                                                <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Pass">
-                                                    <Setter Property="Background" Value="#00CC00"/>
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Fail">
-                                                    <Setter Property="Background" Value="#FF0000"/>
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Running">
-                                                    <Setter Property="Background" Value="#0080FF"/>
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Neutral">
-                                                    <Setter Property="Background" Value="#808080"/>
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Unresolved">
-                                                    <Setter Property="Background" Value="#808080"/>
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Importing">
-                                                    <Setter Property="Background" Value="#0080FF"/>
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="ImportComplete">
-                                                    <Setter Property="Background" Value="#2E7D32"/>
-                                                </DataTrigger>
-                                                <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="ReadyToTest">
-                                                    <Setter Property="Background" Value="#808080"/>
-                                                </DataTrigger>
-                                            </Style.Triggers>
-                                        </Style>
-                                    </Border.Style>
+                                        VerticalAlignment="Stretch"
+                                        Background="{Binding Yme009StatusBackground}">
                                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
                                         <TextBlock Text="{Binding Yme009StatusTitle}"
                                                    Style="{StaticResource ResultTextStyle}"

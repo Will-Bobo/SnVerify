@@ -27,7 +27,8 @@ namespace SnVerify.Services.Yme009
         Importing = 4,
         ImportComplete = 5,
         ReadyToTest = 6,
-        Unresolved = 7
+        Unresolved = 7,
+        Exception = 8
     }
 
     /// <summary>
@@ -114,6 +115,7 @@ namespace SnVerify.Services.Yme009
             var snapshot = Blank(Yme009RoundPhase.RoundFault, Yme009WorkstationText.RoundIncomplete);
             snapshot.ScannedSn = scannedSn ?? string.Empty;
             snapshot.Headline = snapshot.ProcessPrompt;
+            snapshot.HeadlineKind = Yme009HeadlineKind.Exception;
             return snapshot;
         }
 
@@ -161,6 +163,7 @@ namespace SnVerify.Services.Yme009
             if (!formal)
             {
                 snapshot.Headline = prompt;
+                snapshot.HeadlineKind = Yme009HeadlineKind.Exception;
                 return snapshot;
             }
 
@@ -184,6 +187,12 @@ namespace SnVerify.Services.Yme009
             }
 
             snapshot.Headline = snapshot.OverallText;
+            if (decision.Bucket == Yme009StatisticBucket.ReadException)
+            {
+                snapshot.HeadlineKind = Yme009HeadlineKind.Exception;
+                snapshot.Headline = Yme009WorkstationText.ReadException;
+            }
+
             snapshot.PrimaryReason = pass || unresolved ? string.Empty : FailReasonTextResolverSafe(decision.FailReason);
             snapshot.SaveStatusText = result.RecordSaved && result.RecordId > 0
                 ? Yme009WorkstationText.Saved
@@ -304,6 +313,8 @@ namespace SnVerify.Services.Yme009
     public static class Yme009WorkstationText
     {
         public const string WaitingForScan = "等待扫码";
+        public const string PassDetail = "测试通过";
+        public const string UnresolvedDetail = "身份校验未完成";
         public const string Connecting = "正在接入设备";
         public const string WaitingForDevice = "正在等待设备接入";
         public const string Reading = "正在读取检测数据";
@@ -319,5 +330,135 @@ namespace SnVerify.Services.Yme009
         public const string RecordNotSaved = "记录未保存";
         public const string CloseFailed = "收尾异常，本次检测结果不变";
         public const string WaitingItem = "等待";
+    }
+
+    public sealed class Yme009StatusPresentation
+    {
+        public const string NeutralColor = "#808080";
+        public const string RunningColor = "#0D47A1";
+        public const string ImportCompleteColor = "#00695C";
+        public const string PassColor = "#1B5E20";
+        public const string FailColor = "#B71C1C";
+        public const string AttentionColor = "#E65100";
+        private const int DetailLimit = 36;
+
+        public string Title { get; private set; }
+        public string Detail { get; private set; }
+        public string Background { get; private set; }
+        public string ScanSideText { get; private set; }
+
+        public static Yme009StatusPresentation Map(
+            Yme009HeadlineKind kind,
+            string headline,
+            string processPrompt,
+            string primaryReason,
+            string identityReason,
+            string suppliedDetail)
+        {
+            var display = new Yme009StatusPresentation
+            {
+                Background = NeutralColor,
+                Title = string.Empty,
+                Detail = string.Empty,
+                ScanSideText = string.Empty
+            };
+            switch (kind)
+            {
+                case Yme009HeadlineKind.Pass:
+                    display.Title = Yme009ResultClassifier.PassResult;
+                    display.Detail = Yme009WorkstationText.PassDetail;
+                    display.Background = PassColor;
+                    break;
+                case Yme009HeadlineKind.Fail:
+                    display.Title = Yme009ResultClassifier.FailResult;
+                    display.Detail = Limit(primaryReason);
+                    display.Background = FailColor;
+                    break;
+                case Yme009HeadlineKind.Running:
+                    display.Title = "检验中...";
+                    display.Detail = FirstText(processPrompt, headline);
+                    display.Background = RunningColor;
+                    display.ScanSideText = display.Detail;
+                    break;
+                case Yme009HeadlineKind.Importing:
+                    display.Title = Yme009ExpectedOperatorText.ImportingTitle;
+                    display.Detail = Yme009ExpectedOperatorText.ImportingDetail;
+                    display.Background = RunningColor;
+                    break;
+                case Yme009HeadlineKind.ImportComplete:
+                    display.Title = Yme009ExpectedOperatorText.ImportDoneTitle;
+                    display.Detail = suppliedDetail ?? string.Empty;
+                    display.Background = ImportCompleteColor;
+                    break;
+                case Yme009HeadlineKind.ReadyToTest:
+                    display.Title = Yme009ExpectedOperatorText.ReadyTitle;
+                    display.Detail = "WAITING";
+                    display.Background = NeutralColor;
+                    break;
+                case Yme009HeadlineKind.Unresolved:
+                    display.Title = Yme009ResultClassifier.UnresolvedResult;
+                    display.Detail = Limit(FirstText(primaryReason, identityReason, Yme009WorkstationText.UnresolvedDetail));
+                    display.Background = AttentionColor;
+                    break;
+                case Yme009HeadlineKind.Exception:
+                    ApplyException(display, headline, processPrompt, primaryReason);
+                    break;
+                default:
+                    display.Title = Yme009WorkstationText.WaitingForScan;
+                    display.Detail = "WAITING";
+                    display.Background = NeutralColor;
+                    break;
+            }
+
+            return display;
+        }
+
+        private static void ApplyException(
+            Yme009StatusPresentation display,
+            string headline,
+            string processPrompt,
+            string primaryReason)
+        {
+            var source = FirstText(headline, processPrompt);
+            string title;
+            string detail;
+            SplitPrompt(source, out title, out detail);
+            if (!string.IsNullOrWhiteSpace(primaryReason) && primaryReason != title)
+                detail = primaryReason;
+            display.Title = title;
+            display.Detail = Limit(detail);
+            display.Background = AttentionColor;
+        }
+
+        private static void SplitPrompt(string source, out string title, out string detail)
+        {
+            title = source ?? string.Empty;
+            detail = string.Empty;
+            var index = title.IndexOf('，');
+            if (index <= 0 || index >= title.Length - 1)
+                return;
+            detail = title.Substring(index + 1);
+            title = title.Substring(0, index);
+        }
+
+        private static string FirstText(params string[] values)
+        {
+            if (values == null)
+                return string.Empty;
+            for (var i = 0; i < values.Length; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(values[i]))
+                    return values[i];
+            }
+
+            return string.Empty;
+        }
+
+        private static string Limit(string value)
+        {
+            if (string.IsNullOrEmpty(value) || value.Length <= DetailLimit)
+                return value ?? string.Empty;
+            return value.Substring(0, DetailLimit) + "…";
+        }
     }
 }

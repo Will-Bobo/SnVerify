@@ -22,7 +22,14 @@ namespace SnVerify.Tests.Services
             Assert.That(snapshot.HasOverallResult, Is.False);
             Assert.That(snapshot.OverallText, Is.Empty);
             Assert.That(snapshot.Headline, Is.EqualTo(Yme009WorkstationText.AccessFailed));
+            Assert.That(snapshot.HeadlineKind, Is.EqualTo(Yme009HeadlineKind.Exception));
             Assert.That(snapshot.SaveStatusText, Is.EqualTo(Yme009WorkstationText.NotSavedRecord));
+            var display = Present(snapshot);
+            Assert.That(display.Title, Is.EqualTo("设备接入失败"));
+            Assert.That(display.Detail, Is.EqualTo("请检查设备连接"));
+            Assert.That(display.Background, Is.EqualTo(Yme009StatusPresentation.AttentionColor));
+            Assert.That(display.Title, Is.Not.EqualTo(Yme009WorkstationText.WaitingForScan));
+            Assert.That(display.ScanSideText, Is.Empty);
         }
 
         [Test]
@@ -36,7 +43,13 @@ namespace SnVerify.Tests.Services
             var snapshot = Yme009WorkstationSnapshot.FromResult(result, "SN-1");
 
             Assert.That(snapshot.Headline, Is.EqualTo(Yme009WorkstationText.NotReady));
+            Assert.That(snapshot.HeadlineKind, Is.EqualTo(Yme009HeadlineKind.Exception));
             Assert.That(snapshot.HasOverallResult, Is.False);
+            var display = Present(snapshot);
+            Assert.That(display.Title, Is.EqualTo("设备连接未就绪"));
+            Assert.That(display.Detail, Is.EqualTo("请检查设备"));
+            Assert.That(display.Background, Is.EqualTo(Yme009StatusPresentation.AttentionColor));
+            Assert.That(display.ScanSideText, Is.Empty);
         }
 
         [Test]
@@ -152,11 +165,163 @@ namespace SnVerify.Tests.Services
             var snapshot = Yme009WorkstationSnapshot.FromResult(result, "SN-1");
 
             Assert.That(snapshot.OverallText, Is.EqualTo("FAIL"));
+            Assert.That(snapshot.HeadlineKind, Is.EqualTo(Yme009HeadlineKind.Exception));
+            Assert.That(snapshot.Headline, Is.EqualTo(Yme009WorkstationText.ReadException));
             Assert.That(snapshot.ProcessPrompt, Is.EqualTo(Yme009WorkstationText.ReadException));
+            var readDisplay = Present(snapshot);
+            Assert.That(readDisplay.Title, Is.EqualTo(Yme009WorkstationText.ReadException));
+            Assert.That(readDisplay.Detail, Is.EqualTo(Yme009FailReasonCodes.RequiredValueMissingText));
+            Assert.That(readDisplay.Background, Is.EqualTo(Yme009StatusPresentation.AttentionColor));
+            Assert.That(readDisplay.ScanSideText, Is.Empty);
             Assert.That(snapshot.PrimaryReason, Is.EqualTo(Yme009FailReasonCodes.RequiredValueMissingText));
             Assert.That(snapshot.Imei1Text, Is.EqualTo(Yme009WorkstationText.NotRead));
             Assert.That(snapshot.CitJudgment, Is.EqualTo("FAIL"));
             Assert.That(snapshot.CitReason, Is.EqualTo(Yme009FailReasonCodes.ItemUntested));
+        }
+
+        [Test]
+        public void Should_ShowNeutralWaiting_When_NoRoundHasStarted()
+        {
+            var snapshot = Yme009WorkstationSnapshot.IdleWaiting();
+            var display = Present(snapshot);
+
+            Assert.That(snapshot.HeadlineKind, Is.EqualTo(Yme009HeadlineKind.Neutral));
+            Assert.That(display.Title, Is.EqualTo(Yme009WorkstationText.WaitingForScan));
+            Assert.That(display.Background, Is.EqualTo(Yme009StatusPresentation.NeutralColor));
+            Assert.That(display.ScanSideText, Is.Empty);
+        }
+
+        [Test]
+        public void Should_ShowRunningStage_When_RoundIsRunning()
+        {
+            var snapshot = Yme009WorkstationSnapshot.Running("SN-9", Yme009WorkstationText.Reading);
+            var display = Present(snapshot);
+
+            Assert.That(display.Title, Is.EqualTo("检验中..."));
+            Assert.That(display.Detail, Is.EqualTo(Yme009WorkstationText.Reading));
+            Assert.That(display.Background, Is.EqualTo(Yme009StatusPresentation.RunningColor));
+            Assert.That(display.ScanSideText, Is.EqualTo(display.Detail));
+            Assert.That(display.ScanSideText, Is.Not.EqualTo(Yme009WorkstationText.WaitingForScan));
+        }
+
+        [Test]
+        public void Should_ShowPassInGreen_When_ResultIsPass()
+        {
+            var display = Present(SnapshotOf(PassDecision("D", "V", "1", "2", "M")));
+
+            Assert.That(display.Title, Is.EqualTo("PASS"));
+            Assert.That(display.Detail, Is.EqualTo(Yme009WorkstationText.PassDetail));
+            Assert.That(display.Background, Is.EqualTo(Yme009StatusPresentation.PassColor));
+            Assert.That(display.ScanSideText, Is.Empty);
+        }
+
+        [Test]
+        public void Should_ShowFailReasonInRed_When_ResultIsBusinessFail()
+        {
+            var decision = Yme009InspectionDecision.Judged(
+                Attributes(
+                    Ok(Yme009FieldKind.DeviceSn, "D"),
+                    Ok(Yme009FieldKind.SoftwareVersion, "V"),
+                    Ok(Yme009FieldKind.Imei1, "1"),
+                    Ok(Yme009FieldKind.Imei2, "2"),
+                    Ok(Yme009FieldKind.WifiMac, "M"),
+                    Ok(Yme009FieldKind.ProductionTest, "0"),
+                    Ok(Yme009FieldKind.AgingReboot, "1"),
+                    Ok(Yme009FieldKind.AgingReset, "1")),
+                "FAIL",
+                Yme009FailReasonCodes.CitFail,
+                Yme009ItemJudgment.Pass,
+                Yme009ItemJudgment.Pass,
+                Yme009ItemJudgment.Fail,
+                Yme009ItemJudgment.Pass,
+                Yme009ItemJudgment.Pass,
+                null,
+                null,
+                Yme009FailReasonCodes.ItemTestFailed,
+                null,
+                null);
+            var snapshot = SnapshotOf(decision);
+            var display = Present(snapshot);
+
+            Assert.That(snapshot.HeadlineKind, Is.EqualTo(Yme009HeadlineKind.Fail));
+            Assert.That(display.Title, Is.EqualTo("FAIL"));
+            Assert.That(display.Detail, Is.EqualTo(Yme009FailReasonCodes.CitFailText));
+            Assert.That(display.Background, Is.EqualTo(Yme009StatusPresentation.FailColor));
+            Assert.That(display.ScanSideText, Is.Empty);
+        }
+
+        [Test]
+        public void Should_TruncateLongFailReason_When_PrimaryReasonExceedsTheCard()
+        {
+            var reason = new string('错', 40);
+            var display = Yme009StatusPresentation.Map(
+                Yme009HeadlineKind.Fail,
+                "FAIL",
+                string.Empty,
+                reason,
+                string.Empty,
+                null);
+
+            Assert.That(display.Detail, Is.EqualTo(new string('错', 36) + "…"));
+            Assert.That(display.Background, Is.EqualTo(Yme009StatusPresentation.FailColor));
+        }
+
+        [Test]
+        public void Should_ShowUnresolvedInOrange_When_IdentityIsUnresolved()
+        {
+            var snapshot = SnapshotOf(Yme009ExpectedIdentityDecision.Apply(
+                PassDecision("D", "V", "1", "2", "M"),
+                Yme009ExpectedIdentityCheck.UnresolvedQuery()));
+            var display = Present(snapshot);
+
+            Assert.That(snapshot.HeadlineKind, Is.EqualTo(Yme009HeadlineKind.Unresolved));
+            Assert.That(display.Title, Is.EqualTo(Yme009ResultClassifier.UnresolvedResult));
+            Assert.That(display.Detail, Is.EqualTo(Yme009WorkstationText.UnresolvedDetail));
+            Assert.That(display.Background, Is.EqualTo(Yme009StatusPresentation.AttentionColor));
+            Assert.That(display.Background, Is.Not.EqualTo(Yme009StatusPresentation.NeutralColor));
+            Assert.That(display.ScanSideText, Is.Empty);
+        }
+
+        [Test]
+        public void Should_ShowRoundIncomplete_When_RoundFaults()
+        {
+            var snapshot = Yme009WorkstationSnapshot.Fault("SN-1");
+            var display = Present(snapshot);
+
+            Assert.That(snapshot.HeadlineKind, Is.EqualTo(Yme009HeadlineKind.Exception));
+            Assert.That(display.Title, Is.EqualTo("检测未完成"));
+            Assert.That(display.Detail, Is.EqualTo("记录未保存"));
+            Assert.That(display.Background, Is.EqualTo(Yme009StatusPresentation.AttentionColor));
+            Assert.That(display.Title, Is.Not.EqualTo(Yme009WorkstationText.WaitingForScan));
+            Assert.That(display.ScanSideText, Is.Empty);
+        }
+
+        [Test]
+        public void Should_KeepImportCompleteDistinctFromPass()
+        {
+            var display = Yme009StatusPresentation.Map(
+                Yme009HeadlineKind.ImportComplete,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                string.Empty,
+                "已导入 3 条");
+
+            Assert.That(display.Title, Is.EqualTo(Yme009ExpectedOperatorText.ImportDoneTitle));
+            Assert.That(display.Detail, Is.EqualTo("已导入 3 条"));
+            Assert.That(display.Background, Is.EqualTo(Yme009StatusPresentation.ImportCompleteColor));
+            Assert.That(display.Background, Is.Not.EqualTo(Yme009StatusPresentation.PassColor));
+        }
+
+        private static Yme009StatusPresentation Present(Yme009WorkstationSnapshot snapshot)
+        {
+            return Yme009StatusPresentation.Map(
+                snapshot.HeadlineKind,
+                snapshot.Headline,
+                snapshot.ProcessPrompt,
+                snapshot.PrimaryReason,
+                snapshot.ExpectedIdentityReason,
+                null);
         }
 
         [Test]
