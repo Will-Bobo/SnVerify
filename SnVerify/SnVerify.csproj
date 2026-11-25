@@ -121,6 +121,8 @@
     <Compile Include="Domain\Product\Yme009SessionStatistics.cs" />
     <Compile Include="Domain\Product\Yme009InspectionJudge.cs" />
     <Compile Include="Domain\Product\Yme009PassHistoryDecision.cs" />
+    <Compile Include="Domain\Product\Yme009ExpectedDataRules.cs" />
+    <Compile Include="Domain\Product\Yme009ExpectedIdentityDecision.cs" />
     <Compile Include="Domain\Product\Yme009CdcRecognition.cs" />
     <Compile Include="Domain\Product\Yme009CdcUniquenessGate.cs" />
     <Compile Include="Domain\Product\Yme009AtExchange.cs" />
@@ -140,6 +142,7 @@
     <Compile Include="Infrastructure\Yme009\SetupApiYme009CdcDiscovery.cs" />
     <Compile Include="Infrastructure\Yme009\Yme009SerialPortFactory.cs" />
     <Compile Include="Infrastructure\Yme009\Yme009ProcessAdbDeviceQuery.cs" />
+    <Compile Include="Infrastructure\Excel\XlsxFirstSheetReader.cs" />
     <Compile Include="Domain\Product\DeviceInfoCommandSet.cs" />
     <Compile Include="Domain\DeviceAccess\DeviceInfoField.cs" />
     <Compile Include="Domain\DeviceAccess\DeviceInfoCommand.cs" />
@@ -226,6 +229,9 @@
     <Compile Include="Services\Mes\JekeMesPlugin.cs" />
     <Compile Include="Services\Storage\IStorageService.cs" />
     <Compile Include="Services\Storage\StorageService.cs" />
+    <Compile Include="Services\Storage\StorageService.Yme009Expected.cs" />
+    <Compile Include="Services\ExpectedData\Yme009ExpectedWorkbook.cs" />
+    <Compile Include="Services\ExpectedData\Yme009ExpectedDataService.cs" />
     <Compile Include="Services\Storage\ISessionExporter.cs" />
     <Compile Include="Services\Storage\LegacySessionExporter.cs" />
     <Compile Include="Services\Storage\Export\IExportValueResolver.cs" />

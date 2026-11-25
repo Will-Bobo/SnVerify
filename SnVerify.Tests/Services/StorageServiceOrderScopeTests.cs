@@ -153,6 +153,7 @@ namespace SnVerify.Tests.Services
 
             await _storage.SaveTestRecordAsync(Record(previous, "SN-FAIL", "FAIL"));
             await _storage.SaveTestRecordAsync(Record(previous, "SN-TIME", "TIMEOUT"));
+            await _storage.SaveTestRecordAsync(Record(previous, "SN-OPEN", Yme009ResultClassifier.UnresolvedResult));
             await _storage.SaveTestRecordAsync(Record(previous, "SN-PASS", "PASS"));
             await _storage.SaveTestRecordAsync(Record(current, "SN-CURRENT", "PASS"));
             await _storage.SaveTestRecordAsync(Record(otherOrder, "SN-ORDER", "PASS"));
@@ -165,6 +166,7 @@ namespace SnVerify.Tests.Services
             Assert.That(await _storage.IsStickerSnPassedInBatchAsync(scope.ProductName, scope.OrderName, "SN-NONE"), Is.False);
             Assert.That(await _storage.IsStickerSnPassedInBatchAsync(scope.ProductName, scope.OrderName, "SN-FAIL"), Is.False);
             Assert.That(await _storage.IsStickerSnPassedInBatchAsync(scope.ProductName, scope.OrderName, "SN-TIME"), Is.False);
+            Assert.That(await _storage.IsStickerSnPassedInBatchAsync(scope.ProductName, scope.OrderName, "SN-OPEN"), Is.False);
             Assert.That(await _storage.IsStickerSnPassedInBatchAsync(scope.ProductName, scope.OrderName, "SN-PASS"), Is.True);
             Assert.That(await _storage.IsStickerSnPassedInBatchAsync(scope.ProductName, scope.OrderName, "SN-CURRENT"), Is.True);
             Assert.That(await _storage.IsStickerSnPassedInBatchAsync(scope.ProductName, scope.OrderName, "SN-ORDER"), Is.False);

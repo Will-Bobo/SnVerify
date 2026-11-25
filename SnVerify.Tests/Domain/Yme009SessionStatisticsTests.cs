@@ -147,6 +147,26 @@ namespace SnVerify.Tests.Domain
             Assert.That(statistics.PassRateText, Is.EqualTo("33.33%"));
         }
 
+        [Test]
+        public void Should_CountUnresolvedSeparately_When_ResultIsUnresolved()
+        {
+            var statistics = Yme009SessionStatistics.Summarize(new[]
+            {
+                Record("SN-1", Yme009ResultClassifier.PassResult, null),
+                Record("SN-2", Yme009ResultClassifier.FailResult, Yme009FailReasonCodes.SnMismatch),
+                Record("SN-3", Yme009ResultClassifier.FailResult, Yme009FailReasonCodes.ReadFail),
+                Record("SN-4", Yme009ResultClassifier.UnresolvedResult, null),
+                Record("SN-5", "TIMEOUT", null),
+                Record("SN-6", Yme009ResultClassifier.FailResult, null)
+            });
+
+            Assert.That(statistics.PassCount, Is.EqualTo(1));
+            Assert.That(statistics.BusinessFailCount, Is.EqualTo(1));
+            Assert.That(statistics.ReadExceptionCount, Is.EqualTo(1));
+            Assert.That(statistics.UnresolvedCount, Is.EqualTo(1));
+            Assert.That(statistics.PassRateText, Is.EqualTo("50.00%"));
+        }
+
         private static TestRecord Record(string stickerSn, string result, string failReason)
         {
             return new TestRecord

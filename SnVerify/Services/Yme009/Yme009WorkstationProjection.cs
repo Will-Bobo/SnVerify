@@ -23,7 +23,11 @@ namespace SnVerify.Services.Yme009
         Neutral = 0,
         Running = 1,
         Pass = 2,
-        Fail = 3
+        Fail = 3,
+        Importing = 4,
+        ImportComplete = 5,
+        ReadyToTest = 6,
+        Unresolved = 7
     }
 
     /// <summary>
@@ -83,6 +87,10 @@ namespace SnVerify.Services.Yme009
 
         public string ResetRaw { get; private set; }
 
+        public string ExpectedIdentityJudgment { get; private set; }
+
+        public string ExpectedIdentityReason { get; private set; }
+
         public string Imei1Text { get; private set; }
 
         public string Imei2Text { get; private set; }
@@ -128,7 +136,8 @@ namespace SnVerify.Services.Yme009
 
             var formal = decision != null
                 && (decision.Result == Yme009ResultClassifier.PassResult
-                    || decision.Result == Yme009ResultClassifier.FailResult);
+                    || decision.Result == Yme009ResultClassifier.FailResult
+                    || decision.Result == Yme009ResultClassifier.UnresolvedResult);
             Yme009RoundPhase phase;
             if (formal)
                 phase = Yme009RoundPhase.Completed;
@@ -156,11 +165,26 @@ namespace SnVerify.Services.Yme009
             }
 
             var pass = decision.Result == Yme009ResultClassifier.PassResult;
+            var unresolved = decision.Result == Yme009ResultClassifier.UnresolvedResult;
             snapshot.HasOverallResult = true;
-            snapshot.OverallText = pass ? "PASS" : "FAIL";
+            if (unresolved)
+            {
+                snapshot.OverallText = Yme009ResultClassifier.UnresolvedResult;
+                snapshot.HeadlineKind = Yme009HeadlineKind.Unresolved;
+            }
+            else if (pass)
+            {
+                snapshot.OverallText = Yme009ResultClassifier.PassResult;
+                snapshot.HeadlineKind = Yme009HeadlineKind.Pass;
+            }
+            else
+            {
+                snapshot.OverallText = Yme009ResultClassifier.FailResult;
+                snapshot.HeadlineKind = Yme009HeadlineKind.Fail;
+            }
+
             snapshot.Headline = snapshot.OverallText;
-            snapshot.HeadlineKind = pass ? Yme009HeadlineKind.Pass : Yme009HeadlineKind.Fail;
-            snapshot.PrimaryReason = pass ? string.Empty : FailReasonTextResolverSafe(decision.FailReason);
+            snapshot.PrimaryReason = pass || unresolved ? string.Empty : FailReasonTextResolverSafe(decision.FailReason);
             snapshot.SaveStatusText = result.RecordSaved && result.RecordId > 0
                 ? Yme009WorkstationText.Saved
                 : Yme009WorkstationText.RecordNotSaved;
@@ -217,6 +241,8 @@ namespace SnVerify.Services.Yme009
                 ResetJudgment = Yme009WorkstationText.WaitingItem,
                 ResetReason = string.Empty,
                 ResetRaw = string.Empty,
+                ExpectedIdentityJudgment = Yme009WorkstationText.WaitingItem,
+                ExpectedIdentityReason = string.Empty,
                 Imei1Text = Yme009WorkstationText.NotRead,
                 Imei2Text = Yme009WorkstationText.NotRead,
                 WifiMacText = Yme009WorkstationText.NotRead
@@ -245,6 +271,9 @@ namespace SnVerify.Services.Yme009
             snapshot.ResetJudgment = Item(decision.AgingReset);
             snapshot.ResetReason = Reason(decision.AgingReset, decision.AgingResetReason);
             snapshot.ResetRaw = Show(attributes == null ? null : attributes.AgingReset);
+            var identity = decision.ExpectedIdentity;
+            snapshot.ExpectedIdentityJudgment = identity == null ? string.Empty : identity.JudgmentText;
+            snapshot.ExpectedIdentityReason = identity == null ? string.Empty : identity.ReasonText;
         }
 
         private static string Item(Yme009ItemJudgment judgment)

@@ -1,6 +1,7 @@
 using NUnit.Framework;
 using SnVerify.Domain.Product;
 using SnVerify.Services.Yme009;
+using SnVerify.Tests.Domain;
 
 namespace SnVerify.Tests.Services
 {
@@ -84,6 +85,44 @@ namespace SnVerify.Tests.Services
         }
 
         [Test]
+        public void Should_ProjectIdentityStatesWithoutTreatingNeutralResultsAsFail()
+        {
+            var pass = Yme009AttributeSamples.Decide(new Yme009RawBuilder().Build());
+            var snapshot = SnapshotOf(Yme009ExpectedIdentityDecision.Apply(pass, Yme009ExpectedIdentityCheck.NotEnabled()));
+            Assert.That(snapshot.ExpectedIdentityJudgment, Is.EqualTo("未启用"));
+            Assert.That(snapshot.ExpectedIdentityReason, Is.Empty);
+            Assert.That(snapshot.OverallText, Is.EqualTo("PASS"));
+
+            snapshot = SnapshotOf(Yme009ExpectedIdentityDecision.Apply(pass, Yme009ExpectedIdentityCheck.NotExecuted()));
+            Assert.That(snapshot.ExpectedIdentityJudgment, Is.EqualTo("未执行"));
+            Assert.That(snapshot.OverallText, Is.EqualTo("PASS"));
+
+            snapshot = SnapshotOf(Yme009ExpectedIdentityDecision.Apply(
+                pass,
+                Yme009ExpectedIdentityCheck.Failed("不匹配字段：IMEI1")));
+            Assert.That(snapshot.ExpectedIdentityJudgment, Is.EqualTo("FAIL"));
+            Assert.That(snapshot.ExpectedIdentityReason, Is.EqualTo("不匹配字段：IMEI1"));
+            Assert.That(snapshot.OverallText, Is.EqualTo("FAIL"));
+            Assert.That(snapshot.PrimaryReason, Is.Empty);
+
+            var duplicate = Yme009PassHistoryDecision.Apply(pass, "SN1", Yme009PassHistoryQueryDisposition.HistoricalPass);
+            snapshot = SnapshotOf(Yme009ExpectedIdentityDecision.Apply(duplicate, Yme009ExpectedIdentityCheck.UnresolvedHistoricalPass()));
+            Assert.That(snapshot.ExpectedIdentityJudgment, Is.Empty);
+            Assert.That(snapshot.ExpectedIdentityReason, Is.Empty);
+            Assert.That(snapshot.PrimaryReason, Is.EqualTo("设备SN已经检验"));
+
+            snapshot = SnapshotOf(Yme009ExpectedIdentityDecision.Apply(pass, Yme009ExpectedIdentityCheck.UnresolvedQuery()));
+            Assert.That(snapshot.ExpectedIdentityJudgment, Is.Empty);
+            Assert.That(snapshot.Phase, Is.EqualTo(Yme009RoundPhase.Completed));
+            Assert.That(snapshot.HasOverallResult, Is.True);
+            Assert.That(snapshot.OverallText, Is.EqualTo(Yme009ResultClassifier.UnresolvedResult));
+            Assert.That(snapshot.Headline, Is.EqualTo(Yme009ResultClassifier.UnresolvedResult));
+            Assert.That(snapshot.HeadlineKind, Is.EqualTo(Yme009HeadlineKind.Unresolved));
+            Assert.That(snapshot.PrimaryReason, Is.Empty);
+            Assert.That(snapshot.ProcessPrompt, Is.Not.EqualTo(Yme009WorkstationText.RoundIncomplete));
+        }
+
+        [Test]
         public void EmptyInformation_ShowsNotRead_AndReadFailurePrompt()
         {
             var decision = Yme009InspectionDecision.Judged(
@@ -130,6 +169,19 @@ namespace SnVerify.Tests.Services
             Assert.That(snapshot.Headline, Is.EqualTo(Yme009WorkstationText.Connecting));
             Assert.That(snapshot.SnJudgment, Is.EqualTo(Yme009WorkstationText.WaitingItem));
             Assert.That(snapshot.ScannedSn, Is.EqualTo("SN-9"));
+        }
+
+        private static Yme009WorkstationSnapshot SnapshotOf(Yme009InspectionDecision decision)
+        {
+            var result = new Yme009RoundResult(
+                new Yme009AccessResult(Yme009AccessStop.AccessSucceeded, true, null, string.Empty),
+                Yme009CloseAttempt.NotAttempted(),
+                true,
+                "ignored",
+                true,
+                1,
+                decision);
+            return Yme009WorkstationSnapshot.FromResult(result, "SN1");
         }
 
         private static Yme009InspectionDecision PassDecision(string device, string version, string imei1, string imei2, string mac)

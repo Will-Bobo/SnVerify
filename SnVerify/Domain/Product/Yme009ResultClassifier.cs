@@ -5,7 +5,8 @@ namespace SnVerify.Domain.Product
         Pass = 0,
         BusinessFail = 1,
         ReadException = 2,
-        Unregistered = 3
+        Unregistered = 3,
+        Unresolved = 4
     }
 
     /// <summary>
@@ -15,9 +16,13 @@ namespace SnVerify.Domain.Product
     {
         public const string PassResult = "PASS";
         public const string FailResult = "FAIL";
+        public const string UnresolvedResult = "UNRESOLVED";
 
         public static Yme009StatisticBucket Classify(string result, string failReason)
         {
+            if (result == UnresolvedResult)
+                return Yme009StatisticBucket.Unresolved;
+
             if (result == PassResult && string.IsNullOrEmpty(failReason))
                 return Yme009StatisticBucket.Pass;
 

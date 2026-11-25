@@ -67,6 +67,18 @@ namespace SnVerify.Ui
         }
 
         /// <inheritdoc />
+        public string ChooseOpenFile(string title, string filter)
+        {
+            var dialog = new Microsoft.Win32.OpenFileDialog
+            {
+                Title = title ?? "选择文件",
+                Filter = string.IsNullOrWhiteSpace(filter) ? "所有文件|*.*" : filter,
+                CheckFileExists = true,
+                Multiselect = false
+            };
+            return dialog.ShowDialog() == true ? dialog.FileName : null;
+        }
+
         public string ChooseFolder(string description, string initialPath = null)
         {
             using (var dialog = new System.Windows.Forms.FolderBrowserDialog())

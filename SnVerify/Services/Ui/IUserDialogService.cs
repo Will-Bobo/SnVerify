@@ -54,6 +54,11 @@ namespace SnVerify.Services.Ui
         string ChooseFolder(string description, string initialPath = null);
 
         /// <summary>
+        /// 选择一个已存在的文件。返回 null 表示用户取消。
+        /// </summary>
+        string ChooseOpenFile(string title, string filter);
+
+        /// <summary>
         /// 覆盖确认；true 表示允许覆盖，false 表示取消。
         /// </summary>
         bool ConfirmOverwrite(string message);

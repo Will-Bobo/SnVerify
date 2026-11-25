@@ -109,6 +109,7 @@ namespace SnVerify.Tests.ViewModels
             await first;
 
             Assert.That(vm.Yme009OverallText, Is.EqualTo("PASS"));
+            Assert.That(vm.Yme009StatusTitle, Is.EqualTo("PASS"));
             Assert.That(vm.IsYme009ScanAllowed, Is.True);
             Assert.That(vm.Yme009SessionRecords.Count, Is.EqualTo(0));
 
@@ -126,6 +127,33 @@ namespace SnVerify.Tests.ViewModels
 
             release.TrySetResult(PassRound());
             await second;
+        }
+
+        [Test]
+        public async Task Should_ShowUnresolvedHeadline_When_RoundResultIsUnresolved()
+        {
+            var release = new TaskCompletionSource<Yme009RoundResult>();
+            var round = new Mock<IYme009RoundCoordinator>();
+            round.Setup(r => r.RunAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+                .Returns(() => release.Task);
+            var vm = Yme009ProductAccessTests.CreateForWorkstation(out var session, round.Object);
+            vm.SelectedProductCode = Yme009Product.Code;
+            vm.ExpectedAndroidVersion = "TARGET-1";
+            session.Setup(s => s.GetCurrentSessionId()).Returns("S-1");
+            vm.SessionSnapshot = SessionSnapshot.Active("S-1", "ORDER", DateTime.Now);
+
+            var scan = vm.HandleScanInputAsync("SN-1");
+            release.TrySetResult(UnresolvedRound());
+            await scan;
+
+            Assert.That(vm.Yme009RoundPhase, Is.EqualTo(Yme009RoundPhase.Completed));
+            Assert.That(vm.Yme009HasOverallResult, Is.True);
+            Assert.That(vm.Yme009OverallText, Is.EqualTo(Yme009ResultClassifier.UnresolvedResult));
+            Assert.That(vm.Yme009HeadlineKind, Is.EqualTo(Yme009HeadlineKind.Unresolved));
+            Assert.That(vm.Yme009StatusTitle, Is.EqualTo(Yme009ResultClassifier.UnresolvedResult));
+            Assert.That(vm.Yme009StatusTitle, Is.Not.EqualTo("FAIL"));
+            Assert.That(vm.Yme009StatusTitle, Is.Not.EqualTo("等待扫码"));
+            Assert.That(vm.Yme009ProcessPrompt, Is.Not.EqualTo(Yme009WorkstationText.RoundIncomplete));
         }
 
         private static Yme009RoundResult PassRound()
@@ -160,6 +188,13 @@ namespace SnVerify.Tests.ViewModels
                 true,
                 4,
                 decision);
+        }
+
+        private static Yme009RoundResult UnresolvedRound()
+        {
+            var pass = PassRound();
+            var decision = Yme009ExpectedIdentityDecision.Apply(pass.Decision, Yme009ExpectedIdentityCheck.UnresolvedQuery("InvalidOperationException：expected"));
+            return new Yme009RoundResult(pass.Access, pass.Close, pass.CleanedUp, "log", true, 5, decision);
         }
 
         [Test]

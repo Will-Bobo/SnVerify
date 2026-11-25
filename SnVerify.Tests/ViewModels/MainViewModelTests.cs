@@ -1199,13 +1199,12 @@ namespace SnVerify.Tests.ViewModels
             _orderNameValidatorMock.Setup(v => v.Validate(orderId, out validationMessage)).Returns(true);
             _storageServiceMock.Setup(s => s.ProjectNameExistsAsync(projectId)).ReturnsAsync(true);
             _dialogServiceMock.Setup(d => d.Confirm(It.Is<string>(m => m != null && m.Contains("EXISTING_PROJECT")), It.IsAny<string>())).Returns(true);
+            _sessionLifecycleServiceMock.Setup(s => s.Snapshot).Returns(SessionSnapshot.Idle());
             _sessionLifecycleServiceMock
                 .Setup(s => s.CreateAndStartSession(orderId, orderId, projectId, It.IsAny<string>()))
+                .Callback(() => _sessionLifecycleServiceMock.Setup(s => s.Snapshot)
+                    .Returns(SessionSnapshot.Active(sessionId, orderId, DateTime.Now)))
                 .Returns(sessionId);
-            _sessionLifecycleServiceMock
-                .SetupSequence(s => s.Snapshot)
-                .Returns(SessionSnapshot.Idle())
-                .Returns(SessionSnapshot.Active(sessionId, orderId, DateTime.Now));
             _flowServiceFactoryMock.Setup(f => f.Create(sessionId, orderId, It.IsAny<string>())).Returns(_verificationFlowServiceMock.Object);
 
             _viewModel.ProjectIdInput = projectId;

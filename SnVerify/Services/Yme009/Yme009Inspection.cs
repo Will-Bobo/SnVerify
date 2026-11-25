@@ -71,7 +71,9 @@ namespace SnVerify.Services.Yme009
                 VersionJudgment = decision.SoftwareVersion.ToString(),
                 CitJudgment = decision.ProductionTest.ToString(),
                 AgingRebootJudgment = decision.AgingReboot.ToString(),
-                AgingResetJudgment = decision.AgingReset.ToString()
+                AgingResetJudgment = decision.AgingReset.ToString(),
+                IdentityDisposition = decision.ExpectedIdentity == null ? null : decision.ExpectedIdentity.Disposition.ToString(),
+                IdentityDetail = decision.ExpectedIdentity == null ? null : decision.ExpectedIdentity.Detail
             };
         }
 
@@ -106,9 +108,11 @@ namespace SnVerify.Services.Yme009
                 return string.IsNullOrWhiteSpace(note) ? "检测未完成，记录未保存" : note;
 
             var attributes = decision.Attributes;
-            var overall = decision.Result == "PASS"
-                ? "PASS"
-                : "FAIL：" + FailReasonTextResolver.Resolve(decision.FailReason);
+            var overall = decision.Result == Yme009ResultClassifier.UnresolvedResult
+                ? Yme009ResultClassifier.UnresolvedResult
+                : decision.Result == Yme009ResultClassifier.PassResult
+                    ? Yme009ResultClassifier.PassResult
+                    : "FAIL：" + FailReasonTextResolver.Resolve(decision.FailReason);
             var saveText = saved && recordId > 0
                 ? "记录已保存 Id=" + recordId
                 : "记录未保存";
@@ -121,8 +125,21 @@ namespace SnVerify.Services.Yme009
                 + Environment.NewLine + Item("产测结果", attributes.ProductionTest, decision.ProductionTest, decision.ProductionTestReason)
                 + Environment.NewLine + Item("重启老化", attributes.AgingReboot, decision.AgingReboot, decision.AgingRebootReason)
                 + Environment.NewLine + Item("恢复出厂老化", attributes.AgingReset, decision.AgingReset, decision.AgingResetReason)
+                + IdentityLine(decision)
                 + Environment.NewLine + "综合=" + overall
                 + Environment.NewLine + saveText;
+        }
+
+        private static string IdentityLine(Yme009InspectionDecision decision)
+        {
+            var check = decision.ExpectedIdentity;
+            if (check == null || check.JudgmentText.Length == 0)
+                return string.Empty;
+
+            var text = Environment.NewLine + "项目预期数据校验=" + check.JudgmentText;
+            if (check.ReasonText.Length > 0)
+                text += "，" + check.ReasonText;
+            return text;
         }
 
         private static string Field(string name, Yme009ParsedField field)

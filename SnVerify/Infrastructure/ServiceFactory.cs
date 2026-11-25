@@ -19,6 +19,7 @@ using SnVerify.Services.Parameter;
 using SnVerify.Services.Verification;
 using SnVerify.Services.Rules;
 using SnVerify.Services.DeviceAccess;
+using SnVerify.Services.ExpectedData;
 using SnVerify.Domain.DeviceAccess;
 using SnVerify.Infrastructure.DeviceAccess.Session;
 using SnVerify.Infrastructure.DeviceAccess.Command;
@@ -174,7 +175,8 @@ namespace SnVerify.Infrastructure
                 productRegistry,
                 parameterService,
                 deviceAccessService,
-                yme009Round);
+                yme009Round,
+                new Yme009ExpectedDataService(storageService));
 
             return viewModel;
         }

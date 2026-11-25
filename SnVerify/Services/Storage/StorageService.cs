@@ -24,7 +24,7 @@ namespace SnVerify.Services.Storage
     /// <summary>
     /// 存储服务实现，负责 SQLite 数据持久化和 Excel 导出（Phase2 扩展）
     /// </summary>
-    public class StorageService : IStorageService, IDisposable
+    public partial class StorageService : IStorageService, IDisposable
     {
         private readonly string _dbPath;
         private readonly IFileLogger _logger;
@@ -178,6 +178,8 @@ CREATE TABLE IF NOT EXISTS TestRecord (
     CitJudgment               TEXT,
     AgingRebootJudgment       TEXT,
     AgingResetJudgment        TEXT,
+    IdentityDisposition       TEXT,
+    IdentityDetail            TEXT,
     FOREIGN KEY (SessionId) REFERENCES TestSession(Id)
 );";
 
@@ -240,6 +242,7 @@ CREATE TABLE IF NOT EXISTS VerificationParameter (
             await ExecuteNonQueryAsync(createTestRecordStickerIdx);
             await ExecuteNonQueryAsync(createTestRecordDeviceIdx);
             await ExecuteNonQueryAsync(createTestRecordChipIdx);
+            await CreateYme009ExpectedTablesAsync();
         }
 
         /// <summary>
@@ -351,7 +354,8 @@ CREATE TABLE ""Order_new"" (
             "Imei1", "Imei2", "CitValue", "AgingRebootValue", "AgingResetValue",
             "SnReadStatus", "VersionReadStatus", "Imei1ReadStatus", "Imei2ReadStatus", "WifiMacReadStatus",
             "CitReadStatus", "AgingRebootReadStatus", "AgingResetReadStatus",
-            "SnJudgment", "VersionJudgment", "CitJudgment", "AgingRebootJudgment", "AgingResetJudgment"
+            "SnJudgment", "VersionJudgment", "CitJudgment", "AgingRebootJudgment", "AgingResetJudgment",
+            "IdentityDisposition", "IdentityDetail"
         };
 
         private static void ApplyYme009Columns(SQLiteDataReader reader, TestRecord record)
@@ -374,6 +378,8 @@ CREATE TABLE ""Order_new"" (
             record.CitJudgment = ReadOptional(reader, 30);
             record.AgingRebootJudgment = ReadOptional(reader, 31);
             record.AgingResetJudgment = ReadOptional(reader, 32);
+            record.IdentityDisposition = ReadOptional(reader, 33);
+            record.IdentityDetail = ReadOptional(reader, 34);
         }
 
         private static string ReadOptional(SQLiteDataReader reader, int ordinal)
@@ -1310,8 +1316,8 @@ CREATE TABLE VerificationParameter (
             EnsureConnectionInitialized();
 
             var sql = @"
-                INSERT INTO TestRecord (SessionId, StickerSN, DeviceSN, WifiMac, ChipId, BoardVersion, ChargeBoardVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion, Result, FailReason, VerifyTime, ExpectedVersion, ActualVersion, Imei1, Imei2, CitValue, AgingRebootValue, AgingResetValue, SnReadStatus, VersionReadStatus, Imei1ReadStatus, Imei2ReadStatus, WifiMacReadStatus, CitReadStatus, AgingRebootReadStatus, AgingResetReadStatus, SnJudgment, VersionJudgment, CitJudgment, AgingRebootJudgment, AgingResetJudgment)
-                VALUES (@SessionId, @StickerSN, @DeviceSN, @WifiMac, @ChipId, @BoardVersion, @ChargeBoardVersion, @ExpectedBoardVersion, @ExpectedChargeBoardVersion, @Result, @FailReason, @VerifyTime, @ExpectedVersion, @ActualVersion, @Imei1, @Imei2, @CitValue, @AgingRebootValue, @AgingResetValue, @SnReadStatus, @VersionReadStatus, @Imei1ReadStatus, @Imei2ReadStatus, @WifiMacReadStatus, @CitReadStatus, @AgingRebootReadStatus, @AgingResetReadStatus, @SnJudgment, @VersionJudgment, @CitJudgment, @AgingRebootJudgment, @AgingResetJudgment)";
+                INSERT INTO TestRecord (SessionId, StickerSN, DeviceSN, WifiMac, ChipId, BoardVersion, ChargeBoardVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion, Result, FailReason, VerifyTime, ExpectedVersion, ActualVersion, Imei1, Imei2, CitValue, AgingRebootValue, AgingResetValue, SnReadStatus, VersionReadStatus, Imei1ReadStatus, Imei2ReadStatus, WifiMacReadStatus, CitReadStatus, AgingRebootReadStatus, AgingResetReadStatus, SnJudgment, VersionJudgment, CitJudgment, AgingRebootJudgment, AgingResetJudgment, IdentityDisposition, IdentityDetail)
+                VALUES (@SessionId, @StickerSN, @DeviceSN, @WifiMac, @ChipId, @BoardVersion, @ChargeBoardVersion, @ExpectedBoardVersion, @ExpectedChargeBoardVersion, @Result, @FailReason, @VerifyTime, @ExpectedVersion, @ActualVersion, @Imei1, @Imei2, @CitValue, @AgingRebootValue, @AgingResetValue, @SnReadStatus, @VersionReadStatus, @Imei1ReadStatus, @Imei2ReadStatus, @WifiMacReadStatus, @CitReadStatus, @AgingRebootReadStatus, @AgingResetReadStatus, @SnJudgment, @VersionJudgment, @CitJudgment, @AgingRebootJudgment, @AgingResetJudgment, @IdentityDisposition, @IdentityDetail)";
 
             await Task.Run(() =>
             {
@@ -1357,6 +1363,8 @@ CREATE TABLE VerificationParameter (
                             cmd.Parameters.AddWithValue("@CitJudgment", (object)record.CitJudgment ?? DBNull.Value);
                             cmd.Parameters.AddWithValue("@AgingRebootJudgment", (object)record.AgingRebootJudgment ?? DBNull.Value);
                             cmd.Parameters.AddWithValue("@AgingResetJudgment", (object)record.AgingResetJudgment ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@IdentityDisposition", (object)record.IdentityDisposition ?? DBNull.Value);
+                            cmd.Parameters.AddWithValue("@IdentityDetail", (object)record.IdentityDetail ?? DBNull.Value);
                             cmd.ExecuteNonQuery();
                         }
 
@@ -1397,7 +1405,7 @@ CREATE TABLE VerificationParameter (
             EnsureConnectionInitialized();
 
             var sql = @"
-                SELECT Id, SessionId, StickerSN, DeviceSN, WifiMac, ChipId, BoardVersion, ChargeBoardVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion, Result, FailReason, VerifyTime, ExpectedVersion, ActualVersion, Imei1, Imei2, CitValue, AgingRebootValue, AgingResetValue, SnReadStatus, VersionReadStatus, Imei1ReadStatus, Imei2ReadStatus, WifiMacReadStatus, CitReadStatus, AgingRebootReadStatus, AgingResetReadStatus, SnJudgment, VersionJudgment, CitJudgment, AgingRebootJudgment, AgingResetJudgment
+                SELECT Id, SessionId, StickerSN, DeviceSN, WifiMac, ChipId, BoardVersion, ChargeBoardVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion, Result, FailReason, VerifyTime, ExpectedVersion, ActualVersion, Imei1, Imei2, CitValue, AgingRebootValue, AgingResetValue, SnReadStatus, VersionReadStatus, Imei1ReadStatus, Imei2ReadStatus, WifiMacReadStatus, CitReadStatus, AgingRebootReadStatus, AgingResetReadStatus, SnJudgment, VersionJudgment, CitJudgment, AgingRebootJudgment, AgingResetJudgment, IdentityDisposition, IdentityDetail
                 FROM TestRecord WHERE SessionId = @SessionId ORDER BY VerifyTime ASC";
 
             var list = await Task.Run(() =>
@@ -1570,7 +1578,7 @@ CREATE TABLE VerificationParameter (
             EnsureConnectionInitialized();
 
             var sql = @"
-                SELECT Id, SessionId, StickerSN, DeviceSN, WifiMac, ChipId, BoardVersion, ChargeBoardVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion, Result, FailReason, VerifyTime, ExpectedVersion, ActualVersion, Imei1, Imei2, CitValue, AgingRebootValue, AgingResetValue, SnReadStatus, VersionReadStatus, Imei1ReadStatus, Imei2ReadStatus, WifiMacReadStatus, CitReadStatus, AgingRebootReadStatus, AgingResetReadStatus, SnJudgment, VersionJudgment, CitJudgment, AgingRebootJudgment, AgingResetJudgment
+                SELECT Id, SessionId, StickerSN, DeviceSN, WifiMac, ChipId, BoardVersion, ChargeBoardVersion, ExpectedBoardVersion, ExpectedChargeBoardVersion, Result, FailReason, VerifyTime, ExpectedVersion, ActualVersion, Imei1, Imei2, CitValue, AgingRebootValue, AgingResetValue, SnReadStatus, VersionReadStatus, Imei1ReadStatus, Imei2ReadStatus, WifiMacReadStatus, CitReadStatus, AgingRebootReadStatus, AgingResetReadStatus, SnJudgment, VersionJudgment, CitJudgment, AgingRebootJudgment, AgingResetJudgment, IdentityDisposition, IdentityDetail
                 FROM TestRecord WHERE SessionId = @SessionId AND StickerSN = @StickerSN ORDER BY VerifyTime DESC LIMIT 1";
 
             return await Task.Run(() =>

@@ -170,6 +170,8 @@ namespace SnVerify.Tests.Services.Storage
                 Assert.That(detail.Cells[1, 21].Text, Is.EqualTo("SN判定"));
                 Assert.That(detail.Cells[1, 27].Text, Is.EqualTo("失败原因代码"));
                 Assert.That(detail.Cells[1, 29].Text, Is.EqualTo("检测时间"));
+                Assert.That(detail.Cells[1, 30].Text, Is.EqualTo("身份校验状态"));
+                Assert.That(detail.Cells[1, 31].Text, Is.EqualTo("身份校验说明"));
                 Assert.That(detail.Dimension.Rows, Is.EqualTo(exported.Count + 1));
 
                 var passRow = FindRow(detail, "SN-A");
@@ -179,6 +181,8 @@ namespace SnVerify.Tests.Services.Storage
                 Assert.That(detail.Cells[passRow, 6].Text, Is.EqualTo("V-EXP"));
                 Assert.That(detail.Cells[passRow, 7].Text, Is.EqualTo("111"));
                 Assert.That(detail.Cells[passRow, 9].Text, Is.EqualTo("AA"));
+                Assert.That(detail.Cells[passRow, 30].Text, Is.Empty);
+                Assert.That(detail.Cells[passRow, 31].Text, Is.Empty);
 
                 var failRow = FindRow(detail, "SN-B");
                 Assert.That(detail.Cells[failRow, 26].Text, Is.EqualTo("FAIL"));
@@ -195,6 +199,9 @@ namespace SnVerify.Tests.Services.Storage
                 Assert.That(summary.Cells[2, 2].GetValue<int>(), Is.EqualTo(expected.BusinessFailCount));
                 Assert.That(summary.Cells[2, 3].GetValue<int>(), Is.EqualTo(expected.ReadExceptionCount));
                 Assert.That(summary.Cells[2, 4].Text, Is.EqualTo(expected.PassRateText));
+                Assert.That(summary.Cells[1, 5].Text, Is.EqualTo("未决数量"));
+                Assert.That(summary.Cells[2, 5].GetValue<int>(), Is.EqualTo(expected.UnresolvedCount));
+                Assert.That(expected.UnresolvedCount, Is.EqualTo(0));
                 Assert.That(expected.PassCount, Is.EqualTo(1));
                 Assert.That(expected.ReadExceptionCount, Is.EqualTo(1));
                 Assert.That(expected.PassRateText, Is.EqualTo("100.00%"));
@@ -228,6 +235,48 @@ namespace SnVerify.Tests.Services.Storage
                 Assert.That(summary.Cells[2, 3].GetValue<int>(), Is.EqualTo(1));
                 Assert.That(summary.Cells[2, 4].Value, Is.Null);
                 Assert.That(summary.Cells[2, 4].Text, Is.Empty);
+            }
+        }
+
+        [Test]
+        public async Task Should_ExportUnresolvedAndIdentity_When_RecordHasIdentityFields()
+        {
+            var older = Row(1, "SN-U", "DEV", Yme009ResultClassifier.UnresolvedResult, null, T(0));
+            older.IdentityDisposition = Yme009ExpectedIdentityDisposition.QueryUnresolved.ToString();
+            older.IdentityDetail = "InvalidOperationException：expected";
+            var newer = Row(2, "SN-U", "DEV", Yme009ResultClassifier.UnresolvedResult, null, T(1));
+            newer.IdentityDisposition = Yme009ExpectedIdentityDisposition.QueryUnresolved.ToString();
+            newer.IdentityDetail = "InvalidOperationException：again";
+            var blank = Row(3, "SN-OLD", "DEV", Yme009ResultClassifier.PassResult, null, T(2));
+            var records = new List<TestRecord> { older, newer, blank };
+            var storage = new Mock<IStorageService>(MockBehavior.Strict);
+            storage.Setup(s => s.GetTestRecordsBySessionAsync(8)).ReturnsAsync(records);
+            await new Yme009SessionExporter(storage.Object).ExportAsync(new ExportContext
+            {
+                SessionId = 8,
+                SessionName = "S",
+                OrderName = "O",
+                OutputDirectory = _outputDir,
+                ProductCode = Yme009Product.Code
+            });
+
+            using (var package = new ExcelPackage(new FileInfo(Path.Combine(_outputDir, "8.xlsx"))))
+            {
+                var detail = package.Workbook.Worksheets["明细"];
+                var summary = package.Workbook.Worksheets["汇总"];
+                Assert.That(detail.Dimension.Rows, Is.EqualTo(4));
+                var first = FindRow(detail, "SN-U");
+                Assert.That(detail.Cells[first, 26].Text, Is.EqualTo(Yme009ResultClassifier.UnresolvedResult));
+                Assert.That(detail.Cells[first, 30].Text, Is.EqualTo(Yme009ExpectedIdentityDisposition.QueryUnresolved.ToString()));
+                Assert.That(detail.Cells[first, 31].Text, Is.EqualTo("InvalidOperationException：expected"));
+                Assert.That(detail.Cells[first + 1, 31].Text, Is.EqualTo("InvalidOperationException：again"));
+                var oldRow = FindRow(detail, "SN-OLD");
+                Assert.That(detail.Cells[oldRow, 30].Text, Is.Empty);
+                Assert.That(detail.Cells[oldRow, 31].Text, Is.Empty);
+                Assert.That(summary.Cells[2, 1].GetValue<int>(), Is.EqualTo(1));
+                Assert.That(summary.Cells[2, 2].GetValue<int>(), Is.EqualTo(0));
+                Assert.That(summary.Cells[2, 4].Text, Is.EqualTo("100.00%"));
+                Assert.That(summary.Cells[2, 5].GetValue<int>(), Is.EqualTo(2));
             }
         }
 

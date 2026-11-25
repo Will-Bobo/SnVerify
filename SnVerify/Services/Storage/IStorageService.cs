@@ -261,6 +261,24 @@ namespace SnVerify.Services.Storage
         /// <param name="filter">记录过滤（SnOnly/VersionOnly/All），null 等价于 All</param>
         Task ExportBySessionAsync(int sessionId, string outputDirectory, ExportRecordFilter filter);
 
+        /// <summary>
+        /// 在同一个事务中创建 TestSession、预期数据集和预期设备。
+        /// 提交成功后才返回 SessionId；失败时回滚，不激活会话。
+        /// </summary>
+        Task<Yme009ExpectedImportResult> ImportYme009ExpectedDataAsync(Yme009ExpectedImportRequest request);
+
+        /// <summary>
+        /// 当前内部 SessionId 是否已有预期数据集。只判断数据集是否存在，不读取设备行。
+        /// 没有数据集时返回 false。数据库异常直接抛出，不转换成 false。
+        /// </summary>
+        Task<bool> SessionHasYme009ExpectedDataSetAsync(int sessionId);
+
+        /// <summary>
+        /// 按内部 SessionId 和 SN 查询预期设备。SN 先去掉首尾空格，再按区分大小写的原值匹配。
+        /// 未命中时 Found 为 false。查询异常直接抛出，不转换成检测结论。
+        /// </summary>
+        Task<Yme009ExpectedDeviceLookup> FindYme009ExpectedDeviceAsync(int sessionId, string sn);
+
         void Dispose();
     }
 }

@@ -9,14 +9,15 @@ namespace SnVerify.Domain.Product
     /// </summary>
     public sealed class Yme009SessionStatistics
     {
-        public static readonly Yme009SessionStatistics Empty = new Yme009SessionStatistics(0, 0, 0, string.Empty);
+        public static readonly Yme009SessionStatistics Empty = new Yme009SessionStatistics(0, 0, 0, string.Empty, 0);
 
-        public Yme009SessionStatistics(int passCount, int businessFailCount, int readExceptionCount, string passRateText)
+        public Yme009SessionStatistics(int passCount, int businessFailCount, int readExceptionCount, string passRateText, int unresolvedCount = 0)
         {
             PassCount = passCount;
             BusinessFailCount = businessFailCount;
             ReadExceptionCount = readExceptionCount;
             PassRateText = passRateText ?? string.Empty;
+            UnresolvedCount = unresolvedCount;
         }
 
         public int PassCount { get; }
@@ -27,11 +28,14 @@ namespace SnVerify.Domain.Product
 
         public string PassRateText { get; }
 
+        public int UnresolvedCount { get; }
+
         public static Yme009SessionStatistics Summarize(IEnumerable<TestRecord> records)
         {
             var passCount = 0;
             var businessFailCount = 0;
             var readExceptionCount = 0;
+            var unresolvedCount = 0;
             if (records != null)
             {
                 foreach (var record in records)
@@ -50,6 +54,9 @@ namespace SnVerify.Domain.Product
                         case Yme009StatisticBucket.ReadException:
                             readExceptionCount++;
                             break;
+                        case Yme009StatisticBucket.Unresolved:
+                            unresolvedCount++;
+                            break;
                     }
                 }
             }
@@ -58,7 +65,7 @@ namespace SnVerify.Domain.Product
             var passRateText = denominator == 0
                 ? string.Empty
                 : (passCount * 100d / denominator).ToString("0.00", CultureInfo.InvariantCulture) + "%";
-            return new Yme009SessionStatistics(passCount, businessFailCount, readExceptionCount, passRateText);
+            return new Yme009SessionStatistics(passCount, businessFailCount, readExceptionCount, passRateText, unresolvedCount);
         }
     }
 }

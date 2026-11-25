@@ -19,6 +19,7 @@ using SnVerify.Services.Parameter;
 using SnVerify.Services.Session;
 using SnVerify.Services.Storage;
 using SnVerify.Services.Ui;
+using SnVerify.Services.ExpectedData;
 using SnVerify.Services.Yme009;
 using SnVerify.ViewModels;
 
@@ -614,6 +615,28 @@ namespace SnVerify.Tests.ViewModels
             Assert.That(vm.Yme009BusinessFailCount, Is.EqualTo(1));
             Assert.That(vm.Yme009ReadExceptionCount, Is.EqualTo(1));
             Assert.That(vm.Yme009PassRateText, Is.EqualTo("50.00%"));
+            Assert.That(vm.Yme009UnresolvedCount, Is.EqualTo(0));
+        }
+
+        [Test]
+        public async Task Should_CountUnresolvedWithoutChangingPassRate_When_RecordsReload()
+        {
+            var pass = SessionRow(1, "SN-1", new DateTime(2026, 11, 24, 10, 0, 0));
+            var business = SessionRow(2, "SN-1", new DateTime(2026, 11, 24, 10, 0, 1), "FAIL", Yme009FailReasonCodes.SnMismatch);
+            var unresolved = SessionRow(3, "SN-2", new DateTime(2026, 11, 24, 10, 0, 2), Yme009ResultClassifier.UnresolvedResult, null);
+            var vm = CreateViewModel(new ProductRegistryAdapter(), out var session, out _, out var storage, out _);
+            session.Setup(s => s.GetCurrentSessionId()).Returns("S1");
+            storage.Setup(s => s.GetTestRecordsBySessionAsync("S1"))
+                .ReturnsAsync(new List<TestRecord> { pass, business, unresolved });
+            vm.SelectedProductCode = Yme009Product.Code;
+            vm.SessionSnapshot = SessionSnapshot.Active("S1", "ORD-YME", DateTime.Now);
+            await WaitUntilAsync(() => vm.Yme009UnresolvedCount == 1);
+
+            Assert.That(vm.Yme009PassCount, Is.EqualTo(1));
+            Assert.That(vm.Yme009BusinessFailCount, Is.EqualTo(1));
+            Assert.That(vm.Yme009ReadExceptionCount, Is.EqualTo(0));
+            Assert.That(vm.Yme009UnresolvedCount, Is.EqualTo(1));
+            Assert.That(vm.Yme009PassRateText, Is.EqualTo("50.00%"));
         }
 
         [Test]
@@ -724,6 +747,26 @@ namespace SnVerify.Tests.ViewModels
                 adb?.Object);
         }
 
+        public static MainViewModel CreateForExpectedData(
+            out Mock<ISessionLifecycleService> session,
+            out Mock<IUserDialogService> dialog,
+            out Mock<IStorageService> storage,
+            IYme009ExpectedDataService expected)
+        {
+            return CreateViewModel(
+                new ProductRegistryAdapter(),
+                out session,
+                out dialog,
+                out storage,
+                out _,
+                null,
+                null,
+                null,
+                null,
+                null,
+                expected);
+        }
+
         private static MainViewModel CreateViewModel(
             IProductRegistry registry,
             out Mock<ISessionLifecycleService> session,
@@ -734,7 +777,8 @@ namespace SnVerify.Tests.ViewModels
             IVerificationFlowService flowService = null,
             ILoggingService loggingService = null,
             IYme009RoundCoordinator yme009RoundCoordinator = null,
-            IAdbAccessService adbAccessService = null)
+            IAdbAccessService adbAccessService = null,
+            IYme009ExpectedDataService expectedData = null)
         {
             session = new Mock<ISessionLifecycleService>();
             dialog = new Mock<IUserDialogService>();
@@ -766,7 +810,8 @@ namespace SnVerify.Tests.ViewModels
                 registry,
                 parameterService,
                 Mock.Of<IDeviceAccessService>(),
-                yme009RoundCoordinator);
+                yme009RoundCoordinator,
+                expectedData);
         }
 
         private static IOrderNameValidator CreatePassingValidator()

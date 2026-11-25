@@ -164,6 +164,11 @@ namespace SnVerify.Services.Session
         /// <inheritdoc />
         public void StartSession(string sessionId)
         {
+            StartSession(sessionId, null);
+        }
+
+        public void StartSession(string sessionId, string orderId)
+        {
             if (string.IsNullOrWhiteSpace(sessionId))
             {
                 Snapshot = SessionSnapshot.Error("SessionId 不能为空");
@@ -186,7 +191,7 @@ namespace SnVerify.Services.Session
                 throw new InvalidOperationException($"Session {sessionId} 不存在");
             }
             var startTime = DateTime.Now;
-            Snapshot = SessionSnapshot.Active(sessionId, null, startTime);
+            Snapshot = SessionSnapshot.Active(sessionId, orderId, startTime);
             _logger?.LogInfo($"Session 开始: SessionId={sessionId}");
         }
 

@@ -68,7 +68,7 @@ namespace SnVerify.Domain.Models
         public string ExpectedChargeBoardVersion { get; set; }
 
         /// <summary>
-        /// 校验结果：PASS / FAIL / TIMEOUT。
+        /// 校验结果。通用记录为 PASS / FAIL / TIMEOUT。YME009 还可以是 UNRESOLVED。
         /// </summary>
         public string Result { get; set; }
 
@@ -132,5 +132,11 @@ namespace SnVerify.Domain.Models
         public string AgingRebootJudgment { get; set; }
 
         public string AgingResetJudgment { get; set; }
+
+        /// <summary>YME009 身份校验状态。旧记录和其他产品保持 null，不解释成未启用。</summary>
+        public string IdentityDisposition { get; set; }
+
+        /// <summary>YME009 身份校验说明。不保存 Excel 预期值。</summary>
+        public string IdentityDetail { get; set; }
     }
 }

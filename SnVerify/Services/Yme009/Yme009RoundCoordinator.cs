@@ -208,6 +208,7 @@ namespace SnVerify.Services.Yme009
 
             var history = await ResolvePassHistoryAsync(inspection.SessionId, scannedSn, attributes).ConfigureAwait(false);
             decision = Yme009PassHistoryDecision.Apply(decision, scannedSn, history);
+            decision = await ResolveExpectedIdentityAsync(inspection.SessionId, scannedSn, decision, history).ConfigureAwait(false);
 
             var record = Yme009TestRecordMapper.Create(
                 inspection.SessionId,
@@ -269,6 +270,92 @@ namespace SnVerify.Services.Yme009
                 _logging.LogError(Yme009AccessLog.Line(_scope, "历史 PASS 查询失败。SessionId=" + sessionId + "，SN=" + (scannedSn ?? string.Empty)), ex);
                 return Yme009PassHistoryQueryDisposition.QueryFailed;
             }
+        }
+
+        private async Task<Yme009InspectionDecision> ResolveExpectedIdentityAsync(
+            int sessionId,
+            string scannedSn,
+            Yme009InspectionDecision decision,
+            Yme009PassHistoryQueryDisposition history)
+        {
+            Yme009ExpectedIdentityCheck check;
+            try
+            {
+                var enabled = await _storage.SessionHasYme009ExpectedDataSetAsync(sessionId).ConfigureAwait(false);
+                if (!enabled)
+                {
+                    check = Yme009ExpectedIdentityCheck.NotEnabled();
+                }
+                else
+                {
+                    var resolved = Yme009ExpectedIdentityGate.TryResolveWithoutDeviceLookup(
+                        history,
+                        scannedSn,
+                        decision.Attributes);
+                    if (resolved != null)
+                    {
+                        check = resolved;
+                    }
+                    else
+                    {
+                        var lookup = await _storage.FindYme009ExpectedDeviceAsync(sessionId, scannedSn).ConfigureAwait(false);
+                        check = Yme009ExpectedIdentityGate.EvaluateLookup(decision.Attributes, lookup);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                _logging.LogError(
+                    Yme009AccessLog.Line(_scope, "预期数据查询异常，身份校验保持未决。SessionId=" + sessionId + "，SN=" + (scannedSn ?? string.Empty)),
+                    ex);
+                check = Yme009ExpectedIdentityCheck.UnresolvedQuery(DescribeExpectedQueryFailure(ex));
+            }
+
+            if (check.Disposition == Yme009ExpectedIdentityDisposition.HistoricalPassUnresolved)
+            {
+                _logging.LogInfo(Yme009AccessLog.Line(
+                    _scope,
+                    "OQ-016 未决。未调用预期设备查询，也未形成身份 PASS、FAIL、未启用或未执行。SessionId=" + sessionId));
+            }
+
+            return Yme009ExpectedIdentityDecision.Apply(decision, check);
+        }
+
+        internal static string DescribeExpectedQueryFailure(Exception exception)
+        {
+            var typeName = exception == null ? "Exception" : exception.GetType().Name;
+            var message = FirstLine(exception == null ? null : exception.Message);
+            if (message.Length == 0 || ContainsSensitiveText(message))
+                return typeName + "：" + Yme009ExpectedIdentityCheck.QueryUnresolvedFallbackDetail;
+            if (message.Length > 160)
+                message = message.Substring(0, 160);
+            return typeName + "：" + message;
+        }
+
+        private static string FirstLine(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+                return string.Empty;
+            var line = message.Trim();
+            var cut = line.IndexOfAny(new[] { '\r', '\n' });
+            if (cut >= 0)
+                line = line.Substring(0, cut).Trim();
+            return line;
+        }
+
+        private static bool ContainsSensitiveText(string message)
+        {
+            if (message.IndexOf("Data Source", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+            if (message.IndexOf("Password", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+            if (message.IndexOf("Pwd=", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+            if (message.IndexOf("User Id", StringComparison.OrdinalIgnoreCase) >= 0)
+                return true;
+            if (message.IndexOf('\\') >= 0)
+                return true;
+            return message.IndexOf(":/", StringComparison.Ordinal) >= 0;
         }
 
         private static string DescribeRound(

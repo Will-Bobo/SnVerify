@@ -818,6 +818,328 @@ namespace SnVerify.Tests.Services
             storage.Verify(item => item.SaveTestRecordAsync(It.IsAny<TestRecord>()), Times.Once);
         }
 
+        [Test]
+        public async Task Should_ShowNotEnabledAndStillQueryHistory_When_SessionHasNoExpectedDataSet()
+        {
+            var harness = CreateHarness();
+            PrepareUniqueDevice(harness);
+            var saved = new List<TestRecord>();
+            var storage = new Mock<IStorageService>();
+            SetupNoHistoricalPass(storage);
+            storage.Setup(item => item.SessionHasYme009ExpectedDataSetAsync(It.IsAny<int>())).ReturnsAsync(false);
+            SetupSave(storage, saved, 31);
+            var round = CreateExpectedRound(harness, PassRaw("SN-1"), storage);
+            round.UseInspection(new Yme009InspectionRequest(3, "SW-1"));
+
+            var result = await round.RunAsync("SN-1", CancellationToken.None);
+
+            Assert.That(saved[0].Result, Is.EqualTo("PASS"));
+            Assert.That(saved[0].FailReason, Is.Null);
+            Assert.That(result.Decision.ExpectedIdentity.JudgmentText, Is.EqualTo("未启用"));
+            Assert.That(result.Decision.DeviceSn, Is.EqualTo(Yme009ItemJudgment.Pass));
+            storage.Verify(item => item.IsStickerSnPassedInBatchAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Once);
+            storage.Verify(item => item.FindYme009ExpectedDeviceAsync(It.IsAny<int>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Test]
+        public async Task Should_ShowNotExecutedAndKeepSnMismatch_When_DeviceSnDiffers()
+        {
+            var harness = CreateHarness();
+            PrepareUniqueDevice(harness);
+            var saved = new List<TestRecord>();
+            var storage = new Mock<IStorageService>();
+            EnableExpectedData(storage);
+            SetupSave(storage, saved, 32);
+            var raw = new Yme009RawBuilder().DeviceSn(Yme009FieldRaw.Succeeded("DEVICE")).Build();
+            var round = CreateExpectedRound(harness, raw, storage);
+            round.UseInspection(new Yme009InspectionRequest(3, "SW-1"));
+
+            var result = await round.RunAsync("SN-1", CancellationToken.None);
+            var snapshot = Yme009WorkstationSnapshot.FromResult(result, "SN-1");
+
+            Assert.That(saved[0].FailReason, Is.EqualTo(Yme009FailReasonCodes.SnMismatch));
+            Assert.That(result.Decision.DeviceSn, Is.EqualTo(Yme009ItemJudgment.Fail));
+            Assert.That(result.Decision.SoftwareVersion, Is.EqualTo(Yme009ItemJudgment.Pass));
+            Assert.That(result.Decision.ProductionTest, Is.EqualTo(Yme009ItemJudgment.Pass));
+            Assert.That(result.Decision.AgingReboot, Is.EqualTo(Yme009ItemJudgment.Pass));
+            Assert.That(result.Decision.AgingReset, Is.EqualTo(Yme009ItemJudgment.Pass));
+            Assert.That(result.Decision.ExpectedIdentity.JudgmentText, Is.EqualTo("未执行"));
+            Assert.That(snapshot.ExpectedIdentityJudgment, Is.EqualTo("未执行"));
+            Assert.That(snapshot.ExpectedIdentityReason, Is.Empty);
+            storage.Verify(item => item.FindYme009ExpectedDeviceAsync(It.IsAny<int>(), It.IsAny<string>()), Times.Never);
+            storage.Verify(item => item.IsStickerSnPassedInBatchAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Test]
+        public async Task Should_FailIdentityWithoutQuery_When_DeviceSnCannotBeReadAndExcelIsEnabled()
+        {
+            var harness = CreateHarness();
+            PrepareUniqueDevice(harness);
+            var saved = new List<TestRecord>();
+            var storage = new Mock<IStorageService>();
+            EnableExpectedData(storage);
+            SetupSave(storage, saved, 33);
+            var round = CreateExpectedRound(harness, new Yme009RawBuilder().DeviceSn(Yme009FieldRaw.TimedOut()).Build(), storage);
+            round.UseInspection(new Yme009InspectionRequest(3, "SW-1"));
+
+            var result = await round.RunAsync("SN-1", CancellationToken.None);
+
+            Assert.That(saved[0].FailReason, Is.EqualTo(Yme009FailReasonCodes.ReadFail));
+            Assert.That(result.Decision.ExpectedIdentity.JudgmentText, Is.EqualTo("FAIL"));
+            Assert.That(result.Decision.ExpectedIdentity.Detail, Is.EqualTo("无法取得有效值：SN"));
+            Assert.That(result.Decision.ProductionTest, Is.EqualTo(Yme009ItemJudgment.Pass));
+            storage.Verify(item => item.FindYme009ExpectedDeviceAsync(It.IsAny<int>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Test]
+        public async Task Should_PassIdentity_When_ScannedSnMatchesExpectedDevice()
+        {
+            var harness = CreateHarness();
+            PrepareUniqueDevice(harness);
+            var saved = new List<TestRecord>();
+            var storage = new Mock<IStorageService>();
+            SetupNoHistoricalPass(storage);
+            EnableExpectedData(storage);
+            storage.Setup(item => item.FindYme009ExpectedDeviceAsync(3, "SN-1")).ReturnsAsync(ExpectedDevice("SN-1"));
+            SetupSave(storage, saved, 34);
+            var round = CreateExpectedRound(harness, PassRaw("SN-1"), storage);
+            round.UseInspection(new Yme009InspectionRequest(3, "SW-1"));
+
+            var result = await round.RunAsync("SN-1", CancellationToken.None);
+
+            Assert.That(saved[0].Result, Is.EqualTo("PASS"));
+            Assert.That(saved[0].FailReason, Is.Null);
+            Assert.That(result.Decision.ExpectedIdentity.JudgmentText, Is.EqualTo("PASS"));
+            Assert.That(result.Decision.Bucket, Is.EqualTo(Yme009StatisticBucket.Pass));
+            storage.Verify(item => item.FindYme009ExpectedDeviceAsync(3, "SN-1"), Times.Once);
+        }
+
+        [Test]
+        public async Task Should_FailOverallWithoutFailCode_When_ExcelDoesNotContainSn()
+        {
+            var harness = CreateHarness();
+            PrepareUniqueDevice(harness);
+            var saved = new List<TestRecord>();
+            var storage = new Mock<IStorageService>();
+            SetupNoHistoricalPass(storage);
+            EnableExpectedData(storage);
+            storage.Setup(item => item.FindYme009ExpectedDeviceAsync(It.IsAny<int>(), It.IsAny<string>()))
+                .ReturnsAsync(Yme009ExpectedDeviceLookup.NotFound);
+            SetupSave(storage, saved, 35);
+            var round = CreateExpectedRound(harness, PassRaw("SN-1"), storage);
+            round.UseInspection(new Yme009InspectionRequest(3, "SW-1"));
+
+            var result = await round.RunAsync("SN-1", CancellationToken.None);
+            var snapshot = Yme009WorkstationSnapshot.FromResult(result, "SN-1");
+
+            Assert.That(saved, Has.Count.EqualTo(1));
+            Assert.That(saved[0].Result, Is.EqualTo("FAIL"));
+            Assert.That(saved[0].FailReason, Is.Null);
+            Assert.That(Yme009FailReasonCodes.IsBusiness(saved[0].FailReason), Is.False);
+            Assert.That(Yme009FailReasonCodes.IsReadException(saved[0].FailReason), Is.False);
+            Assert.That(result.Decision.Bucket, Is.EqualTo(Yme009StatisticBucket.Unregistered));
+            Assert.That(result.Decision.DeviceSn, Is.EqualTo(Yme009ItemJudgment.Pass));
+            Assert.That(result.Decision.ProductionTest, Is.EqualTo(Yme009ItemJudgment.Pass));
+            Assert.That(snapshot.ExpectedIdentityJudgment, Is.EqualTo("FAIL"));
+            Assert.That(snapshot.ExpectedIdentityReason, Is.EqualTo("Excel 中不存在该设备"));
+            Assert.That(snapshot.OverallText, Is.EqualTo("FAIL"));
+            Assert.That(snapshot.PrimaryReason, Is.Empty);
+        }
+
+        [Test]
+        public async Task Should_FailIdentityWithoutQuery_When_ImeiCannotBeReadAndExcelIsEnabled()
+        {
+            var harness = CreateHarness();
+            PrepareUniqueDevice(harness);
+            var saved = new List<TestRecord>();
+            var storage = new Mock<IStorageService>();
+            SetupNoHistoricalPass(storage);
+            EnableExpectedData(storage);
+            SetupSave(storage, saved, 36);
+            var raw = new Yme009RawBuilder()
+                .DeviceSn(Yme009FieldRaw.Succeeded("SN-1"))
+                .Imei1(Yme009FieldRaw.CommandFailed())
+                .Build();
+            var round = CreateExpectedRound(harness, raw, storage);
+            round.UseInspection(new Yme009InspectionRequest(3, "SW-1"));
+
+            var result = await round.RunAsync("SN-1", CancellationToken.None);
+
+            Assert.That(saved[0].Result, Is.EqualTo("FAIL"));
+            Assert.That(saved[0].FailReason, Is.Null);
+            Assert.That(result.Decision.ExpectedIdentity.Detail, Is.EqualTo("无法取得有效值：IMEI1"));
+            Assert.That(result.Decision.ProductionTest, Is.EqualTo(Yme009ItemJudgment.Pass));
+            Assert.That(result.Decision.SoftwareVersion, Is.EqualTo(Yme009ItemJudgment.Pass));
+            storage.Verify(item => item.FindYme009ExpectedDeviceAsync(It.IsAny<int>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Test]
+        public async Task Should_LeaveHistoricalPassUnresolved_When_ExpectedDataIsEnabled()
+        {
+            var harness = CreateHarness();
+            PrepareUniqueDevice(harness);
+            var saved = new List<TestRecord>();
+            var storage = new Mock<IStorageService>();
+            storage.Setup(item => item.GetYme009BatchScopeBySessionIdAsync(It.IsAny<int>()))
+                .ReturnsAsync(new Yme009BatchScope("P-YME", "ORD-YME"));
+            storage.Setup(item => item.IsStickerSnPassedInBatchAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync(true);
+            EnableExpectedData(storage);
+            SetupSave(storage, saved, 37);
+            var round = CreateExpectedRound(harness, PassRaw("SN-1"), storage);
+            round.UseInspection(new Yme009InspectionRequest(3, "SW-1"));
+
+            var result = await round.RunAsync("SN-1", CancellationToken.None);
+            var snapshot = Yme009WorkstationSnapshot.FromResult(result, "SN-1");
+
+            Assert.That(saved[0].Result, Is.EqualTo("FAIL"));
+            Assert.That(saved[0].FailReason, Is.EqualTo(Yme009FailReasonCodes.SnDuplicate));
+            Assert.That(result.Decision.ExpectedIdentity.Disposition, Is.EqualTo(Yme009ExpectedIdentityDisposition.HistoricalPassUnresolved));
+            Assert.That(result.Decision.ExpectedIdentity.JudgmentText, Is.Empty);
+            Assert.That(snapshot.ExpectedIdentityJudgment, Is.Empty);
+            Assert.That(snapshot.ExpectedIdentityReason, Is.Empty);
+            Assert.That(snapshot.PrimaryReason, Is.EqualTo("设备SN已经检验"));
+            Assert.That(snapshot.ExpectedIdentityJudgment, Is.Not.EqualTo("PASS").And.Not.EqualTo("FAIL").And.Not.EqualTo("未启用").And.Not.EqualTo("未执行"));
+            storage.Verify(item => item.FindYme009ExpectedDeviceAsync(It.IsAny<int>(), It.IsAny<string>()), Times.Never);
+            storage.Verify(item => item.IsStickerSnPassedInBatchAsync("P-YME", "ORD-YME", "SN-1"), Times.Once);
+        }
+
+        [Test]
+        public async Task Should_KeepPassHistoryFailureAndStillCompare_When_HistoryQueryFails()
+        {
+            var harness = CreateHarness();
+            PrepareUniqueDevice(harness);
+            var saved = new List<TestRecord>();
+            var storage = new Mock<IStorageService>();
+            storage.Setup(item => item.GetYme009BatchScopeBySessionIdAsync(It.IsAny<int>()))
+                .ThrowsAsync(new InvalidOperationException("history"));
+            EnableExpectedData(storage);
+            storage.Setup(item => item.FindYme009ExpectedDeviceAsync(It.IsAny<int>(), It.IsAny<string>()))
+                .ReturnsAsync(ExpectedDevice("SN-1"));
+            SetupSave(storage, saved, 38);
+            var round = CreateExpectedRound(harness, PassRaw("SN-1"), storage);
+            round.UseInspection(new Yme009InspectionRequest(3, "SW-1"));
+
+            var result = await round.RunAsync("SN-1", CancellationToken.None);
+
+            Assert.That(saved[0].FailReason, Is.EqualTo(Yme009FailReasonCodes.PassHistoryQueryFail));
+            Assert.That(result.Decision.ExpectedIdentity.JudgmentText, Is.EqualTo("PASS"));
+            Assert.That(result.Decision.Bucket, Is.EqualTo(Yme009StatisticBucket.ReadException));
+            storage.Verify(item => item.FindYme009ExpectedDeviceAsync(3, "SN-1"), Times.Once);
+        }
+
+        [Test]
+        public async Task Should_SaveUnresolved_When_ExpectedDeviceQueryThrows()
+        {
+            var harness = CreateHarness();
+            PrepareUniqueDevice(harness);
+            var saved = new List<TestRecord>();
+            var storage = new Mock<IStorageService>();
+            SetupNoHistoricalPass(storage);
+            EnableExpectedData(storage);
+            storage.Setup(item => item.FindYme009ExpectedDeviceAsync(It.IsAny<int>(), It.IsAny<string>()))
+                .ThrowsAsync(new InvalidOperationException("expected"));
+            SetupSave(storage, saved, 39);
+            var round = CreateExpectedRound(harness, PassRaw("SN-1"), storage);
+            round.UseInspection(new Yme009InspectionRequest(3, "SW-1"));
+
+            var result = await round.RunAsync("SN-1", CancellationToken.None);
+            var snapshot = Yme009WorkstationSnapshot.FromResult(result, "SN-1");
+
+            Assert.That(saved, Has.Count.EqualTo(1));
+            Assert.That(saved[0].Result, Is.EqualTo(Yme009ResultClassifier.UnresolvedResult));
+            Assert.That(saved[0].FailReason, Is.Null);
+            Assert.That(saved[0].IdentityDisposition, Is.EqualTo(Yme009ExpectedIdentityDisposition.QueryUnresolved.ToString()));
+            Assert.That(saved[0].IdentityDetail, Is.EqualTo("InvalidOperationException：expected"));
+            Assert.That(result.RecordSaved, Is.True);
+            Assert.That(result.Decision.ExpectedIdentity.Disposition, Is.EqualTo(Yme009ExpectedIdentityDisposition.QueryUnresolved));
+            Assert.That(result.Decision.ExpectedIdentity.JudgmentText, Is.Empty);
+            Assert.That(result.Decision.DeviceSn, Is.EqualTo(Yme009ItemJudgment.Pass));
+            Assert.That(result.OperatorText, Does.Not.Contain("检测未完成"));
+            Assert.That(result.OperatorText, Does.Contain(Yme009ResultClassifier.UnresolvedResult));
+            Assert.That(snapshot.OverallText, Is.EqualTo(Yme009ResultClassifier.UnresolvedResult));
+            Assert.That(snapshot.HeadlineKind, Is.EqualTo(Yme009HeadlineKind.Unresolved));
+        }
+
+        [Test]
+        public async Task Should_OmitSensitiveQueryText_When_ExpectedDeviceQueryThrows()
+        {
+            var harness = CreateHarness();
+            PrepareUniqueDevice(harness);
+            var saved = new List<TestRecord>();
+            var storage = new Mock<IStorageService>();
+            SetupNoHistoricalPass(storage);
+            EnableExpectedData(storage);
+            storage.Setup(item => item.FindYme009ExpectedDeviceAsync(It.IsAny<int>(), It.IsAny<string>()))
+                .ThrowsAsync(new InvalidOperationException(@"Data Source=C:\secret\sn.db;Password=hidden"));
+            SetupSave(storage, saved, 41);
+            var round = CreateExpectedRound(harness, PassRaw("SN-1"), storage);
+            round.UseInspection(new Yme009InspectionRequest(3, "SW-1"));
+
+            await round.RunAsync("SN-1", CancellationToken.None);
+
+            Assert.That(saved[0].Result, Is.EqualTo(Yme009ResultClassifier.UnresolvedResult));
+            Assert.That(saved[0].IdentityDetail, Does.Contain("InvalidOperationException"));
+            Assert.That(saved[0].IdentityDetail, Does.Contain(Yme009ExpectedIdentityCheck.QueryUnresolvedFallbackDetail));
+            Assert.That(saved[0].IdentityDetail, Does.Not.Contain("Data Source"));
+            Assert.That(saved[0].IdentityDetail, Does.Not.Contain("Password"));
+            Assert.That(saved[0].IdentityDetail, Does.Not.Contain("secret"));
+        }
+
+        [Test]
+        public async Task Should_KeepDuplicateFailure_When_ExpectedDataSetQueryThrows()
+        {
+            var harness = CreateHarness();
+            PrepareUniqueDevice(harness);
+            var saved = new List<TestRecord>();
+            var storage = new Mock<IStorageService>();
+            storage.Setup(item => item.GetYme009BatchScopeBySessionIdAsync(It.IsAny<int>()))
+                .ReturnsAsync(new Yme009BatchScope("P-YME", "ORD-YME"));
+            storage.Setup(item => item.IsStickerSnPassedInBatchAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
+                .ReturnsAsync(true);
+            storage.Setup(item => item.SessionHasYme009ExpectedDataSetAsync(It.IsAny<int>()))
+                .ThrowsAsync(new InvalidOperationException("dataset"));
+            SetupSave(storage, saved, 42);
+            var round = CreateExpectedRound(harness, PassRaw("SN-1"), storage);
+            round.UseInspection(new Yme009InspectionRequest(3, "SW-1"));
+
+            var result = await round.RunAsync("SN-1", CancellationToken.None);
+
+            Assert.That(saved[0].Result, Is.EqualTo(Yme009ResultClassifier.FailResult));
+            Assert.That(saved[0].FailReason, Is.EqualTo(Yme009FailReasonCodes.SnDuplicate));
+            Assert.That(result.Decision.ExpectedIdentity.Disposition, Is.EqualTo(Yme009ExpectedIdentityDisposition.QueryUnresolved));
+            Assert.That(saved[0].IdentityDetail, Is.EqualTo("InvalidOperationException：dataset"));
+            storage.Verify(item => item.FindYme009ExpectedDeviceAsync(It.IsAny<int>(), It.IsAny<string>()), Times.Never);
+        }
+
+        [Test]
+        public async Task Should_KeepFiveItemFailure_When_ExpectedDataSetQueryThrows()
+        {
+            var harness = CreateHarness();
+            PrepareUniqueDevice(harness);
+            var saved = new List<TestRecord>();
+            var storage = new Mock<IStorageService>();
+            SetupNoHistoricalPass(storage);
+            storage.Setup(item => item.SessionHasYme009ExpectedDataSetAsync(It.IsAny<int>()))
+                .ThrowsAsync(new InvalidOperationException("dataset"));
+            SetupSave(storage, saved, 40);
+            var raw = new Yme009RawBuilder()
+                .DeviceSn(Yme009FieldRaw.Succeeded("SN-1"))
+                .ProductionTest(Yme009FieldRaw.Succeeded("0"))
+                .Build();
+            var round = CreateExpectedRound(harness, raw, storage);
+            round.UseInspection(new Yme009InspectionRequest(3, "SW-1"));
+
+            var result = await round.RunAsync("SN-1", CancellationToken.None);
+
+            Assert.That(saved[0].Result, Is.EqualTo("FAIL"));
+            Assert.That(saved[0].FailReason, Is.EqualTo(Yme009FailReasonCodes.CitFail));
+            Assert.That(result.Decision.ExpectedIdentity.Disposition, Is.EqualTo(Yme009ExpectedIdentityDisposition.QueryUnresolved));
+            Assert.That(result.Decision.ExpectedIdentity.JudgmentText, Is.Empty);
+            Assert.That(result.Decision.ProductionTest, Is.EqualTo(Yme009ItemJudgment.Fail));
+            storage.Verify(item => item.FindYme009ExpectedDeviceAsync(It.IsAny<int>(), It.IsAny<string>()), Times.Never);
+        }
+
         private static void PrepareUniqueDevice(Harness harness)
         {
             harness.Discovery.Enqueue(One("A", "COM3"), One("A", "COM3"), One("A", "COM3"), One("A", "COM4"), One("A", "COM5"));
@@ -835,6 +1157,40 @@ namespace SnVerify.Tests.Services
                 .ReturnsAsync(new Yme009BatchScope("P-YME", "ORD-YME"));
             storage.Setup(item => item.IsStickerSnPassedInBatchAsync(It.IsAny<string>(), It.IsAny<string>(), It.IsAny<string>()))
                 .ReturnsAsync(false);
+        }
+
+        private static void EnableExpectedData(Mock<IStorageService> storage)
+        {
+            storage.Setup(item => item.SessionHasYme009ExpectedDataSetAsync(It.IsAny<int>())).ReturnsAsync(true);
+        }
+
+        private static void SetupSave(Mock<IStorageService> storage, List<TestRecord> saved, int id)
+        {
+            storage.Setup(item => item.SaveTestRecordAsync(It.IsAny<TestRecord>()))
+                .Callback<TestRecord>(record =>
+                {
+                    saved.Add(record);
+                    record.Id = id;
+                })
+                .Returns(Task.CompletedTask);
+        }
+
+        private static Yme009RoundCoordinator CreateExpectedRound(
+            Harness harness,
+            Yme009RawAttributeSet raw,
+            Mock<IStorageService> storage)
+        {
+            return new Yme009RoundCoordinator(
+                harness.Coordinator,
+                Mock.Of<ILoggingService>(),
+                null,
+                new StubPropertyReader { Raw = raw },
+                storage.Object);
+        }
+
+        private static Yme009ExpectedDeviceLookup ExpectedDevice(string sn)
+        {
+            return Yme009ExpectedDeviceLookup.Hit(new Yme009ExpectedDeviceRow(sn, "AA:BB", "IMEI1", "IMEI2"));
         }
 
         private static Yme009RoundCoordinator CreateInspectionRound(

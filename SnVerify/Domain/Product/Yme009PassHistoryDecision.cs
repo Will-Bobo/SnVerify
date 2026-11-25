@@ -81,7 +81,8 @@ namespace SnVerify.Domain.Product
                 judged.SoftwareVersionReason,
                 judged.ProductionTestReason,
                 judged.AgingRebootReason,
-                judged.AgingResetReason);
+                judged.AgingResetReason,
+                judged.ExpectedIdentity);
         }
     }
 }

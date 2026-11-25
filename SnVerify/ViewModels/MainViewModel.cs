@@ -27,6 +27,7 @@ using SnVerify.Services.Rules;
 using SnVerify.Services.Session;
 using SnVerify.Services.Storage;
 using SnVerify.Services.Ui;
+using SnVerify.Services.ExpectedData;
 using SnVerify.Services.Yme009;
 using SnVerify.Domain.Export;
 using SnVerify.Properties;
@@ -62,6 +63,7 @@ namespace SnVerify.ViewModels
         private readonly IParameterService _parameterService;
         private readonly IDeviceAccessService _deviceAccessService;
         private readonly IYme009RoundCoordinator _yme009RoundCoordinator;
+        private readonly IYme009ExpectedDataService _yme009ExpectedData;
         private readonly string _logDirectory;
         private readonly SynchronizationContext _uiContext;
 
@@ -259,8 +261,16 @@ namespace SnVerify.ViewModels
                     ExportCommand?.RaiseCanExecuteChanged();
                     StartVerifyCommand?.RaiseCanExecuteChanged();
                     StartVersionVerifyCommand?.RaiseCanExecuteChanged();
+                    SelectYme009ExpectedFileCommand?.RaiseCanExecuteChanged();
+                    ClearYme009ExpectedFileCommand?.RaiseCanExecuteChanged();
+                    OnPropertyChanged(nameof(IsYme009ExpectedConfigLocked));
+                    OnPropertyChanged(nameof(IsStartBatchLocked));
                     SyncYme009SessionRecords(previousSessionName);
                     ApplyYme009SessionBoundary(wasActive, willBeActive, previousSessionName, value?.SessionId);
+                    if (willBeActive && !_sessionStartInProgress)
+                        SetSessionReadyForTest(true);
+                    else if (!willBeActive)
+                        SetSessionReadyForTest(false);
                 }
             }
         }
@@ -419,9 +429,19 @@ namespace SnVerify.ViewModels
         private string _yme009ResetJudgment = Yme009WorkstationText.WaitingItem;
         private string _yme009ResetReason = string.Empty;
         private string _yme009ResetRaw = string.Empty;
+        private string _yme009ExpectedIdentityJudgment = Yme009WorkstationText.WaitingItem;
+        private string _yme009ExpectedIdentityReason = string.Empty;
         private string _yme009Imei1Text = Yme009WorkstationText.NotRead;
         private string _yme009Imei2Text = Yme009WorkstationText.NotRead;
         private string _yme009WifiMacText = Yme009WorkstationText.NotRead;
+        private Yme009ExpectedFileStaging _yme009ExpectedFile;
+        private bool _yme009ExpectedImporting;
+        private bool _sessionStartInProgress;
+        private bool _sessionReadyForTest;
+        private string _yme009StatusTitle = "等待扫码";
+        private string _yme009StatusDetail = "WAITING";
+        private string _yme009ExpectedSummary = "未选择";
+        private static readonly TimeSpan Yme009ExpectedImportDoneDelay = TimeSpan.FromMilliseconds(700);
 
         /// <summary>
         /// YME009 本轮检测摘要。其他产品保持空白。
@@ -443,6 +463,16 @@ namespace SnVerify.ViewModels
         public string Yme009ProcessPrompt => _yme009ProcessPrompt ?? string.Empty;
         public string Yme009Headline => _yme009Headline ?? string.Empty;
         public Yme009HeadlineKind Yme009HeadlineKind => _yme009HeadlineKind;
+        public string Yme009StatusTitle => _yme009StatusTitle;
+        public string Yme009StatusDetail => _yme009StatusDetail;
+        public string Yme009ExpectedSummary => _yme009ExpectedSummary;
+        public bool IsYme009ExpectedImporting => _yme009ExpectedImporting;
+        public bool IsSessionReadyForTest => _sessionReadyForTest;
+        public bool IsStartBatchLocked =>
+            _sessionStartInProgress || _sessionReadyForTest || _yme009ExpectedImporting || IsSelfChecking || IsProcessing;
+        public bool IsYme009ExpectedConfigLocked => IsSessionActive;
+        public RelayCommand SelectYme009ExpectedFileCommand { get; }
+        public RelayCommand ClearYme009ExpectedFileCommand { get; }
         public bool Yme009HasOverallResult => _yme009HasOverallResult;
         public string Yme009OverallText => _yme009OverallText ?? string.Empty;
         public string Yme009PrimaryReason => _yme009PrimaryReason ?? string.Empty;
@@ -465,6 +495,8 @@ namespace SnVerify.ViewModels
         public string Yme009ResetJudgment => _yme009ResetJudgment ?? string.Empty;
         public string Yme009ResetReason => _yme009ResetReason ?? string.Empty;
         public string Yme009ResetRaw => _yme009ResetRaw ?? string.Empty;
+        public string Yme009ExpectedIdentityJudgment => _yme009ExpectedIdentityJudgment ?? string.Empty;
+        public string Yme009ExpectedIdentityReason => _yme009ExpectedIdentityReason ?? string.Empty;
         public string Yme009Imei1Text => _yme009Imei1Text ?? string.Empty;
         public string Yme009Imei2Text => _yme009Imei2Text ?? string.Empty;
         public string Yme009WifiMacText => _yme009WifiMacText ?? string.Empty;
@@ -505,6 +537,7 @@ namespace SnVerify.ViewModels
         private int _yme009PassCount;
         private int _yme009BusinessFailCount;
         private int _yme009ReadExceptionCount;
+        private int _yme009UnresolvedCount;
         private string _yme009PassRateText = string.Empty;
 
         public int Yme009PassCount
@@ -541,6 +574,19 @@ namespace SnVerify.ViewModels
                 if (_yme009ReadExceptionCount != value)
                 {
                     _yme009ReadExceptionCount = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public int Yme009UnresolvedCount
+        {
+            get => _yme009UnresolvedCount;
+            private set
+            {
+                if (_yme009UnresolvedCount != value)
+                {
+                    _yme009UnresolvedCount = value;
                     OnPropertyChanged();
                 }
             }
@@ -761,7 +807,7 @@ namespace SnVerify.ViewModels
         public bool IsSessionEnding => _sessionEnding;
 
         public bool IsYme009ScanAllowed =>
-            ShowYme009Workstation && IsSessionActive && !IsProcessing && !IsSelfChecking && !_sessionEnding;
+            ShowYme009Workstation && IsSessionActive && IsSessionReadyForTest && !IsProcessing && !IsSelfChecking && !_sessionEnding;
 
         /// <summary>
         /// YME009 轮次进行中禁止自检和设备信息调试。其他产品保持可用。
@@ -1088,7 +1134,8 @@ namespace SnVerify.ViewModels
             IProductRegistry productRegistry = null,
             IParameterService parameterService = null,
             IDeviceAccessService deviceAccessService = null,
-            IYme009RoundCoordinator yme009RoundCoordinator = null)
+            IYme009RoundCoordinator yme009RoundCoordinator = null,
+            IYme009ExpectedDataService yme009ExpectedData = null)
         {
             _sessionLifecycleService = sessionLifecycleService ?? throw new ArgumentNullException(nameof(sessionLifecycleService));
             _flowServiceFactory = flowServiceFactory ?? throw new ArgumentNullException(nameof(flowServiceFactory));
@@ -1104,6 +1151,7 @@ namespace SnVerify.ViewModels
             _parameterService = parameterService;
             _deviceAccessService = deviceAccessService;
             _yme009RoundCoordinator = yme009RoundCoordinator;
+            _yme009ExpectedData = yme009ExpectedData;
             _uiContext = SynchronizationContext.Current ?? new SynchronizationContext();
 
             _verificationFlowService = _flowServiceFactory.Create("session_idle", null);
@@ -1120,11 +1168,13 @@ namespace SnVerify.ViewModels
 
             // 规则 3/5/8：自检期间禁用 Start/End/导出；检验中也禁用 Start/End/导出（防止重复点击/并发操作）。
             StartBatchCommand = new RelayCommand(async () => await StartBatchAsync(), () => CanExecuteStartBatch());
+            SelectYme009ExpectedFileCommand = new RelayCommand(SelectYme009ExpectedFileAsync, CanSelectYme009ExpectedFile);
+            ClearYme009ExpectedFileCommand = new RelayCommand(ClearYme009ExpectedFileAsync, CanClearYme009ExpectedFile);
             EndBatchCommand = new RelayCommand(async () => await EndBatchAsync(), () => IsSessionActive && !IsSelfChecking && !IsProcessing && !_sessionEnding);
             // 导出：仅在进行中的测试时段（开始测试→结束测试）不可用，其余时间均可点击
             ExportCommand = new RelayCommand(async () => await ExportAsync(), () => !IsSessionActive);
             // 规则 8：自检期间禁用人工检验；未点击「开始测试」时人工检验置灰
-            StartVerifyCommand = new RelayCommand(async () => await StartVerifyAsync(), () => IsSessionActive && !IsProcessing && !IsSelfChecking);
+            StartVerifyCommand = new RelayCommand(async () => await StartVerifyAsync(), () => IsSessionActive && IsSessionReadyForTest && !IsProcessing && !IsSelfChecking);
             SelfCheckCommand = new RelayCommand(async () => await SelfCheckAsync(), () => !IsSelfChecking && IsYme009DebugActionEnabled);
             StartVersionVerifyCommand = new RelayCommand(async () => await StartVersionVerifyAsync(), () => CanExecuteStartVersionVerify());
 
@@ -1476,7 +1526,7 @@ namespace SnVerify.ViewModels
         /// </summary>
         private bool CanExecuteStartBatch()
         {
-            if (IsSessionActive || IsSelfChecking || IsProcessing)
+            if (_sessionStartInProgress || _sessionReadyForTest || _yme009ExpectedImporting || IsSelfChecking || IsProcessing)
                 return false;
             if (!ShowAndroidVersionSection && CurrentVerificationType == VerificationType.VersionMatch &&
                 string.IsNullOrWhiteSpace(TargetVersionInput))
@@ -1492,10 +1542,36 @@ namespace SnVerify.ViewModels
         /// </summary>
         private async System.Threading.Tasks.Task StartBatchAsync()
         {
+            if (_sessionReadyForTest || _sessionStartInProgress)
+                return;
+
+            var importExpected = UsesYme009ExpectedImport();
+            SetSessionStartInProgress(true);
+            if (importExpected)
+                SetYme009ExpectedImporting(true);
+
             try
             {
                 var projectId = string.IsNullOrWhiteSpace(ProjectIdInput) ? null : ProjectIdInput.Trim();
                 var orderId = string.IsNullOrWhiteSpace(OrderIdInput) ? null : OrderIdInput.Trim();
+                string productCode = null;
+                if (!string.IsNullOrWhiteSpace(SelectedProductCode))
+                {
+                    if (IsPhase3Product || IsIndependentProduct || (_currentProductProfile?.EnableAndroidVersionCheck ?? false))
+                        productCode = SelectedProductCode.Trim();
+                }
+
+                var active = _sessionLifecycleService.Snapshot;
+                if (active != null && active.IsActive)
+                {
+                    await ResumeActivatedSessionAsync(
+                        active.SessionId,
+                        string.IsNullOrWhiteSpace(active.OrderId) ? orderId : active.OrderId,
+                        projectId,
+                        productCode,
+                        importExpected).ConfigureAwait(true);
+                    return;
+                }
 
                 // Phase3：当为 Phase3 产品且 ProjectId 未填写时，自动使用 SelectedProductCode 作为 ProjectId，
                 // 注意：不再在 StartBatch 里自动回填 ProjectIdInput（避免项目名为空点击开始后，UI 被自动填充造成误导）。
@@ -1561,80 +1637,339 @@ namespace SnVerify.ViewModels
                         return;
                 }
 
-                // 创建并开始 Session，并以 SessionName 启动会话日志
-                string productCode = null;
-                if (!string.IsNullOrWhiteSpace(SelectedProductCode))
+                if (importExpected)
                 {
-                    if (IsPhase3Product || IsIndependentProduct || (_currentProductProfile?.EnableAndroidVersionCheck ?? false))
-                        productCode = SelectedProductCode.Trim();
+                    await StartConfiguredYme009SessionAsync(projectId, orderId, productCode).ConfigureAwait(true);
+                    return;
                 }
+
                 var sessionId = await System.Threading.Tasks.Task.Run(() =>
                 {
                     var sid = _sessionLifecycleService.CreateAndStartSession(orderId, orderId, projectId, productCode);
                     _loggingService.StartSession(sid);
                     return sid;
                 });
-
-                _verificationFlowService = _flowServiceFactory.Create(sessionId, orderId, productCode);
-                AttachMesEventHandlers(_verificationFlowService);
-
-                SessionSnapshot = _sessionLifecycleService.Snapshot;
-                VerificationSnapshot = _verificationFlowService.Snapshot;
-                LoggingSnapshot = _loggingService.Snapshot;
-
-                // Phase3 / Legacy Android 合一：先创建 Session，再按 SessionId 保存参数快照。
-                if ((IsPhase3Product || ShowAndroidVersionSection) && _parameterService != null)
-                {
-                    var expectedAndroid = ExpectedAndroidVersion?.Trim();
-                    var expectedBoard = ExpectedBoardVersion?.Trim();
-                    var expectedCharge = ExpectedChargeBoardVersion?.Trim();
-
-                    var hasParameter = IsPhase3Product
-                        ? !string.IsNullOrWhiteSpace(expectedAndroid) ||
-                          !string.IsNullOrWhiteSpace(expectedBoard) ||
-                          !string.IsNullOrWhiteSpace(expectedCharge)
-                        : !string.IsNullOrWhiteSpace(expectedAndroid);
-
-                    if (hasParameter)
-                    {
-                        var internalSessionId = await _storageService.GetInternalSessionIdBySessionNameAsync(sessionId).ConfigureAwait(true);
-                        if (!internalSessionId.HasValue)
-                            throw new InvalidOperationException("未能解析 Session 内部 Id，无法保存版本参数快照");
-
-                        var parameter = new VerificationParameter
-                        {
-                            SessionId = internalSessionId.Value,
-                            ExpectedAndroidVersion = expectedAndroid,
-                            ExpectedBoardVersion = IsPhase3Product ? expectedBoard : null,
-                            ExpectedChargeBoardVersion = IsPhase3Product ? expectedCharge : null,
-                            CreatedAt = DateTime.Now
-                        };
-
-                        await _parameterService.SaveParameterAsync(parameter).ConfigureAwait(true);
-                    }
-                }
-
-                // 保存本次使用的项目名、订单号，下次启动时回填（与导出路径保存方式一致）
-                Settings.Default.LastProjectId = projectId;
-                Settings.Default.LastOrderId = orderId;
-                Settings.Default.LastProductCode = SelectedProductCode ?? "";
-                if (IsPhase3Product || ShowAndroidVersionSection)
-                {
-                    Settings.Default.LastExpectedAndroidVersion = ExpectedAndroidVersion ?? "";
-                }
-                if (IsPhase3Product)
-                {
-                    Settings.Default.LastExpectedBoardVersion = ExpectedBoardVersion ?? "";
-                    Settings.Default.LastExpectedChargeBoardVersion = ExpectedChargeBoardVersion ?? "";
-                }
-                Settings.Default.Save();
-
-                // 清除错误提示（Session 已开始）
-                ClearBatchError();
+                await FinishStartedSessionAsync(sessionId, projectId, orderId, productCode).ConfigureAwait(true);
+                SetSessionReadyForTest(true);
             }
             catch (Exception)
             {
-                // 错误已由 Service 写日志；可在此补充 UI 提示
+                SetSessionReadyForTest(false);
+            }
+            finally
+            {
+                if (importExpected)
+                    SetYme009ExpectedImporting(false);
+                SetSessionStartInProgress(false);
+            }
+        }
+
+        private async System.Threading.Tasks.Task ResumeActivatedSessionAsync(
+            string sessionName,
+            string orderId,
+            string projectId,
+            string productCode,
+            bool excelConfigured)
+        {
+            try
+            {
+                _loggingService.StartSession(sessionName);
+                await FinishStartedSessionAsync(sessionName, projectId, orderId, productCode).ConfigureAwait(true);
+                if (excelConfigured)
+                    SetYme009ExpectedHeadline(Yme009HeadlineKind.ReadyToTest, "WAITING");
+                SetSessionReadyForTest(true);
+            }
+            catch (Exception ex)
+            {
+                SetSessionReadyForTest(false);
+                _loggingService.LogError(Yme009ExpectedOperatorText.CommittedButStartFailed + " " + ex.Message, ex);
+                if (excelConfigured)
+                {
+                    _dialogService.ShowWarning(
+                        Yme009ExpectedOperatorText.CommittedButStartFailed,
+                        Yme009ExpectedOperatorText.StartFailedTitle);
+                }
+            }
+        }
+
+        private async System.Threading.Tasks.Task StartConfiguredYme009SessionAsync(string projectId, string orderId, string productCode)
+        {
+            SetYme009ExpectedHeadline(Yme009HeadlineKind.Importing, Yme009ExpectedOperatorText.ImportingDetail);
+            Yme009ExpectedStartResult result;
+            try
+            {
+                result = await _yme009ExpectedData.StartAsync(new Yme009ExpectedStartRequest
+                {
+                    ProjectId = projectId,
+                    OrderId = orderId,
+                    ProductCode = productCode,
+                    File = _yme009ExpectedFile
+                }).ConfigureAwait(true);
+            }
+            catch (Exception ex)
+            {
+                _loggingService.LogError("YME009 预期数据导入失败: " + ex.Message, ex);
+                SetYme009ExpectedHeadline(Yme009HeadlineKind.Neutral, "WAITING");
+                _dialogService.ShowWarning(Yme009ExpectedOperatorText.ParseFailed, Yme009ExpectedOperatorText.StartFailedTitle);
+                return;
+            }
+
+            if (result == null || !result.Committed)
+            {
+                SetYme009ExpectedHeadline(Yme009HeadlineKind.Neutral, "WAITING");
+                var title = result != null && result.Reason == Yme009ExpectedReadReasons.UnresolvedNoDeviceRows
+                    ? Yme009ExpectedOperatorText.UnresolvedTitle
+                    : Yme009ExpectedOperatorText.StartFailedTitle;
+                if (result != null && result.Reason == Yme009ExpectedReadReasons.UnresolvedBlankRow)
+                    title = Yme009ExpectedOperatorText.UnresolvedTitle;
+                _dialogService.ShowWarning(
+                    result == null ? Yme009ExpectedOperatorText.ParseFailed : result.OperatorMessage,
+                    title);
+                return;
+            }
+
+            SetYme009ExpectedHeadline(
+                Yme009HeadlineKind.ImportComplete,
+                Yme009ExpectedOperatorText.ImportDoneDetailWithCount(result.RecordCount));
+            await System.Threading.Tasks.Task.Delay(Yme009ExpectedImportDoneDelay).ConfigureAwait(true);
+
+            try
+            {
+                await System.Threading.Tasks.Task.Run(() =>
+                    _sessionLifecycleService.StartSession(result.SessionName, orderId)).ConfigureAwait(true);
+                _loggingService.StartSession(result.SessionName);
+                await FinishStartedSessionAsync(result.SessionName, projectId, orderId, productCode).ConfigureAwait(true);
+                SetYme009ExpectedHeadline(Yme009HeadlineKind.ReadyToTest, "WAITING");
+                SetSessionReadyForTest(true);
+            }
+            catch (Exception ex)
+            {
+                SetSessionReadyForTest(false);
+                _loggingService.LogError(Yme009ExpectedOperatorText.CommittedButStartFailed + " " + ex.Message, ex);
+                _dialogService.ShowWarning(
+                    Yme009ExpectedOperatorText.CommittedButStartFailed,
+                    Yme009ExpectedOperatorText.StartFailedTitle);
+            }
+        }
+
+        private async System.Threading.Tasks.Task FinishStartedSessionAsync(
+            string sessionId,
+            string projectId,
+            string orderId,
+            string productCode)
+        {
+            _verificationFlowService = _flowServiceFactory.Create(sessionId, orderId, productCode);
+            AttachMesEventHandlers(_verificationFlowService);
+
+            SessionSnapshot = _sessionLifecycleService.Snapshot;
+            VerificationSnapshot = _verificationFlowService.Snapshot;
+            LoggingSnapshot = _loggingService.Snapshot;
+
+            if ((IsPhase3Product || ShowAndroidVersionSection) && _parameterService != null)
+            {
+                var expectedAndroid = ExpectedAndroidVersion?.Trim();
+                var expectedBoard = ExpectedBoardVersion?.Trim();
+                var expectedCharge = ExpectedChargeBoardVersion?.Trim();
+                var hasParameter = IsPhase3Product
+                    ? !string.IsNullOrWhiteSpace(expectedAndroid) ||
+                      !string.IsNullOrWhiteSpace(expectedBoard) ||
+                      !string.IsNullOrWhiteSpace(expectedCharge)
+                    : !string.IsNullOrWhiteSpace(expectedAndroid);
+
+                if (hasParameter)
+                {
+                    var internalSessionId = await _storageService.GetInternalSessionIdBySessionNameAsync(sessionId).ConfigureAwait(true);
+                    if (!internalSessionId.HasValue)
+                        throw new InvalidOperationException("未能解析 Session 内部 Id，无法保存版本参数快照");
+
+                    await _parameterService.SaveParameterAsync(new VerificationParameter
+                    {
+                        SessionId = internalSessionId.Value,
+                        ExpectedAndroidVersion = expectedAndroid,
+                        ExpectedBoardVersion = IsPhase3Product ? expectedBoard : null,
+                        ExpectedChargeBoardVersion = IsPhase3Product ? expectedCharge : null,
+                        CreatedAt = DateTime.Now
+                    }).ConfigureAwait(true);
+                }
+            }
+
+            Settings.Default.LastProjectId = projectId;
+            Settings.Default.LastOrderId = orderId;
+            Settings.Default.LastProductCode = SelectedProductCode ?? "";
+            if (IsPhase3Product || ShowAndroidVersionSection)
+                Settings.Default.LastExpectedAndroidVersion = ExpectedAndroidVersion ?? "";
+            if (IsPhase3Product)
+            {
+                Settings.Default.LastExpectedBoardVersion = ExpectedBoardVersion ?? "";
+                Settings.Default.LastExpectedChargeBoardVersion = ExpectedChargeBoardVersion ?? "";
+            }
+            if (SaveOperatorSettings != null)
+                SaveOperatorSettings();
+            else
+                Settings.Default.Save();
+            ClearBatchError();
+        }
+
+        /// <summary>
+        /// 测试用来让设置保存在指定步骤失败。生产路径保持为空。
+        /// </summary>
+        internal Action SaveOperatorSettings { get; set; }
+
+        private bool UsesYme009ExpectedImport()
+        {
+            return _yme009ExpectedData != null
+                && Yme009Product.IsMatch(_currentProductProfile)
+                && _yme009ExpectedFile != null
+                && _yme009ExpectedFile.PrecheckPassed;
+        }
+
+        private bool CanSelectYme009ExpectedFile()
+        {
+            return _yme009ExpectedData != null
+                && ShowYme009Workstation
+                && !IsSessionActive
+                && !_yme009ExpectedImporting;
+        }
+
+        private bool CanClearYme009ExpectedFile()
+        {
+            return _yme009ExpectedFile != null && !IsSessionActive && !_yme009ExpectedImporting;
+        }
+
+        private async System.Threading.Tasks.Task SelectYme009ExpectedFileAsync()
+        {
+            if (!CanSelectYme009ExpectedFile())
+                return;
+
+            var path = _dialogService.ChooseOpenFile("选择预期数据 Excel", "Excel 文件 (*.xlsx)|*.xlsx");
+            if (string.IsNullOrWhiteSpace(path))
+                return;
+
+            var staged = await _yme009ExpectedData.StageAsync(path).ConfigureAwait(true);
+            if (staged != null && staged.Status == Yme009ExpectedReadStatus.Accepted && staged.File != null)
+            {
+                _yme009ExpectedFile = staged.File;
+                _yme009ExpectedSummary = staged.File.FileName + "（" + staged.File.RecordCount + " 条）";
+                OnPropertyChanged(nameof(Yme009ExpectedSummary));
+                ClearYme009ExpectedFileCommand?.RaiseCanExecuteChanged();
+                return;
+            }
+
+            var unresolved = staged != null && staged.Status == Yme009ExpectedReadStatus.Unresolved;
+            _dialogService.ShowWarning(
+                staged == null ? Yme009ExpectedOperatorText.FileUnavailable : staged.OperatorMessage,
+                unresolved ? Yme009ExpectedOperatorText.UnresolvedTitle : Yme009ExpectedOperatorText.ImportFailedTitle);
+        }
+
+        private System.Threading.Tasks.Task ClearYme009ExpectedFileAsync()
+        {
+            if (!CanClearYme009ExpectedFile())
+                return System.Threading.Tasks.Task.CompletedTask;
+
+            _yme009ExpectedFile = null;
+            _yme009ExpectedSummary = "未选择";
+            OnPropertyChanged(nameof(Yme009ExpectedSummary));
+            ClearYme009ExpectedFileCommand?.RaiseCanExecuteChanged();
+            return System.Threading.Tasks.Task.CompletedTask;
+        }
+
+        private void SetYme009ExpectedImporting(bool value)
+        {
+            if (_yme009ExpectedImporting == value)
+                return;
+            _yme009ExpectedImporting = value;
+            OnPropertyChanged(nameof(IsYme009ExpectedImporting));
+            OnPropertyChanged(nameof(IsStartBatchLocked));
+            StartBatchCommand?.RaiseCanExecuteChanged();
+            SelectYme009ExpectedFileCommand?.RaiseCanExecuteChanged();
+            ClearYme009ExpectedFileCommand?.RaiseCanExecuteChanged();
+        }
+
+        private void SetSessionStartInProgress(bool value)
+        {
+            if (_sessionStartInProgress == value)
+                return;
+            _sessionStartInProgress = value;
+            OnPropertyChanged(nameof(IsStartBatchLocked));
+            StartBatchCommand?.RaiseCanExecuteChanged();
+        }
+
+        private void SetSessionReadyForTest(bool value)
+        {
+            if (_sessionReadyForTest == value)
+                return;
+            _sessionReadyForTest = value;
+            OnPropertyChanged(nameof(IsSessionReadyForTest));
+            OnPropertyChanged(nameof(IsStartBatchLocked));
+            OnPropertyChanged(nameof(IsYme009ScanAllowed));
+            StartBatchCommand?.RaiseCanExecuteChanged();
+            StartVerifyCommand?.RaiseCanExecuteChanged();
+            StartVersionVerifyCommand?.RaiseCanExecuteChanged();
+        }
+
+        private void SetYme009ExpectedHeadline(Yme009HeadlineKind kind, string detail)
+        {
+            _yme009HeadlineKind = kind;
+            if (kind == Yme009HeadlineKind.ImportComplete)
+                _yme009StatusDetail = detail ?? string.Empty;
+            ApplyYme009StatusText();
+            OnPropertyChanged(nameof(Yme009HeadlineKind));
+        }
+
+        private void ApplyYme009StatusText()
+        {
+            string title;
+            string detail;
+            switch (_yme009HeadlineKind)
+            {
+                case Yme009HeadlineKind.Pass:
+                    title = "PASS";
+                    detail = "PASS";
+                    break;
+                case Yme009HeadlineKind.Fail:
+                    title = "FAIL";
+                    detail = "FAIL";
+                    break;
+                case Yme009HeadlineKind.Running:
+                    title = "检验中...";
+                    detail = "PROCESSING";
+                    break;
+                case Yme009HeadlineKind.Importing:
+                    title = Yme009ExpectedOperatorText.ImportingTitle;
+                    detail = Yme009ExpectedOperatorText.ImportingDetail;
+                    break;
+                case Yme009HeadlineKind.ImportComplete:
+                    title = Yme009ExpectedOperatorText.ImportDoneTitle;
+                    detail = _yme009StatusDetail;
+                    break;
+                case Yme009HeadlineKind.ReadyToTest:
+                    title = Yme009ExpectedOperatorText.ReadyTitle;
+                    detail = "WAITING";
+                    break;
+                case Yme009HeadlineKind.Unresolved:
+                    title = Yme009ResultClassifier.UnresolvedResult;
+                    detail = Yme009ResultClassifier.UnresolvedResult;
+                    break;
+                default:
+                    title = "等待扫码";
+                    detail = "WAITING";
+                    break;
+            }
+
+            if (_yme009StatusTitle != title)
+            {
+                _yme009StatusTitle = title;
+                OnPropertyChanged(nameof(Yme009StatusTitle));
+            }
+
+            if (_yme009StatusDetail != detail)
+            {
+                _yme009StatusDetail = detail;
+                OnPropertyChanged(nameof(Yme009StatusDetail));
+            }
+            else if (_yme009HeadlineKind == Yme009HeadlineKind.ImportComplete)
+            {
+                OnPropertyChanged(nameof(Yme009StatusDetail));
             }
         }
 
@@ -1969,7 +2304,7 @@ namespace SnVerify.ViewModels
         /// </summary>
         private bool CanExecuteStartVersionVerify()
         {
-            if (!IsSessionActive || IsProcessing || IsSelfChecking)
+            if (!IsSessionActive || !IsSessionReadyForTest || IsProcessing || IsSelfChecking)
                 return false;
             if (CurrentVerificationType == VerificationType.VersionMatch && string.IsNullOrWhiteSpace(TargetVersionInput))
                 return false;
@@ -1981,7 +2316,7 @@ namespace SnVerify.ViewModels
         /// </summary>
         private async System.Threading.Tasks.Task StartVersionVerifyAsync()
         {
-            if (!IsSessionActive)
+            if (!IsSessionActive || !IsSessionReadyForTest)
             {
                 _loggingService.LogWarning("版本检验：Session 未激活，请先开始测试");
                 LoggingSnapshot = _loggingService.Snapshot;
@@ -2169,7 +2504,7 @@ namespace SnVerify.ViewModels
                 return;
             }
 
-            if (_sessionEnding || !IsSessionActive)
+            if (_sessionEnding || !IsSessionActive || !IsSessionReadyForTest)
                 return;
 
             var roundEpoch = _yme009SessionEpoch;
@@ -2290,9 +2625,12 @@ namespace SnVerify.ViewModels
             _yme009ResetJudgment = snapshot.ResetJudgment ?? string.Empty;
             _yme009ResetReason = snapshot.ResetReason ?? string.Empty;
             _yme009ResetRaw = snapshot.ResetRaw ?? string.Empty;
+            _yme009ExpectedIdentityJudgment = snapshot.ExpectedIdentityJudgment ?? string.Empty;
+            _yme009ExpectedIdentityReason = snapshot.ExpectedIdentityReason ?? string.Empty;
             _yme009Imei1Text = snapshot.Imei1Text ?? string.Empty;
             _yme009Imei2Text = snapshot.Imei2Text ?? string.Empty;
             _yme009WifiMacText = snapshot.WifiMacText ?? string.Empty;
+            ApplyYme009StatusText();
             OnPropertyChanged(nameof(Yme009RoundPhase));
             OnPropertyChanged(nameof(Yme009ProcessPrompt));
             OnPropertyChanged(nameof(Yme009Headline));
@@ -2319,6 +2657,8 @@ namespace SnVerify.ViewModels
             OnPropertyChanged(nameof(Yme009ResetJudgment));
             OnPropertyChanged(nameof(Yme009ResetReason));
             OnPropertyChanged(nameof(Yme009ResetRaw));
+            OnPropertyChanged(nameof(Yme009ExpectedIdentityJudgment));
+            OnPropertyChanged(nameof(Yme009ExpectedIdentityReason));
             OnPropertyChanged(nameof(Yme009Imei1Text));
             OnPropertyChanged(nameof(Yme009Imei2Text));
             OnPropertyChanged(nameof(Yme009WifiMacText));
@@ -2454,6 +2794,7 @@ namespace SnVerify.ViewModels
             Yme009PassCount = value.PassCount;
             Yme009BusinessFailCount = value.BusinessFailCount;
             Yme009ReadExceptionCount = value.ReadExceptionCount;
+            Yme009UnresolvedCount = value.UnresolvedCount;
             Yme009PassRateText = value.PassRateText;
         }
 
@@ -2513,13 +2854,9 @@ namespace SnVerify.ViewModels
                 return;
             }
 
-            // 防御逻辑：Session 未激活时，拒绝扫码（需要先开始测试）
-            if (!IsSessionActive)
-            {
-                // 可以在这里显示提示，或自动开始测试
-                // 当前选择：拒绝扫码，要求先开始测试
+            // 事务提交或快照建立都不等于可以检测。初始化全部成功后才接收扫码。
+            if (!IsSessionActive || !IsSessionReadyForTest)
                 return;
-            }
 
             // SN 检验开始时清除版本检验结果，避免与 SN 结果混淆
             _lastVersionRecord = null;

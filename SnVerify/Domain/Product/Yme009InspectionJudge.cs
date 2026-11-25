@@ -193,12 +193,14 @@ namespace SnVerify.Domain.Product
             string softwareVersionReason,
             string productionTestReason,
             string agingRebootReason,
-            string agingResetReason)
+            string agingResetReason,
+            Yme009ExpectedIdentityCheck expectedIdentity)
         {
             IsSessionParameterInvalid = isSessionParameterInvalid;
             Attributes = attributes;
             Result = result;
             FailReason = failReason;
+            ExpectedIdentity = expectedIdentity;
             DeviceSn = deviceSn;
             SoftwareVersion = softwareVersion;
             ProductionTest = productionTest;
@@ -242,6 +244,8 @@ namespace SnVerify.Domain.Product
 
         public string AgingResetReason { get; }
 
+        public Yme009ExpectedIdentityCheck ExpectedIdentity { get; }
+
         public Yme009StatisticBucket Bucket { get; }
 
         public static Yme009InspectionDecision SessionParameterInvalid(Yme009ParsedAttributes attributes)
@@ -256,6 +260,7 @@ namespace SnVerify.Domain.Product
                 Yme009ItemJudgment.Fail,
                 Yme009ItemJudgment.Fail,
                 Yme009ItemJudgment.Fail,
+                null,
                 null,
                 null,
                 null,
@@ -276,7 +281,8 @@ namespace SnVerify.Domain.Product
             string softwareVersionReason,
             string productionTestReason,
             string agingRebootReason,
-            string agingResetReason)
+            string agingResetReason,
+            Yme009ExpectedIdentityCheck expectedIdentity = null)
         {
             return new Yme009InspectionDecision(
                 false,
@@ -292,7 +298,30 @@ namespace SnVerify.Domain.Product
                 softwareVersionReason,
                 productionTestReason,
                 agingRebootReason,
-                agingResetReason);
+                agingResetReason,
+                expectedIdentity);
+        }
+
+        public Yme009InspectionDecision WithExpectedIdentity(
+            string result,
+            string failReason,
+            Yme009ExpectedIdentityCheck expectedIdentity)
+        {
+            return Judged(
+                Attributes,
+                result,
+                failReason,
+                DeviceSn,
+                SoftwareVersion,
+                ProductionTest,
+                AgingReboot,
+                AgingReset,
+                DeviceSnReason,
+                SoftwareVersionReason,
+                ProductionTestReason,
+                AgingRebootReason,
+                AgingResetReason,
+                expectedIdentity);
         }
     }
 }

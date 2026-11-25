@@ -34,6 +34,11 @@ namespace SnVerify.Services.Session
         void StartSession(string sessionId);
 
         /// <summary>
+        /// 开始已存在的 Session，并保留订单名。不创建新的 TestSession。
+        /// </summary>
+        void StartSession(string sessionId, string orderId);
+
+        /// <summary>
         /// 结束当前活动 Session。
         /// </summary>
         void EndSession();

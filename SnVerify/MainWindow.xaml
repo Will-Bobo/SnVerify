@@ -193,6 +193,17 @@
                             </ComboBox>
                         </StackPanel>
 
+                        <StackPanel Orientation="Horizontal" VerticalAlignment="Center" DockPanel.Dock="Left"
+                                    Margin="8,0,0,0"
+                                    Visibility="{Binding ShowYme009Workstation, Converter={StaticResource BoolToVisibilityConverter}}">
+                            <TextBlock Text="预期数据：" Style="{StaticResource BatchHeaderStyle}" VerticalAlignment="Center" Padding="5,2"/>
+                            <TextBlock Text="{Binding Yme009ExpectedSummary}" VerticalAlignment="Center" Margin="0,0,8,0" MaxWidth="220" TextTrimming="CharacterEllipsis"/>
+                            <Button Content="选择 Excel" Width="88" Height="28" Margin="0,0,5,0"
+                                    Command="{Binding SelectYme009ExpectedFileCommand}"/>
+                            <Button Content="清除" Width="60" Height="28"
+                                    Command="{Binding ClearYme009ExpectedFileCommand}"/>
+                        </StackPanel>
+
                         <!-- 操作按钮组 -->
                         <StackPanel Orientation="Horizontal" VerticalAlignment="Center" Margin="20,0,0,0" DockPanel.Dock="Right">
                             <Button x:Name="StartBatchButton" Content="开始测试" Width="100" Height="28" Margin="5,0" VerticalAlignment="Center"
@@ -201,7 +212,7 @@
                                     <Style TargetType="Button">
                                         <Setter Property="IsEnabled" Value="True"/>
                                         <Style.Triggers>
-                                            <DataTrigger Binding="{Binding IsSessionActive}" Value="True">
+                                            <DataTrigger Binding="{Binding IsStartBatchLocked}" Value="True">
                                                 <Setter Property="IsEnabled" Value="False"/>
                                             </DataTrigger>
                                         </Style.Triggers>
@@ -1031,56 +1042,34 @@
                                                 <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Neutral">
                                                     <Setter Property="Background" Value="#808080"/>
                                                 </DataTrigger>
+                                                <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Unresolved">
+                                                    <Setter Property="Background" Value="#808080"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Importing">
+                                                    <Setter Property="Background" Value="#0080FF"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="ImportComplete">
+                                                    <Setter Property="Background" Value="#2E7D32"/>
+                                                </DataTrigger>
+                                                <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="ReadyToTest">
+                                                    <Setter Property="Background" Value="#808080"/>
+                                                </DataTrigger>
                                             </Style.Triggers>
                                         </Style>
                                     </Border.Style>
                                     <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
-                                        <TextBlock>
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock" BasedOn="{StaticResource ResultTextStyle}">
-                                                    <Setter Property="Text" Value="等待扫码"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Pass">
-                                                            <Setter Property="Text" Value="PASS"/>
-                                                        </DataTrigger>
-                                                        <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Fail">
-                                                            <Setter Property="Text" Value="FAIL"/>
-                                                        </DataTrigger>
-                                                        <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Running">
-                                                            <Setter Property="Text" Value="检验中..."/>
-                                                        </DataTrigger>
-                                                        <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Neutral">
-                                                            <Setter Property="Text" Value="等待扫码"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
-                                        <TextBlock Margin="0,8,0,0"
+                                        <TextBlock Text="{Binding Yme009StatusTitle}"
+                                                   Style="{StaticResource ResultTextStyle}"
+                                                   TextWrapping="Wrap"
+                                                   TextAlignment="Center"/>
+                                        <TextBlock Text="{Binding Yme009StatusDetail}"
+                                                   Margin="0,8,0,0"
                                                    FontSize="16"
                                                    Foreground="#F0F0F0"
                                                    Opacity="0.9"
-                                                   HorizontalAlignment="Center">
-                                            <TextBlock.Style>
-                                                <Style TargetType="TextBlock">
-                                                    <Setter Property="Text" Value="WAITING"/>
-                                                    <Style.Triggers>
-                                                        <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Pass">
-                                                            <Setter Property="Text" Value="PASS"/>
-                                                        </DataTrigger>
-                                                        <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Fail">
-                                                            <Setter Property="Text" Value="FAIL"/>
-                                                        </DataTrigger>
-                                                        <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Running">
-                                                            <Setter Property="Text" Value="PROCESSING"/>
-                                                        </DataTrigger>
-                                                        <DataTrigger Binding="{Binding Yme009HeadlineKind}" Value="Neutral">
-                                                            <Setter Property="Text" Value="WAITING"/>
-                                                        </DataTrigger>
-                                                    </Style.Triggers>
-                                                </Style>
-                                            </TextBlock.Style>
-                                        </TextBlock>
+                                                   HorizontalAlignment="Center"
+                                                   TextWrapping="Wrap"
+                                                   TextAlignment="Center"/>
                                     </StackPanel>
                                 </Border>
                             </Grid>
@@ -1226,7 +1215,7 @@
 
                     <Border Grid.Row="5" Margin="0,8,0,0" Background="#F8F8F8" BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4" Padding="8,6"
                             Visibility="{Binding ShowYme009Workstation, Converter={StaticResource BoolToVisibilityConverter}}">
-                        <UniformGrid Columns="5">
+                        <UniformGrid Columns="6">
                             <Border Margin="4" Padding="6" BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4">
                                 <StackPanel>
                                     <TextBlock Text="SN 一致性" FontWeight="Bold" HorizontalAlignment="Center"/>
@@ -1260,6 +1249,13 @@
                                     <TextBlock Text="恢复出厂设置老化" FontWeight="Bold" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
                                     <TextBlock Text="{Binding Yme009ResetJudgment}" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>
                                     <TextBlock Text="{Binding Yme009ResetReason}" TextWrapping="Wrap" Foreground="#8B0000" HorizontalAlignment="Center"/>
+                                </StackPanel>
+                            </Border>
+                            <Border Margin="4" Padding="6" BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4">
+                                <StackPanel>
+                                    <TextBlock Text="项目预期数据校验" FontWeight="Bold" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
+                                    <TextBlock Text="{Binding Yme009ExpectedIdentityJudgment}" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Yme009ExpectedIdentityReason}" TextWrapping="Wrap" Foreground="#8B0000" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Border>
                         </UniformGrid>

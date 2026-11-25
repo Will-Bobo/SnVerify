@@ -45,7 +45,9 @@ namespace SnVerify.Services.Storage
             "综合结果",
             "失败原因代码",
             "失败原因",
-            "检测时间"
+            "检测时间",
+            "身份校验状态",
+            "身份校验说明"
         };
 
         private readonly IStorageService _storage;
@@ -169,6 +171,8 @@ namespace SnVerify.Services.Storage
                 WriteRaw(sheet, row, 27, record.FailReason);
                 sheet.Cells[row, 28].Value = FailReasonTextResolver.Resolve(record.FailReason);
                 sheet.Cells[row, 29].Value = record.VerifyTime.ToString("yyyy-MM-dd HH:mm:ss");
+                sheet.Cells[row, 30].Value = record.IdentityDisposition ?? string.Empty;
+                sheet.Cells[row, 31].Value = record.IdentityDetail ?? string.Empty;
             }
         }
 
@@ -178,7 +182,8 @@ namespace SnVerify.Services.Storage
             sheet.Cells[1, 2].Value = "业务FAIL数量";
             sheet.Cells[1, 3].Value = "读取异常数量";
             sheet.Cells[1, 4].Value = "业务通过率";
-            using (var header = sheet.Cells[1, 1, 1, 4])
+            sheet.Cells[1, 5].Value = "未决数量";
+            using (var header = sheet.Cells[1, 1, 1, 5])
             {
                 header.Style.Font.Bold = true;
                 header.Style.Fill.PatternType = OfficeOpenXml.Style.ExcelFillStyle.Solid;
@@ -190,6 +195,7 @@ namespace SnVerify.Services.Storage
             sheet.Cells[2, 3].Value = statistics.ReadExceptionCount;
             if (!string.IsNullOrEmpty(statistics.PassRateText))
                 sheet.Cells[2, 4].Value = statistics.PassRateText;
+            sheet.Cells[2, 5].Value = statistics.UnresolvedCount;
         }
 
         private static void WriteRaw(ExcelWorksheet sheet, int row, int column, string value)
