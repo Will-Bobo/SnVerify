@@ -64,6 +64,22 @@
             <Setter Property="Margin" Value="4,6,4,4"/>
         </Style>
 
+        <!-- 测试项判定：PASS 深绿，FAIL 与下方说明同色，其余保持黑色 -->
+        <Style x:Key="ItemJudgmentStyle" TargetType="TextBlock">
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="HorizontalAlignment" Value="Center"/>
+            <Setter Property="Foreground" Value="Black"/>
+            <Style.Triggers>
+                <DataTrigger Binding="{Binding Text, RelativeSource={RelativeSource Self}}" Value="PASS">
+                    <Setter Property="Foreground" Value="#2E7D32"/>
+                </DataTrigger>
+                <DataTrigger Binding="{Binding Text, RelativeSource={RelativeSource Self}}" Value="FAIL">
+                    <Setter Property="Foreground" Value="#8B0000"/>
+                </DataTrigger>
+            </Style.Triggers>
+        </Style>
+
         <!-- 错误详情面板样式：仅FAIL时显示，紧凑版 -->
         <Style x:Key="ErrorDetailPanelStyle" TargetType="Border">
             <Setter Property="Background" Value="#FFECEB"/>
@@ -1219,42 +1235,42 @@
                             <Border Margin="4" Padding="6" BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4">
                                 <StackPanel>
                                     <TextBlock Text="SN 一致性" FontWeight="Bold" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Yme009SnJudgment}" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Yme009SnJudgment}" Style="{StaticResource ItemJudgmentStyle}"/>
                                     <TextBlock Text="{Binding Yme009SnReason}" TextWrapping="Wrap" Foreground="#8B0000" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Border>
                             <Border Margin="4" Padding="6" BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4">
                                 <StackPanel>
                                     <TextBlock Text="软件版本一致性" FontWeight="Bold" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
-                                    <TextBlock Text="{Binding Yme009VersionJudgment}" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Yme009VersionJudgment}" Style="{StaticResource ItemJudgmentStyle}"/>
                                     <TextBlock Text="{Binding Yme009VersionReason}" TextWrapping="Wrap" Foreground="#8B0000" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Border>
                             <Border Margin="4" Padding="6" BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4">
                                 <StackPanel>
                                     <TextBlock Text="生产测试" FontWeight="Bold" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Yme009CitJudgment}" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Yme009CitJudgment}" Style="{StaticResource ItemJudgmentStyle}"/>
                                     <TextBlock Text="{Binding Yme009CitReason}" TextWrapping="Wrap" Foreground="#8B0000" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Border>
                             <Border Margin="4" Padding="6" BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4">
                                 <StackPanel>
                                     <TextBlock Text="重启老化" FontWeight="Bold" HorizontalAlignment="Center"/>
-                                    <TextBlock Text="{Binding Yme009RebootJudgment}" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Yme009RebootJudgment}" Style="{StaticResource ItemJudgmentStyle}"/>
                                     <TextBlock Text="{Binding Yme009RebootReason}" TextWrapping="Wrap" Foreground="#8B0000" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Border>
                             <Border Margin="4" Padding="6" BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4">
                                 <StackPanel>
                                     <TextBlock Text="恢复出厂设置老化" FontWeight="Bold" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
-                                    <TextBlock Text="{Binding Yme009ResetJudgment}" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Yme009ResetJudgment}" Style="{StaticResource ItemJudgmentStyle}"/>
                                     <TextBlock Text="{Binding Yme009ResetReason}" TextWrapping="Wrap" Foreground="#8B0000" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Border>
                             <Border Margin="4" Padding="6" BorderBrush="#DDDDDD" BorderThickness="1" CornerRadius="4">
                                 <StackPanel>
                                     <TextBlock Text="项目预期数据校验" FontWeight="Bold" HorizontalAlignment="Center" TextWrapping="Wrap" TextAlignment="Center"/>
-                                    <TextBlock Text="{Binding Yme009ExpectedIdentityJudgment}" FontSize="18" FontWeight="Bold" HorizontalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Yme009ExpectedIdentityJudgment}" Style="{StaticResource ItemJudgmentStyle}"/>
                                     <TextBlock Text="{Binding Yme009ExpectedIdentityReason}" TextWrapping="Wrap" Foreground="#8B0000" HorizontalAlignment="Center"/>
                                 </StackPanel>
                             </Border>
